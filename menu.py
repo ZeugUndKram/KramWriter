@@ -6,35 +6,17 @@ import adafruit_sharpmemorydisplay
 import os
 import time
 import sys
-import select
+import termios
+import tty
 
 # Initialize display
 spi = busio.SPI(board.SCK, MOSI=board.MOSI)
 scs = digitalio.DigitalInOut(board.D6)
 display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 400, 240)
 
-def draw_large_text(draw, x, y, text, scale=2):
-    """Draw large text by scaling up the default font"""
-    # Create a temporary image to draw the text at normal size
-    temp_font = ImageFont.load_default()
-    
-    # Get the size of the text at normal scale
-    bbox = draw.textbbox((0, 0), text, font=temp_font)
-    normal_width = bbox[2] - bbox[0]
-    normal_height = bbox[3] - bbox[1]
-    
-    # Create a temporary image for the text
-    temp_img = Image.new("1", (normal_width, normal_height), 1)  # White background
-    temp_draw = ImageDraw.Draw(temp_img)
-    temp_draw.text((0, 0), text, font=temp_font, fill=0)  # Black text
-    
-    # Scale up the image
-    scaled_width = normal_width * scale
-    scaled_height = normal_height * scale
-    scaled_img = temp_img.resize((scaled_width, scaled_height), Image.NEAREST)
-    
-    # Paste the scaled text onto the main image
-    draw.bitmap((x, y), scaled_img, fill=0)
+def draw_menu_text(draw, x, y, text, font):
+    """Draw text using the custom font"""
+    draw.text((x, y), text, font=font, fill=0)
 
 def display_menu(selected_index=0):
     try:
@@ -50,6 +32,14 @@ def display_menu(selected_index=0):
             arrow = None
             print(f"Arrow image not found: {arrow_path}")
         
+        # Load custom font
+        font_path = os.path.join(script_dir, "fonts", "Retron2000.ttf")
+        if os.path.exists(font_path):
+            font = ImageFont.truetype(font_path, 24)  # Adjust size as needed
+        else:
+            print(f"Custom font not found: {font_path}")
+            font = ImageFont.load_default()
+        
         # Create display image with white background
         image = Image.new("1", (display.width, display.height), 255)
         draw = ImageDraw.Draw(image)
@@ -63,8 +53,7 @@ def display_menu(selected_index=0):
         ]
         
         # Calculate positions for text
-        scale = 2
-        item_height = 40
+        item_height = 45
         total_height = len(menu_items) * item_height
         start_y = (display.height - total_height) // 2
         
@@ -72,17 +61,21 @@ def display_menu(selected_index=0):
         for i, item in enumerate(menu_items):
             y_position = start_y + (i * item_height)
             
-            # Estimate width of scaled text
-            estimated_width = len(item) * 8 * scale
-            x_position = (display.width - estimated_width) // 2
+            # Get text bounding box for proper centering
+            bbox = draw.textbbox((0, 0), item, font=font)
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
             
-            # Draw large text
-            draw_large_text(draw, x_position, y_position, item, scale=scale)
+            x_position = (display.width - text_width) // 2
             
-            # Draw arrow next to selected item
+            # Draw text using custom font
+            draw_menu_text(draw, x_position, y_position, item, font)
+            
+            # Draw arrow next to selected item - properly aligned vertically
             if i == selected_index and arrow:
-                arrow_x = x_position - arrow.width - 10  # 10px spacing from text
-                arrow_y = y_position + (estimated_width // 2 - arrow.height // 2)
+                arrow_x = x_position - arrow.width - 15  # 15px spacing from text
+                # Center arrow vertically with text
+                arrow_y = y_position + (text_height // 2 - arrow.height // 2)
                 image.paste(arrow, (arrow_x, arrow_y))
         
         # Update display
@@ -93,24 +86,29 @@ def display_menu(selected_index=0):
         
     except Exception as e:
         print(f"Error displaying menu: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 def get_key():
     """Get a single key press without requiring Enter"""
-    if sys.platform == 'win32':
-        import msvcrt
-        return msvcrt.getch().decode()
-    else:
-        import termios
-        import tty
-        fd = sys.stdin.fileno()
-        old_settings = termios.tcgetattr(fd)
-        try:
-            tty.setraw(sys.stdin.fileno())
-            ch = sys.stdin.read(1)
-        finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setraw(sys.stdin.fileno())
+        ch = sys.stdin.read(1)
+        # Check for escape sequences (arrow keys)
+        if ch == '\x1b':
+            next_ch = sys.stdin.read(1)
+            if next_ch == '[':
+                arrow_ch = sys.stdin.read(1)
+                if arrow_ch == 'A':
+                    return 'up'
+                elif arrow_ch == 'B':
+                    return 'down'
         return ch
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 def handle_menu_selection():
     """Handle menu navigation with instant arrow keys"""
@@ -128,19 +126,14 @@ def handle_menu_selection():
             # Get key press without waiting for Enter
             key = get_key()
             
-            if key == '\x1b':  # Escape sequence for arrow keys
-                # Check if it's an arrow key
-                next_key = get_key()
-                if next_key == '[':
-                    arrow_key = get_key()
-                    if arrow_key == 'A':  # Up arrow
-                        selected_index = (selected_index - 1) % len(menu_items)
-                        display_menu(selected_index)
-                        print(f"↑ Selected: {menu_items[selected_index]}")
-                    elif arrow_key == 'B':  # Down arrow
-                        selected_index = (selected_index + 1) % len(menu_items)
-                        display_menu(selected_index)
-                        print(f"↓ Selected: {menu_items[selected_index]}")
+            if key == 'up':  # Up arrow
+                selected_index = (selected_index - 1) % len(menu_items)
+                display_menu(selected_index)
+                print(f"↑ Selected: {menu_items[selected_index]}")
+            elif key == 'down':  # Down arrow
+                selected_index = (selected_index + 1) % len(menu_items)
+                display_menu(selected_index)
+                print(f"↓ Selected: {menu_items[selected_index]}")
             elif key == '\r' or key == '\n':  # Enter key
                 print(f"✓ Executing: {menu_items[selected_index]}")
                 # Add your functionality here based on selected_index
@@ -180,5 +173,5 @@ def handle_menu_selection():
             break
 
 if __name__ == "__main__":
-    print("=== Menu with Instant Arrow Keys ===")
+    print("=== Menu with Custom Font and Arrow Keys ===")
     handle_menu_selection()
