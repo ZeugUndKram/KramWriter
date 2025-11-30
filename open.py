@@ -34,7 +34,7 @@ def display_file_menu(selected_index=0):
         # Load custom font
         font_path = os.path.join(script_dir, "fonts", "BebasNeue-Regular.ttf")
         if os.path.exists(font_path):
-            font = ImageFont.truetype(font_path, 32)  # Slightly smaller for file names
+            font = ImageFont.truetype(font_path, 32)
         else:
             print(f"Custom font not found: {font_path}")
             font = ImageFont.load_default()
@@ -42,7 +42,7 @@ def display_file_menu(selected_index=0):
         # Get list of files from /files/ folder
         files_dir = os.path.join(script_dir, "files")
         if not os.path.exists(files_dir):
-            os.makedirs(files_dir)  # Create folder if it doesn't exist
+            os.makedirs(files_dir)
             print("Created files directory")
         
         file_list = []
@@ -51,7 +51,6 @@ def display_file_menu(selected_index=0):
                 if os.path.isfile(os.path.join(files_dir, item)):
                     file_list.append(item)
         
-        # Sort files alphabetically
         file_list.sort()
         
         if not file_list:
@@ -83,7 +82,6 @@ def display_file_menu(selected_index=0):
             # Draw arrow next to selected item
             if i == selected_index and arrow and file_list[0] != "No files found":
                 arrow_x = x_position - arrow.width - 15
-                # Center arrow vertically with text (adjust offset as needed)
                 arrow_y = y_position + (text_height // 2 - arrow.height // 2) + 10
                 image.paste(arrow, (arrow_x, arrow_y))
         
@@ -106,7 +104,6 @@ def get_key():
     try:
         tty.setraw(sys.stdin.fileno())
         ch = sys.stdin.read(1)
-        # Check for escape sequences (arrow keys)
         if ch == '\x1b':
             next_ch = sys.stdin.read(1)
             if next_ch == '[':
@@ -133,38 +130,34 @@ def handle_file_selection():
     
     while True:
         try:
-            # Get key press without waiting for Enter
             key = get_key()
             
-            if key == 'up':  # Up arrow
+            if key == 'up':
                 selected_index = (selected_index - 1) % len(file_list)
                 file_list = display_file_menu(selected_index)
                 print(f"↑ Selected: {file_list[selected_index]}")
-            elif key == 'down':  # Down arrow
+            elif key == 'down':
                 selected_index = (selected_index + 1) % len(file_list)
                 file_list = display_file_menu(selected_index)
                 print(f"↓ Selected: {file_list[selected_index]}")
-            elif key == '\r' or key == '\n':  # Enter key
+            elif key == '\r' or key == '\n':
                 if file_list[0] != "No files found":
                     print(f"✓ Selected file: {file_list[selected_index]}")
-                    # File selection functionality can be added here later
-                    # For now, just show which file was selected
                     print(f"File '{file_list[selected_index]}' would be opened here")
                 break
-            elif key == '\x7f' or key == '\x08':  # Backspace or Delete
+            elif key == '\x7f' or key == '\x08':
                 print("Returning to menu...")
-                # Return to menu.py
                 script_dir = os.path.dirname(os.path.abspath(__file__))
                 menu_path = os.path.join(script_dir, "menu.py")
                 
                 if os.path.exists(menu_path):
                     print(f"Returning to {menu_path}...")
                     exec(open(menu_path).read())
-                    return  # Exit after launching menu.py
+                    return
                 else:
                     print(f"menu.py not found at {menu_path}")
                 break
-            elif key == 'q' or key == 'Q':  # Quit
+            elif key == 'q' or key == 'Q':
                 print("Quitting file browser...")
                 break
             else:
