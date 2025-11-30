@@ -11,6 +11,29 @@ spi = busio.SPI(board.SCK, MOSI=board.MOSI)
 scs = digitalio.DigitalInOut(board.D6)
 display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 400, 240)
 
+def draw_large_text(draw, x, y, text, scale=3):
+    """Draw large text by scaling up the default font"""
+    # Create a temporary image to draw the text at normal size
+    temp_font = ImageFont.load_default()
+    
+    # Get the size of the text at normal scale
+    bbox = draw.textbbox((0, 0), text, font=temp_font)
+    normal_width = bbox[2] - bbox[0]
+    normal_height = bbox[3] - bbox[1]
+    
+    # Create a temporary image for the text
+    temp_img = Image.new("1", (normal_width, normal_height), 1)  # White background
+    temp_draw = ImageDraw.Draw(temp_img)
+    temp_draw.text((0, 0), text, font=temp_font, fill=0)  # Black text
+    
+    # Scale up the image
+    scaled_width = normal_width * scale
+    scaled_height = normal_height * scale
+    scaled_img = temp_img.resize((scaled_width, scaled_height), Image.NEAREST)
+    
+    # Paste the scaled text onto the main image
+    draw.bitmap((x, y), scaled_img, fill=0)
+
 def display_menu():
     try:
         # Create display image with white background
@@ -25,64 +48,28 @@ def display_menu():
             "CREDITS"
         ]
         
-        # Try to load larger fonts, fall back to scaling if not available
-        try:
-            # Try to load a larger font - common paths for built-in fonts
-            font_paths = [
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-                "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
-            ]
-            font = None
-            for path in font_paths:
-                if os.path.exists(path):
-                    font = ImageFont.truetype(path, 24)  # Larger font size
-                    break
-        except:
-            font = None
-        
-        # If no larger font found, we'll use the default and make it bigger by scaling
-        if font is None:
-            try:
-                font = ImageFont.load_default()
-                print("Using default font (may be small)")
-            except:
-                font = None
-        
-        # Calculate text dimensions and positions
-        item_height = 50  # Even more height for bigger text
+        # Calculate positions for large text
+        scale = 4  # Make text 4x bigger than default
+        item_height = 60  # Large spacing between items
         total_height = len(menu_items) * item_height
         start_y = (display.height - total_height) // 2
         
-        # Draw each menu item centered with bigger text
+        # Draw each menu item centered with large text
         for i, item in enumerate(menu_items):
             y_position = start_y + (i * item_height)
             
-            if font:
-                # Get text bounding box to center it
-                bbox = draw.textbbox((0, 0), item, font=font)
-                text_width = bbox[2] - bbox[0]
-                text_height = bbox[3] - bbox[1]
-                
-                x_position = (display.width - text_width) // 2
-                
-                # Draw the menu text with larger font
-                draw.text((x_position, y_position), item, font=font, fill=0)
-            else:
-                # Fallback: Draw bigger text by using larger coordinates and thicker lines
-                # Estimate text width (approx 15 pixels per character for bigger text)
-                text_width = len(item) * 15
-                x_position = (display.width - text_width) // 2
-                
-                # Draw thicker text by drawing multiple times with slight offsets
-                for dx, dy in [(0,0), (1,0), (0,1), (1,1)]:
-                    draw.text((x_position + dx, y_position + dy), item, fill=0)
+            # Estimate width of scaled text (approx 8 pixels per char at default * scale)
+            estimated_width = len(item) * 8 * scale
+            x_position = (display.width - estimated_width) // 2
+            
+            # Draw large text
+            draw_large_text(draw, x_position, y_position, item, scale=scale)
         
         # Update display
         display.image(image)
         display.show()
         
-        print("Menu displayed successfully!")
+        print("Menu displayed with large text!")
         print("1. NEW FILE")
         print("2. OPEN FILE") 
         print("3. SETTINGS")
