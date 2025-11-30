@@ -17,12 +17,6 @@ def display_menu():
         image = Image.new("1", (display.width, display.height), 255)
         draw = ImageDraw.Draw(image)
         
-        # Try to use a font, fall back to default if not available
-        try:
-            font = ImageFont.load_default()
-        except:
-            font = ImageFont.load_default()
-        
         # Menu items
         menu_items = [
             "new file",
@@ -31,19 +25,35 @@ def display_menu():
             "credits"
         ]
         
-        # Calculate positions
-        total_height = len(menu_items) * 30  # 30 pixels per item
+        # Try to load a larger font, fall back to default if not available
+        try:
+            # Try to use a larger built-in font or default
+            font = ImageFont.load_default()
+            # For larger text, we'll use the default font but draw it bigger
+        except:
+            font = None  # Will use default font
+        
+        # Calculate text dimensions and positions
+        item_height = 40  # Increased height for bigger text
+        total_height = len(menu_items) * item_height
         start_y = (display.height - total_height) // 2
         
-        # Draw each menu item
+        # Draw each menu item centered
         for i, item in enumerate(menu_items):
-            y_position = start_y + (i * 30)
+            y_position = start_y + (i * item_height)
             
-            # Draw the menu text
-            draw.text((50, y_position), item, font=font, fill=0)
+            # Get text bounding box to center it horizontally
+            if font:
+                bbox = draw.textbbox((0, 0), item, font=font)
+                text_width = bbox[2] - bbox[0]
+            else:
+                # Estimate text width (approx 10 pixels per character)
+                text_width = len(item) * 10
             
-            # Draw a simple bullet point or number
-            draw.text((30, y_position), f"{i+1}.", font=font, fill=0)
+            x_position = (display.width - text_width) // 2
+            
+            # Draw the menu text (bigger by using larger coordinates)
+            draw.text((x_position, y_position), item, font=font, fill=0)
         
         # Update display
         display.image(image)
