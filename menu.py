@@ -136,7 +136,6 @@ def handle_menu_selection():
                 print(f"↓ Selected: {menu_items[selected_index]}")
             elif key == '\r' or key == '\n':  # Enter key
                 print(f"✓ Executing: {menu_items[selected_index]}")
-                # Add your functionality here based on selected_index
                 if selected_index == 0:
                     print("NEW FILE functionality")
                 elif selected_index == 1:
