@@ -4,7 +4,6 @@ import digitalio
 from PIL import Image, ImageDraw, ImageFont
 import adafruit_sharpmemorydisplay
 import os
-import time
 import sys
 import termios
 import tty
@@ -71,10 +70,9 @@ def display_menu(selected_index=0):
             # Draw text using custom font
             draw_menu_text(draw, x_position, y_position, item, font)
             
-            # Draw arrow next to selected item - properly aligned vertically
+            # Draw arrow next to selected item
             if i == selected_index and arrow:
                 arrow_x = x_position - arrow.width - 15
-                # Center arrow vertically with text
                 arrow_y = y_position + (text_height // 2 - arrow.height // 2) + 10
                 image.paste(arrow, (arrow_x, arrow_y))
         
@@ -97,7 +95,6 @@ def get_key():
     try:
         tty.setraw(sys.stdin.fileno())
         ch = sys.stdin.read(1)
-        # Check for escape sequences (arrow keys)
         if ch == '\x1b':
             next_ch = sys.stdin.read(1)
             if next_ch == '[':
@@ -118,37 +115,33 @@ def handle_menu_selection():
     print("Use UP/DOWN arrows to navigate, ENTER to select, BACKSPACE to return to logo")
     print("Arrow keys should work instantly without pressing Enter")
     
-    # Initial display
     display_menu(selected_index)
     
     while True:
         try:
-            # Get key press without waiting for Enter
             key = get_key()
             
-            if key == 'up':  # Up arrow
+            if key == 'up':
                 selected_index = (selected_index - 1) % len(menu_items)
                 display_menu(selected_index)
                 print(f"↑ Selected: {menu_items[selected_index]}")
-            elif key == 'down':  # Down arrow
+            elif key == 'down':
                 selected_index = (selected_index + 1) % len(menu_items)
                 display_menu(selected_index)
                 print(f"↓ Selected: {menu_items[selected_index]}")
-            elif key == '\r' or key == '\n':  # Enter key
+            elif key == '\r' or key == '\n':
                 print(f"✓ Executing: {menu_items[selected_index]}")
-                # Add your functionality here based on selected_index
                 if selected_index == 0:
                     print("NEW FILE functionality")
                 elif selected_index == 1:
                     print("Opening file browser...")
-                    # Launch open.py
                     script_dir = os.path.dirname(os.path.abspath(__file__))
                     open_path = os.path.join(script_dir, "open.py")
                     
                     if os.path.exists(open_path):
                         print(f"Launching {open_path}...")
                         exec(open(open_path).read())
-                        return  # Exit after launching open.py
+                        return
                     else:
                         print(f"open.py not found at {open_path}")
                     break
@@ -157,20 +150,19 @@ def handle_menu_selection():
                 elif selected_index == 3:
                     print("CREDITS functionality")
                 break
-            elif key == '\x7f' or key == '\x08':  # Backspace or Delete
+            elif key == '\x7f' or key == '\x08':
                 print("Returning to logo...")
-                # Return to logo.py
                 script_dir = os.path.dirname(os.path.abspath(__file__))
                 logo_path = os.path.join(script_dir, "logo.py")
                 
                 if os.path.exists(logo_path):
                     print(f"Returning to {logo_path}...")
                     exec(open(logo_path).read())
-                    return  # Exit after launching logo.py
+                    return
                 else:
                     print(f"logo.py not found at {logo_path}")
                 break
-            elif key == 'q' or key == 'Q':  # Quit
+            elif key == 'q' or key == 'Q':
                 print("Quitting menu...")
                 break
             else:
