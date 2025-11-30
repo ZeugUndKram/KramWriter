@@ -34,8 +34,20 @@ def draw_large_text(draw, x, y, text, scale=3):
     # Paste the scaled text onto the main image
     draw.bitmap((x, y), scaled_img, fill=0)
 
-def display_menu():
+def display_menu(selected_index=0):
     try:
+        # Load arrow image
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        arrow_path = os.path.join(script_dir, "assets", "arrow.bmp")
+        
+        if os.path.exists(arrow_path):
+            arrow = Image.open(arrow_path)
+            if arrow.mode != "1":
+                arrow = arrow.convert("1", dither=Image.NONE)
+        else:
+            arrow = None
+            print(f"Arrow image not found: {arrow_path}")
+        
         # Create display image with white background
         image = Image.new("1", (display.width, display.height), 255)
         draw = ImageDraw.Draw(image)
@@ -48,34 +60,34 @@ def display_menu():
             "CREDITS"
         ]
         
-        # Calculate positions for large text
-        scale = 4  # Make text 4x bigger than default
-        item_height = 60  # Large spacing between items
+        # Calculate positions for text
+        scale = 2  # Smaller scale since text was too big
+        item_height = 40  # Smaller spacing between items
         total_height = len(menu_items) * item_height
         start_y = (display.height - total_height) // 2
         
-        # Draw each menu item centered with large text
+        # Draw each menu item centered
         for i, item in enumerate(menu_items):
             y_position = start_y + (i * item_height)
             
-            # Estimate width of scaled text (approx 8 pixels per char at default * scale)
+            # Estimate width of scaled text
             estimated_width = len(item) * 8 * scale
             x_position = (display.width - estimated_width) // 2
             
             # Draw large text
             draw_large_text(draw, x_position, y_position, item, scale=scale)
+            
+            # Draw arrow next to selected item
+            if i == selected_index and arrow:
+                arrow_x = x_position - arrow.width - 10  # 10px spacing from text
+                arrow_y = y_position + (estimated_width // 2 - arrow.height // 2)
+                image.paste(arrow, (arrow_x, arrow_y))
         
         # Update display
         display.image(image)
         display.show()
         
-        print("Menu displayed with large text!")
-        print("1. NEW FILE")
-        print("2. OPEN FILE") 
-        print("3. SETTINGS")
-        print("4. CREDITS")
-        print("Press backspace to return to logo")
-        
+        print(f"Menu displayed! Selected: {menu_items[selected_index]}")
         return True
         
     except Exception as e:
@@ -83,33 +95,40 @@ def display_menu():
         return False
 
 def handle_menu_selection():
-    """Wait for user input and handle menu selection"""
-    print("\nSelect an option (1-4), 'q' to quit, or backspace to return to logo:")
+    """Handle menu navigation with arrow keys"""
+    selected_index = 0
+    menu_items = ["NEW FILE", "OPEN FILE", "SETTINGS", "CREDITS"]
+    
+    print("Use UP/DOWN arrows to navigate, ENTER to select, BACKSPACE to return to logo")
     
     while True:
+        display_menu(selected_index)
+        
         try:
-            selection = input().strip().lower()
+            # For simple input handling (we'll simulate arrow keys with letters)
+            print(f"\nCurrent selection: {menu_items[selected_index]}")
+            print("Commands: w=up, s=down, enter=select, b=backspace")
+            command = input("Enter command: ").strip().lower()
             
-            if selection == '1':
-                print("Selected: NEW FILE")
-                # Add your new file functionality here
+            if command == 'w':  # Up arrow
+                selected_index = (selected_index - 1) % len(menu_items)
+                print(f"Moved UP to: {menu_items[selected_index]}")
+            elif command == 's':  # Down arrow
+                selected_index = (selected_index + 1) % len(menu_items)
+                print(f"Moved DOWN to: {menu_items[selected_index]}")
+            elif command == '':  # Enter
+                print(f"Selected: {menu_items[selected_index]}")
+                # Add your functionality here based on selected_index
+                if selected_index == 0:
+                    print("NEW FILE functionality")
+                elif selected_index == 1:
+                    print("OPEN FILE functionality")
+                elif selected_index == 2:
+                    print("SETTINGS functionality")
+                elif selected_index == 3:
+                    print("CREDITS functionality")
                 break
-            elif selection == '2':
-                print("Selected: OPEN FILE")
-                # Add your open file functionality here
-                break
-            elif selection == '3':
-                print("Selected: SETTINGS")
-                # Add your settings functionality here
-                break
-            elif selection == '4':
-                print("Selected: CREDITS")
-                # Add your credits functionality here
-                break
-            elif selection == 'q':
-                print("Quitting menu...")
-                break
-            elif selection == '' or selection == '\x08':  # Backspace or empty input
+            elif command == 'b':  # Backspace
                 print("Returning to logo...")
                 # Return to logo.py
                 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -122,8 +141,11 @@ def handle_menu_selection():
                 else:
                     print(f"logo.py not found at {logo_path}")
                 break
+            elif command == 'q':  # Quit
+                print("Quitting menu...")
+                break
             else:
-                print("Invalid selection. Please choose 1-4, 'q' to quit, or backspace to return to logo:")
+                print("Invalid command. Use: w=up, s=down, enter=select, b=backspace, q=quit")
                 
         except KeyboardInterrupt:
             print("\nMenu interrupted")
@@ -133,10 +155,5 @@ def handle_menu_selection():
             break
 
 if __name__ == "__main__":
-    print("=== Menu ===")
-    success = display_menu()
-    
-    if success:
-        handle_menu_selection()
-    else:
-        print("Failed to display menu")
+    print("=== Menu with Navigation ===")
+    handle_menu_selection()
