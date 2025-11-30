@@ -75,7 +75,7 @@ def display_menu(selected_index=0):
             if i == selected_index and arrow:
                 arrow_x = x_position - arrow.width - 15  # 15px spacing from text
                 # Center arrow vertically with text
-                arrow_y = y_position + (text_height // 2 - arrow.height // 2)
+                arrow_y = y_position + (text_height // 2 - arrow.height // 2) + 5
                 image.paste(arrow, (arrow_x, arrow_y))
         
         # Update display
