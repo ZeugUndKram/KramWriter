@@ -19,51 +19,74 @@ def display_menu():
         
         # Menu items
         menu_items = [
-            "new file",
-            "open file", 
-            "settings",
-            "credits"
+            "NEW FILE",
+            "OPEN FILE", 
+            "SETTINGS",
+            "CREDITS"
         ]
         
-        # Try to load a larger font, fall back to default if not available
+        # Try to load larger fonts, fall back to scaling if not available
         try:
-            # Try to use a larger built-in font or default
-            font = ImageFont.load_default()
-            # For larger text, we'll use the default font but draw it bigger
+            # Try to load a larger font - common paths for built-in fonts
+            font_paths = [
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+                "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+            ]
+            font = None
+            for path in font_paths:
+                if os.path.exists(path):
+                    font = ImageFont.truetype(path, 24)  # Larger font size
+                    break
         except:
-            font = None  # Will use default font
+            font = None
+        
+        # If no larger font found, we'll use the default and make it bigger by scaling
+        if font is None:
+            try:
+                font = ImageFont.load_default()
+                print("Using default font (may be small)")
+            except:
+                font = None
         
         # Calculate text dimensions and positions
-        item_height = 40  # Increased height for bigger text
+        item_height = 50  # Even more height for bigger text
         total_height = len(menu_items) * item_height
         start_y = (display.height - total_height) // 2
         
-        # Draw each menu item centered
+        # Draw each menu item centered with bigger text
         for i, item in enumerate(menu_items):
             y_position = start_y + (i * item_height)
             
-            # Get text bounding box to center it horizontally
             if font:
+                # Get text bounding box to center it
                 bbox = draw.textbbox((0, 0), item, font=font)
                 text_width = bbox[2] - bbox[0]
+                text_height = bbox[3] - bbox[1]
+                
+                x_position = (display.width - text_width) // 2
+                
+                # Draw the menu text with larger font
+                draw.text((x_position, y_position), item, font=font, fill=0)
             else:
-                # Estimate text width (approx 10 pixels per character)
-                text_width = len(item) * 10
-            
-            x_position = (display.width - text_width) // 2
-            
-            # Draw the menu text (bigger by using larger coordinates)
-            draw.text((x_position, y_position), item, font=font, fill=0)
+                # Fallback: Draw bigger text by using larger coordinates and thicker lines
+                # Estimate text width (approx 15 pixels per character for bigger text)
+                text_width = len(item) * 15
+                x_position = (display.width - text_width) // 2
+                
+                # Draw thicker text by drawing multiple times with slight offsets
+                for dx, dy in [(0,0), (1,0), (0,1), (1,1)]:
+                    draw.text((x_position + dx, y_position + dy), item, fill=0)
         
         # Update display
         display.image(image)
         display.show()
         
         print("Menu displayed successfully!")
-        print("1. new file")
-        print("2. open file") 
-        print("3. settings")
-        print("4. credits")
+        print("1. NEW FILE")
+        print("2. OPEN FILE") 
+        print("3. SETTINGS")
+        print("4. CREDITS")
         print("Press backspace to return to logo")
         
         return True
@@ -81,19 +104,19 @@ def handle_menu_selection():
             selection = input().strip().lower()
             
             if selection == '1':
-                print("Selected: new file")
+                print("Selected: NEW FILE")
                 # Add your new file functionality here
                 break
             elif selection == '2':
-                print("Selected: open file")
+                print("Selected: OPEN FILE")
                 # Add your open file functionality here
                 break
             elif selection == '3':
-                print("Selected: settings")
+                print("Selected: SETTINGS")
                 # Add your settings functionality here
                 break
             elif selection == '4':
-                print("Selected: credits")
+                print("Selected: CREDITS")
                 # Add your credits functionality here
                 break
             elif selection == 'q':
