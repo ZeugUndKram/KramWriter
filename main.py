@@ -1,30 +1,48 @@
-import board
-import busio
-import digitalio
-from PIL import Image, ImageDraw, ImageFont
-import adafruit_sharpmemorydisplay
+#!/usr/bin/env python3
+import os
+import sys
+import subprocess
 
-# Initialize display
-spi = busio.SPI(board.SCK, MOSI=board.MOSI)
-scs = digitalio.DigitalInOut(board.D6)
-display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 400, 240)
 
-# Create image and drawing object
-image = Image.new("1", (display.width, display.height))
-draw = ImageDraw.Draw(image)
+def main():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
 
-# Clear display to white
-draw.rectangle((0, 0, display.width, display.height), outline=255, fill=255)
+    while True:
+        print("\n=== Application Launcher ===")
+        print("1. Show Logo")
+        print("2. Show Menu")
+        print("3. Exit")
 
-# Use FreeSans font (preinstalled on Pi OS)
-font = ImageFont.truetype("/usr/share/fonts/truetype/freefont/FreeSans.ttf", 16)
+        choice = input("Select option (1-3): ").strip()
 
-# Draw test text
-draw.text((50, 100), "Hello World!", font=font, fill=0)
+        if choice == '1':
+            logo_path = os.path.join(script_dir, "logo.py")
+            if os.path.exists(logo_path):
+                print("Launching logo...")
+                result = subprocess.run([sys.executable, logo_path], capture_output=True, text=True)
+                print(result.stdout)
+                if result.stderr:
+                    print("Errors:", result.stderr)
+            else:
+                print(f"logo.py not found at {logo_path}")
 
-# Draw horizontal line from edge to edge at y=224
-draw.line((0, 224, display.width-1, 224), fill=0, width=1)
+        elif choice == '2':
+            menu_path = os.path.join(script_dir, "menu.py")
+            if os.path.exists(menu_path):
+                print("Launching menu...")
+                result = subprocess.run([sys.executable, menu_path], capture_output=True, text=True)
+                print(result.stdout)
+                if result.stderr:
+                    print("Errors:", result.stderr)
+            else:
+                print(f"menu.py not found at {menu_path}")
 
-# Update display
-display.image(image)
-display.show()
+        elif choice == '3':
+            print("Goodbye!")
+            break
+        else:
+            print("Invalid choice. Please select 1-3.")
+
+
+if __name__ == "__main__":
+    main()
