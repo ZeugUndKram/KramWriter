@@ -19,6 +19,9 @@ draw.rectangle((0, 0, display.width, display.height), outline=255, fill=255)
 # Draw test text
 draw.text((50, 100), "Hello World!", font=ImageFont.load_default(), fill=0)
 
+# Draw horizontal line from edge to edge at y=224
+draw.line((0, 224, display.width-1, 224), fill=0, width=1)
+
 # Update display
 display.image(image)
 display.show()
