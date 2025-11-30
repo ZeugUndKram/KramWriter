@@ -136,10 +136,22 @@ def handle_menu_selection():
                 print(f"↓ Selected: {menu_items[selected_index]}")
             elif key == '\r' or key == '\n':  # Enter key
                 print(f"✓ Executing: {menu_items[selected_index]}")
+                # Add your functionality here based on selected_index
                 if selected_index == 0:
                     print("NEW FILE functionality")
                 elif selected_index == 1:
-                    print("OPEN FILE functionality")
+                    print("Opening file browser...")
+                    # Launch open.py
+                    script_dir = os.path.dirname(os.path.abspath(__file__))
+                    open_path = os.path.join(script_dir, "open.py")
+                    
+                    if os.path.exists(open_path):
+                        print(f"Launching {open_path}...")
+                        exec(open(open_path).read())
+                        return  # Exit after launching open.py
+                    else:
+                        print(f"open.py not found at {open_path}")
+                    break
                 elif selected_index == 2:
                     print("SETTINGS functionality")
                 elif selected_index == 3:
