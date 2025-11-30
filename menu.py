@@ -76,7 +76,7 @@ def display_menu(selected_index=0):
             # Draw arrow next to selected item
             if i == selected_index and arrow:
                 arrow_x = x_position - arrow.width - 15
-                arrow_y = y_position + (text_height // 2 - arrow.height // 2) + 10
+                arrow_y = y_position + (text_height // 2 - arrow.height // 2) + 9
                 image.paste(arrow, (arrow_x, arrow_y))
 
         # Update display
