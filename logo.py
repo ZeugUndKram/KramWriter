@@ -5,37 +5,49 @@ from PIL import Image
 import adafruit_sharpmemorydisplay
 import os
 
-# Initialize display once
+# Initialize display
 spi = busio.SPI(board.SCK, MOSI=board.MOSI)
 scs = digitalio.DigitalInOut(board.D6)
 display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 400, 240)
 
-def display_logo_optimized():
+def display_logo():
     try:
-        logo_path = os.path.join(os.path.dirname(__file__), "assets", "logo.bmp")
+        # Get the directory where this script is located
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        logo_path = os.path.join(script_dir, "assets", "logo.bmp")
         
+        # Check if logo file exists
         if not os.path.exists(logo_path):
             print(f"Logo file not found: {logo_path}")
             return False
         
-        # Pre-convert your logo to 1-bit BMP to avoid runtime conversion
+        # Load and convert the BMP image
         logo = Image.open(logo_path)
         
-        # Create image and paste in one operation
+        # Convert to 1-bit monochrome
+        if logo.mode != "1":
+            logo = logo.convert("1", dither=Image.NONE)
+        
+        # Create display image with white background
         image = Image.new("1", (display.width, display.height), 255)
-        x = (display.width - logo.width) // 2
-        y = (display.height - logo.height) // 2
+        
+        # Calculate position to center the logo
+        x = (display.width - logo.size[0]) // 2
+        y = (display.height - logo.size[1]) // 2
+        
+        # Paste logo onto display image
         image.paste(logo, (x, y))
         
-        # Single display update
+        # Update display
         display.image(image)
         display.show()
         
+        print("Logo displayed successfully!")
         return True
         
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error displaying logo: {e}")
         return False
 
 if __name__ == "__main__":
-    display_logo_optimized()
+    display_logo()
