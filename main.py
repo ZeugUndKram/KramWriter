@@ -7,7 +7,7 @@ import adafruit_sharpmemorydisplay
 # Initialize display
 spi = busio.SPI(board.SCK, MOSI=board.MOSI)
 scs = digitalio.DigitalInOut(board.D6)
-display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, sci, 400, 240)
+display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 400, 240)
 
 # Create image and drawing object
 image = Image.new("1", (display.width, display.height))
