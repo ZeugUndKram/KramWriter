@@ -27,6 +27,13 @@ def display_logo():
         logo = Image.open(logo_path)
         print(f"Loaded logo: {logo.size[0]}x{logo.size[1]}, mode: {logo.mode}")
         
+        # Convert to 1-bit monochrome if needed
+        if logo.mode != "1":
+            print(f"Converting from {logo.mode} to 1-bit monochrome...")
+            # Convert to grayscale first, then to 1-bit with dithering disabled
+            logo = logo.convert("L")  # Grayscale
+            logo = logo.convert("1", dither=Image.NONE)  # 1-bit, no dithering
+        
         # Create display image with white background
         image = Image.new("1", (display.width, display.height), 255)
         
