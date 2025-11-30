@@ -42,15 +42,19 @@ def display_logo_fade_in():
         # Convert to numpy array for faster processing
         logo_array = np.array(logo_grayscale, dtype=np.float32)
         
+        # Create a mask of where the logo actually has content (not pure white)
+        # Pure white pixels (255) will be 0 in the mask, darker pixels will be 1
+        content_mask = (logo_array < 250).astype(np.float32)
+        
         # Animation parameters - 2 second fade in
         duration = 2.0
         frames = 30
         frame_delay = duration / frames
         
-        print("Starting fade-in animation from white...")
+        print("Starting fade-in animation from white (logo pixels only)...")
         
         for frame in range(frames + 1):
-            # Calculate visibility (0 to 1) - start from white (invisible) to full image
+            # Calculate visibility (0 to 1)
             visibility = frame / frames
             
             # Create display image with white background
@@ -64,17 +68,16 @@ def display_logo_fade_in():
                 final_logo = logo_grayscale.convert("1", dither=Image.NONE)
                 image.paste(final_logo, (x, y))
             else:
-                # Animated frames with dithering
-                # Start from white (255) and fade to original image
-                # We invert the visibility so we go from white to dark
+                # Start from white and fade to original image
                 white_fade = 255 * (1 - visibility)
                 
                 # Blend between white and original image
                 faded_array = logo_array * visibility + white_fade
                 
-                # Add some noise to create dithering effect
-                noise = np.random.normal(0, 40 * (1 - visibility), logo_array.shape)
-                dithered_array = faded_array + noise
+                # Add dithering noise ONLY to areas with logo content
+                noise = np.random.normal(0, 50 * (1 - visibility), logo_array.shape)
+                # Apply noise only where there's logo content (using the mask)
+                dithered_array = faded_array + (noise * content_mask)
                 
                 # Clip values to valid range
                 dithered_array = np.clip(dithered_array, 0, 255)
@@ -104,7 +107,7 @@ def display_logo_fade_in():
         return False
 
 if __name__ == "__main__":
-    print("=== BMP Logo Fade-In From White ===")
+    print("=== BMP Logo Fade-In (Logo Pixels Only) ===")
     success = display_logo_fade_in()
     
     if success:
