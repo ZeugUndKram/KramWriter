@@ -14,7 +14,7 @@ def display_logo():
     try:
         # Get the directory where this script is located
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        graphics_dir = os.path.join(script_dir, "graphics")
+        graphics_dir = os.path.join(script_dir, "assets")
         logo_path = os.path.join(graphics_dir, "logo.bmp")
         
         # Check if logo file exists
@@ -26,13 +26,6 @@ def display_logo():
         # Load the BMP image
         logo = Image.open(logo_path)
         print(f"Loaded logo: {logo.size[0]}x{logo.size[1]}, mode: {logo.mode}")
-        
-        # Convert to 1-bit monochrome if needed
-        if logo.mode != "1":
-            print(f"Converting from {logo.mode} to 1-bit monochrome...")
-            # Convert to grayscale first, then to 1-bit with dithering disabled
-            logo = logo.convert("L")  # Grayscale
-            logo = logo.convert("1", dither=Image.NONE)  # 1-bit, no dithering
         
         # Create display image with white background
         image = Image.new("1", (display.width, display.height), 255)
