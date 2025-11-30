@@ -33,7 +33,7 @@ def display_menu(selected_index=0):
             print(f"Arrow image not found: {arrow_path}")
         
         # Load custom font
-        font_path = os.path.join(script_dir, "fonts", "Retron2000.ttf")
+        font_path = os.path.join(script_dir, "fonts", "videotype.ttf")
         if os.path.exists(font_path):
             font = ImageFont.truetype(font_path, 24)  # Adjust size as needed
         else:
