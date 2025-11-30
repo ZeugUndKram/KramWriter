@@ -5,13 +5,15 @@ from PIL import Image, ImageDraw, ImageFont
 import adafruit_sharpmemorydisplay
 import os
 import time
+import sys
+import select
 
 # Initialize display
 spi = busio.SPI(board.SCK, MOSI=board.MOSI)
 scs = digitalio.DigitalInOut(board.D6)
 display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 400, 240)
 
-def draw_large_text(draw, x, y, text, scale=3):
+def draw_large_text(draw, x, y, text, scale=2):
     """Draw large text by scaling up the default font"""
     # Create a temporary image to draw the text at normal size
     temp_font = ImageFont.load_default()
@@ -61,8 +63,8 @@ def display_menu(selected_index=0):
         ]
         
         # Calculate positions for text
-        scale = 2  # Smaller scale since text was too big
-        item_height = 40  # Smaller spacing between items
+        scale = 2
+        item_height = 40
         total_height = len(menu_items) * item_height
         start_y = (display.height - total_height) // 2
         
@@ -87,37 +89,60 @@ def display_menu(selected_index=0):
         display.image(image)
         display.show()
         
-        print(f"Menu displayed! Selected: {menu_items[selected_index]}")
         return True
         
     except Exception as e:
         print(f"Error displaying menu: {e}")
         return False
 
+def get_key():
+    """Get a single key press without requiring Enter"""
+    if sys.platform == 'win32':
+        import msvcrt
+        return msvcrt.getch().decode()
+    else:
+        import termios
+        import tty
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setraw(sys.stdin.fileno())
+            ch = sys.stdin.read(1)
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        return ch
+
 def handle_menu_selection():
-    """Handle menu navigation with arrow keys"""
+    """Handle menu navigation with instant arrow keys"""
     selected_index = 0
     menu_items = ["NEW FILE", "OPEN FILE", "SETTINGS", "CREDITS"]
     
     print("Use UP/DOWN arrows to navigate, ENTER to select, BACKSPACE to return to logo")
+    print("Arrow keys should work instantly without pressing Enter")
+    
+    # Initial display
+    display_menu(selected_index)
     
     while True:
-        display_menu(selected_index)
-        
         try:
-            # For simple input handling (we'll simulate arrow keys with letters)
-            print(f"\nCurrent selection: {menu_items[selected_index]}")
-            print("Commands: w=up, s=down, enter=select, b=backspace")
-            command = input("Enter command: ").strip().lower()
+            # Get key press without waiting for Enter
+            key = get_key()
             
-            if command == 'w':  # Up arrow
-                selected_index = (selected_index - 1) % len(menu_items)
-                print(f"Moved UP to: {menu_items[selected_index]}")
-            elif command == 's':  # Down arrow
-                selected_index = (selected_index + 1) % len(menu_items)
-                print(f"Moved DOWN to: {menu_items[selected_index]}")
-            elif command == '':  # Enter
-                print(f"Selected: {menu_items[selected_index]}")
+            if key == '\x1b':  # Escape sequence for arrow keys
+                # Check if it's an arrow key
+                next_key = get_key()
+                if next_key == '[':
+                    arrow_key = get_key()
+                    if arrow_key == 'A':  # Up arrow
+                        selected_index = (selected_index - 1) % len(menu_items)
+                        display_menu(selected_index)
+                        print(f"↑ Selected: {menu_items[selected_index]}")
+                    elif arrow_key == 'B':  # Down arrow
+                        selected_index = (selected_index + 1) % len(menu_items)
+                        display_menu(selected_index)
+                        print(f"↓ Selected: {menu_items[selected_index]}")
+            elif key == '\r' or key == '\n':  # Enter key
+                print(f"✓ Executing: {menu_items[selected_index]}")
                 # Add your functionality here based on selected_index
                 if selected_index == 0:
                     print("NEW FILE functionality")
@@ -128,7 +153,7 @@ def handle_menu_selection():
                 elif selected_index == 3:
                     print("CREDITS functionality")
                 break
-            elif command == 'b':  # Backspace
+            elif key == '\x7f' or key == '\x08':  # Backspace or Delete
                 print("Returning to logo...")
                 # Return to logo.py
                 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -141,11 +166,11 @@ def handle_menu_selection():
                 else:
                     print(f"logo.py not found at {logo_path}")
                 break
-            elif command == 'q':  # Quit
+            elif key == 'q' or key == 'Q':  # Quit
                 print("Quitting menu...")
                 break
             else:
-                print("Invalid command. Use: w=up, s=down, enter=select, b=backspace, q=quit")
+                print(f"Key pressed: {repr(key)} - Use arrow keys, Enter, Backspace, or Q")
                 
         except KeyboardInterrupt:
             print("\nMenu interrupted")
@@ -155,5 +180,5 @@ def handle_menu_selection():
             break
 
 if __name__ == "__main__":
-    print("=== Menu with Navigation ===")
+    print("=== Menu with Instant Arrow Keys ===")
     handle_menu_selection()
