@@ -35,7 +35,7 @@ def display_menu(selected_index=0):
         # Load custom font
         font_path = os.path.join(script_dir, "fonts", "BebasNeue-Regular.ttf")
         if os.path.exists(font_path):
-            font = ImageFont.truetype(font_path, 24)  # Adjust size as needed
+            font = ImageFont.truetype(font_path, 40)  # Adjust size as needed
         else:
             print(f"Custom font not found: {font_path}")
             font = ImageFont.load_default()
