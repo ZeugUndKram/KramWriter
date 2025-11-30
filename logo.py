@@ -35,39 +35,50 @@ def display_logo_fade_in():
         else:
             logo_grayscale = logo
         
-        # Calculate position to center the logo
-        x = (display.width - logo_grayscale.size[0]) // 2
-        y = (display.height - logo_grayscale.size[1]) // 2
+        # Calculate final position to center the logo
+        x_final = (display.width - logo_grayscale.size[0]) // 2
+        y_final = (display.height - logo_grayscale.size[1]) // 2
         
         # Convert to numpy array for faster processing
         logo_array = np.array(logo_grayscale, dtype=np.float32)
         
         # Create a mask of where the logo actually has content (not pure white)
-        # Pure white pixels (255) will be 0 in the mask, darker pixels will be 1
         content_mask = (logo_array < 250).astype(np.float32)
         
-        # Animation parameters - 2 second fade in
-        duration = 2.0
-        frames = 30
+        # Animation parameters - faster fade in (1 second) with upward movement
+        duration = 1.5  # Faster - 1.5 seconds total
+        frames = 25     # Fewer frames for faster animation
         frame_delay = duration / frames
         
-        print("Starting fade-in animation from white (logo pixels only)...")
+        print("Starting fade-in animation with upward movement...")
         
         for frame in range(frames + 1):
-            # Calculate visibility (0 to 1)
-            visibility = frame / frames
+            # Calculate progress (0 to 1)
+            progress = frame / frames
             
             # Create display image with white background
             image = Image.new("1", (display.width, display.height), 255)
             
-            if visibility == 0:
+            if progress == 0:
                 # First frame - completely white (no logo)
                 pass
-            elif visibility == 1:
-                # Last frame - full image
+            elif progress == 1:
+                # Last frame - full image at final position
                 final_logo = logo_grayscale.convert("1", dither=Image.NONE)
-                image.paste(final_logo, (x, y))
+                image.paste(final_logo, (x_final, y_final))
             else:
+                # Calculate current vertical position - start from bottom and rise up
+                # Start position: logo completely below the screen
+                start_y = display.height
+                # End position: centered vertically
+                end_y = y_final
+                # Current position: interpolate between start and end
+                current_y = int(start_y + (end_y - start_y) * progress)
+                
+                # Calculate visibility - faster fade-in (ease-in curve)
+                # Use quadratic easing for faster initial appearance
+                visibility = progress * progress  # This makes it appear faster initially
+                
                 # Start from white and fade to original image
                 white_fade = 255 * (1 - visibility)
                 
@@ -75,7 +86,7 @@ def display_logo_fade_in():
                 faded_array = logo_array * visibility + white_fade
                 
                 # Add dithering noise ONLY to areas with logo content
-                noise = np.random.normal(0, 50 * (1 - visibility), logo_array.shape)
+                noise = np.random.normal(0, 60 * (1 - visibility), logo_array.shape)
                 # Apply noise only where there's logo content (using the mask)
                 dithered_array = faded_array + (noise * content_mask)
                 
@@ -88,8 +99,8 @@ def display_logo_fade_in():
                 # Convert to 1-bit with Floyd-Steinberg dithering
                 temp_logo = temp_logo.convert("1", dither=Image.FLOYDSTEINBERG)
                 
-                # Paste onto display image
-                image.paste(temp_logo, (x, y))
+                # Paste onto display image at current position
+                image.paste(temp_logo, (x_final, current_y))
             
             # Update display
             display.image(image)
@@ -97,7 +108,7 @@ def display_logo_fade_in():
             
             time.sleep(frame_delay)
         
-        print("Fade-in animation completed!")
+        print("Animation completed!")
         return True
         
     except Exception as e:
@@ -107,10 +118,10 @@ def display_logo_fade_in():
         return False
 
 if __name__ == "__main__":
-    print("=== BMP Logo Fade-In (Logo Pixels Only) ===")
+    print("=== BMP Logo Fade-In with Upward Movement ===")
     success = display_logo_fade_in()
     
     if success:
-        print("Logo fade-in completed!")
+        print("Logo animation completed!")
     else:
         print("Failed to display logo")
