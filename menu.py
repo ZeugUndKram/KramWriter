@@ -15,28 +15,9 @@ scs = digitalio.DigitalInOut(board.D6)
 display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 400, 240)
 
 
-def draw_large_text(draw, x, y, text, scale=2):
-    """Draw large text by scaling up the default font"""
-    # Create a temporary image to draw the text at normal size
-    temp_font = ImageFont.load_default()
-
-    # Get the size of the text at normal scale
-    bbox = draw.textbbox((0, 0), text, font=temp_font)
-    normal_width = bbox[2] - bbox[0]
-    normal_height = bbox[3] - bbox[1]
-
-    # Create a temporary image for the text
-    temp_img = Image.new("1", (normal_width, normal_height), 1)  # White background
-    temp_draw = ImageDraw.Draw(temp_img)
-    temp_draw.text((0, 0), text, font=temp_font, fill=0)  # Black text
-
-    # Scale up the image
-    scaled_width = normal_width * scale
-    scaled_height = normal_height * scale
-    scaled_img = temp_img.resize((scaled_width, scaled_height), Image.NEAREST)
-
-    # Paste the scaled text onto the main image
-    draw.bitmap((x, y), scaled_img, fill=0)
+def draw_menu_text(draw, x, y, text, font):
+    """Draw text using the custom font"""
+    draw.text((x, y), text, font=font, fill=0)
 
 
 def display_menu(selected_index=0):
@@ -53,6 +34,14 @@ def display_menu(selected_index=0):
             arrow = None
             print(f"Arrow image not found: {arrow_path}")
 
+        # Load custom font
+        font_path = os.path.join(script_dir, "fonts", "BebasNeue-Regular.ttf")
+        if os.path.exists(font_path):
+            font = ImageFont.truetype(font_path, 38)
+        else:
+            print(f"Custom font not found: {font_path}")
+            font = ImageFont.load_default()
+
         # Create display image with white background
         image = Image.new("1", (display.width, display.height), 255)
         draw = ImageDraw.Draw(image)
@@ -66,8 +55,7 @@ def display_menu(selected_index=0):
         ]
 
         # Calculate positions for text
-        scale = 2
-        item_height = 40
+        item_height = 45
         total_height = len(menu_items) * item_height
         start_y = (display.height - total_height) // 2
 
@@ -75,17 +63,20 @@ def display_menu(selected_index=0):
         for i, item in enumerate(menu_items):
             y_position = start_y + (i * item_height)
 
-            # Estimate width of scaled text
-            estimated_width = len(item) * 8 * scale
-            x_position = (display.width - estimated_width) // 2
+            # Get text bounding box for proper centering
+            bbox = draw.textbbox((0, 0), item, font=font)
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
 
-            # Draw large text
-            draw_large_text(draw, x_position, y_position, item, scale=scale)
+            x_position = (display.width - text_width) // 2
+
+            # Draw text using custom font
+            draw_menu_text(draw, x_position, y_position, item, font)
 
             # Draw arrow next to selected item
             if i == selected_index and arrow:
                 arrow_x = x_position - arrow.width - 15
-                arrow_y = y_position + 10  # Simple offset that worked
+                arrow_y = y_position + (text_height // 2 - arrow.height // 2) + 10
                 image.paste(arrow, (arrow_x, arrow_y))
 
         # Update display
@@ -96,6 +87,8 @@ def display_menu(selected_index=0):
 
     except Exception as e:
         print(f"Error displaying menu: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
@@ -184,5 +177,5 @@ def handle_menu_selection():
 
 
 if __name__ == "__main__":
-    print("=== Menu with Navigation ===")
+    print("=== Menu with Custom Font and Arrow Keys ===")
     handle_menu_selection()
