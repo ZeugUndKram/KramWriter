@@ -35,7 +35,7 @@ def display_menu(selected_index=0):
         # Load custom font
         font_path = os.path.join(script_dir, "fonts", "BebasNeue-Regular.ttf")
         if os.path.exists(font_path):
-            font = ImageFont.truetype(font_path, 38)  # Adjust size as needed
+            font = ImageFont.truetype(font_path, 38)
         else:
             print(f"Custom font not found: {font_path}")
             font = ImageFont.load_default()
@@ -73,9 +73,9 @@ def display_menu(selected_index=0):
             
             # Draw arrow next to selected item - properly aligned vertically
             if i == selected_index and arrow:
-                arrow_x = x_position - arrow.width - 15  # 15px spacing from text
+                arrow_x = x_position - arrow.width - 15
                 # Center arrow vertically with text
-                arrow_y = y_position + (text_height // 2 - arrow.height // 2) + 7
+                arrow_y = y_position + (text_height // 2 - arrow.height // 2) + 10
                 image.paste(arrow, (arrow_x, arrow_y))
         
         # Update display
