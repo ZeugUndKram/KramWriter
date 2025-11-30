@@ -1,91 +1,101 @@
-#!/usr/bin/env python3
+import board
+import busio
+import digitalio
+from PIL import Image, ImageDraw, ImageFont
+import adafruit_sharpmemorydisplay
 import os
+import time
 import sys
 import termios
 import tty
 
-
-def initialize_display():
-    """Safely initialize display with error handling"""
-    try:
-        import board
-        import busio
-        import digitalio
-        from PIL import Image, ImageDraw, ImageFont
-        import adafruit_sharpmemorydisplay
-
-        spi = busio.SPI(board.SCK, MOSI=board.MOSI)
-        scs = digitalio.DigitalInOut(board.D6)
-        display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 400, 240)
-        return display, None
-    except Exception as e:
-        return None, f"Display initialization failed: {e}"
+# Initialize display
+spi = busio.SPI(board.SCK, MOSI=board.MOSI)
+scs = digitalio.DigitalInOut(board.D6)
+display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 400, 240)
 
 
-def draw_menu_text(draw, x, y, text, font):
-    draw.text((x, y), text, font=font, fill=0)
+def draw_large_text(draw, x, y, text, scale=2):
+    """Draw large text by scaling up the default font"""
+    # Create a temporary image to draw the text at normal size
+    temp_font = ImageFont.load_default()
+
+    # Get the size of the text at normal scale
+    bbox = draw.textbbox((0, 0), text, font=temp_font)
+    normal_width = bbox[2] - bbox[0]
+    normal_height = bbox[3] - bbox[1]
+
+    # Create a temporary image for the text
+    temp_img = Image.new("1", (normal_width, normal_height), 1)  # White background
+    temp_draw = ImageDraw.Draw(temp_img)
+    temp_draw.text((0, 0), text, font=temp_font, fill=0)  # Black text
+
+    # Scale up the image
+    scaled_width = normal_width * scale
+    scaled_height = normal_height * scale
+    scaled_img = temp_img.resize((scaled_width, scaled_height), Image.NEAREST)
+
+    # Paste the scaled text onto the main image
+    draw.bitmap((x, y), scaled_img, fill=0)
 
 
 def display_menu(selected_index=0):
-    display, error = initialize_display()
-    if error:
-        print(f"ERROR: {error}")
-        return False
-
     try:
+        # Load arrow image
         script_dir = os.path.dirname(os.path.abspath(__file__))
-
-        # Load arrow
         arrow_path = os.path.join(script_dir, "assets", "arrow.bmp")
-        arrow = None
+
         if os.path.exists(arrow_path):
-            from PIL import Image
             arrow = Image.open(arrow_path)
             if arrow.mode != "1":
                 arrow = arrow.convert("1", dither=Image.NONE)
         else:
-            print(f"Warning: Arrow image not found: {arrow_path}")
+            arrow = None
+            print(f"Arrow image not found: {arrow_path}")
 
-        # Load font
-        font_path = os.path.join(script_dir, "fonts", "BebasNeue-Regular.ttf")
-        if os.path.exists(font_path):
-            from PIL import ImageFont
-            font = ImageFont.truetype(font_path, 38)
-        else:
-            print(f"Warning: Custom font not found: {font_path}")
-            from PIL import ImageFont
-            font = ImageFont.load_default()
-
-        menu_items = ["NEW FILE", "OPEN FILE", "SETTINGS", "CREDITS"]
-
-        from PIL import Image, ImageDraw
+        # Create display image with white background
         image = Image.new("1", (display.width, display.height), 255)
         draw = ImageDraw.Draw(image)
 
-        item_height = 45
+        # Menu items
+        menu_items = [
+            "NEW FILE",
+            "OPEN FILE",
+            "SETTINGS",
+            "CREDITS"
+        ]
+
+        # Calculate positions for text
+        scale = 2
+        item_height = 40
         total_height = len(menu_items) * item_height
         start_y = (display.height - total_height) // 2
 
+        # Draw each menu item centered
         for i, item in enumerate(menu_items):
             y_position = start_y + (i * item_height)
-            bbox = draw.textbbox((0, 0), item, font=font)
-            text_width = bbox[2] - bbox[0]
-            text_height = bbox[3] - bbox[1]
-            x_position = (display.width - text_width) // 2
 
-            draw_menu_text(draw, x_position, y_position, item, font)
+            # Estimate width of scaled text
+            estimated_width = len(item) * 8 * scale
+            x_position = (display.width - estimated_width) // 2
 
+            # Draw large text
+            draw_large_text(draw, x_position, y_position, item, scale=scale)
+
+            # Draw arrow next to selected item
             if i == selected_index and arrow:
                 arrow_x = x_position - arrow.width - 15
-                arrow_y = y_position + (text_height // 2 - arrow.height // 2) + 10
+                arrow_y = y_position + 10  # Simple offset that worked
                 image.paste(arrow, (arrow_x, arrow_y))
 
+        # Update display
         display.image(image)
         display.show()
+
         return True
 
     except Exception as e:
-        print(f"ERROR displaying menu: {e}")
+        print(f"Error displaying menu: {e}")
         return False
 
 
@@ -96,6 +106,7 @@ def get_key():
     try:
         tty.setraw(sys.stdin.fileno())
         ch = sys.stdin.read(1)
+        # Check for escape sequences (arrow keys)
         if ch == '\x1b':
             next_ch = sys.stdin.read(1)
             if next_ch == '[':
@@ -110,66 +121,68 @@ def get_key():
 
 
 def handle_menu_selection():
+    """Handle menu navigation with instant arrow keys"""
     selected_index = 0
     menu_items = ["NEW FILE", "OPEN FILE", "SETTINGS", "CREDITS"]
 
-    if not display_menu(selected_index):
-        print("Failed to initialize menu display")
-        return
+    print("Use UP/DOWN arrows to navigate, ENTER to select, BACKSPACE to return to logo")
+    print("Arrow keys should work instantly without pressing Enter")
 
-    print("Navigation: ↑/↓ arrows=move, Enter=select, Backspace=back, Q=quit")
+    # Initial display
+    display_menu(selected_index)
 
     while True:
         try:
+            # Get key press without waiting for Enter
             key = get_key()
 
-            if key == 'up':
+            if key == 'up':  # Up arrow
                 selected_index = (selected_index - 1) % len(menu_items)
                 display_menu(selected_index)
-                print(f"Selected: {menu_items[selected_index]}")
-            elif key == 'down':
+                print(f"↑ Selected: {menu_items[selected_index]}")
+            elif key == 'down':  # Down arrow
                 selected_index = (selected_index + 1) % len(menu_items)
                 display_menu(selected_index)
-                print(f"Selected: {menu_items[selected_index]}")
-            elif key in ['\r', '\n']:  # Enter
-                selected_item = menu_items[selected_index]
-                print(f"Selected: {selected_item}")
-
-                if selected_item == "OPEN FILE":
-                    script_dir = os.path.dirname(os.path.abspath(__file__))
-                    open_path = os.path.join(script_dir, "open.py")
-                    if os.path.exists(open_path):
-                        print("Launching file browser...")
-                        import subprocess
-                        subprocess.run([sys.executable, open_path])
-                        # Redisplay menu after return
-                        display_menu(selected_index)
-                    else:
-                        print(f"ERROR: open.py not found at {open_path}")
-                else:
-                    print(f"Functionality for '{selected_item}' not yet implemented")
-
-            elif key in ['\x7f', '\x08']:  # Backspace
-                print("Returning to launcher...")
+                print(f"↓ Selected: {menu_items[selected_index]}")
+            elif key == '\r' or key == '\n':  # Enter key
+                print(f"✓ Executing: {menu_items[selected_index]}")
+                # Add your functionality here based on selected_index
+                if selected_index == 0:
+                    print("NEW FILE functionality")
+                elif selected_index == 1:
+                    print("OPEN FILE functionality")
+                elif selected_index == 2:
+                    print("SETTINGS functionality")
+                elif selected_index == 3:
+                    print("CREDITS functionality")
                 break
-            elif key in ['q', 'Q']:
+            elif key == '\x7f' or key == '\x08':  # Backspace or Delete
+                print("Returning to logo...")
+                # Return to logo.py
+                script_dir = os.path.dirname(os.path.abspath(__file__))
+                logo_path = os.path.join(script_dir, "logo.py")
+
+                if os.path.exists(logo_path):
+                    print(f"Returning to {logo_path}...")
+                    exec(open(logo_path).read())
+                    return  # Exit after launching logo.py
+                else:
+                    print(f"logo.py not found at {logo_path}")
+                break
+            elif key == 'q' or key == 'Q':  # Quit
                 print("Quitting menu...")
                 break
             else:
-                print(f"Unknown key: {repr(key)}")
+                print(f"Key pressed: {repr(key)} - Use arrow keys, Enter, Backspace, or Q")
 
         except KeyboardInterrupt:
             print("\nMenu interrupted")
             break
         except Exception as e:
-            print(f"ERROR in menu: {e}")
+            print(f"Error handling selection: {e}")
             break
 
 
-def main():
-    print("=== Main Menu ===")
-    handle_menu_selection()
-
-
 if __name__ == "__main__":
-    main()
+    print("=== Menu with Navigation ===")
+    handle_menu_selection()
