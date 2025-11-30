@@ -4,6 +4,7 @@ import digitalio
 from PIL import Image
 import adafruit_sharpmemorydisplay
 import os
+import time
 
 # Initialize display
 spi = busio.SPI(board.SCK, MOSI=board.MOSI)
@@ -42,7 +43,7 @@ def display_logo():
         display.image(image)
         display.show()
         
-        print("Logo displayed successfully!")
+        print("Logo displayed successfully! Press Enter to continue to menu...")
         return True
         
     except Exception as e:
@@ -51,3 +52,16 @@ def display_logo():
 
 if __name__ == "__main__":
     display_logo()
+    
+    # Wait for Enter key press
+    input("Press Enter to continue to menu...")
+    
+    # Switch to menu.py
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    menu_path = os.path.join(script_dir, "menu.py")
+    
+    if os.path.exists(menu_path):
+        print(f"Launching {menu_path}...")
+        exec(open(menu_path).read())
+    else:
+        print(f"menu.py not found at {menu_path}")
