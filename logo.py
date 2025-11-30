@@ -11,7 +11,7 @@ spi = busio.SPI(board.SCK, MOSI=board.MOSI)
 scs = digitalio.DigitalInOut(board.D6)
 display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 400, 240)
 
-def display_logo_with_animation():
+def display_logo_fade_in():
     try:
         # Get the directory where this script is located
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -28,174 +28,57 @@ def display_logo_with_animation():
         logo = Image.open(logo_path)
         print(f"Loaded logo: {logo.size[0]}x{logo.size[1]}, mode: {logo.mode}")
         
-        # Convert to grayscale for dithering
+        # Convert to grayscale for dithering control
         if logo.mode != "L":
-            logo = logo.convert("L")
+            logo_grayscale = logo.convert("L")
+        else:
+            logo_grayscale = logo
         
         # Calculate position to center the logo
-        x = (display.width - logo.size[0]) // 2
-        y = (display.height - logo.size[1]) // 2
+        x = (display.width - logo_grayscale.size[0]) // 2
+        y = (display.height - logo_grayscale.size[1]) // 2
         
-        # Animation parameters
-        steps = 20  # Number of animation steps
-        delay = 0.05  # Delay between steps in seconds
+        # Animation parameters - 2 second fade in
+        duration = 2.0  # seconds
+        frames = 20     # number of animation frames
+        frame_delay = duration / frames
         
-        print("Starting rising animation...")
+        print("Starting fade-in animation...")
         
-        for step in range(steps + 1):
+        for frame in range(frames + 1):
+            # Calculate visibility (0 to 1)
+            visibility = frame / frames
+            
             # Create display image with white background
             image = Image.new("1", (display.width, display.height), 255)
             
-            # Calculate current vertical position (starts below and rises up)
-            # Start with logo completely below, end at final position
-            current_y = display.height - int((display.height - y) * step / steps)
+            # Apply dithering based on visibility
+            # Lower threshold = more black pixels appear
+            threshold = int(255 * (1 - visibility))
             
-            # Create a temporary image for dithering effect
-            temp_logo = logo.copy()
+            # Create temporary logo with current threshold
+            temp_logo = logo_grayscale.point(lambda p: 0 if p < threshold else 255)
             
-            # Apply dithering based on animation progress
-            if step < steps:
-                # Calculate visibility factor (0 to 1)
-                visibility = step / steps
-                
-                # Create a threshold mask for dithering
-                # We'll use a simple pattern that becomes more solid as animation progresses
-                threshold = int(255 * (1 - visibility))
-                
-                # Apply threshold to create dithering effect
-                temp_logo = temp_logo.point(lambda p: 0 if p < threshold else 255)
-            
-            # Convert to 1-bit for display
+            # Convert to 1-bit
             temp_logo = temp_logo.convert("1", dither=Image.NONE)
             
-            # Paste the modified logo onto display image
-            image.paste(temp_logo, (x, current_y))
+            # Paste onto display image
+            image.paste(temp_logo, (x, y))
             
             # Update display
             display.image(image)
             display.show()
             
-            time.sleep(delay)
+            time.sleep(frame_delay)
         
-        print("Animation completed!")
-        return True
-        
-    except Exception as e:
-        print(f"Error displaying logo: {e}")
-        return False
-
-def display_logo_with_simple_rise():
-    """Alternative simpler version with just vertical movement"""
-    try:
-        # Get the directory where this script is located
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        graphics_dir = os.path.join(script_dir, "assets")
-        logo_path = os.path.join(graphics_dir, "logo.bmp")
-        
-        # Check if logo file exists
-        if not os.path.exists(logo_path):
-            print(f"Logo file not found: {logo_path}")
-            print("Please create a 'assets' folder with 'logo.bmp'")
-            return False
-        
-        # Load and convert logo
-        logo = Image.open(logo_path)
-        print(f"Loaded logo: {logo.size[0]}x{logo.size[1]}, mode: {logo.mode}")
-        
-        if logo.mode != "1":
-            logo = logo.convert("L").convert("1", dither=Image.NONE)
-        
-        # Calculate position to center the logo
-        x = (display.width - logo.size[0]) // 2
-        y_final = (display.height - logo.size[1]) // 2
-        
-        # Animation - simple rise from bottom
-        steps = 15
-        delay = 0.06
-        
-        print("Starting simple rising animation...")
-        
-        for step in range(steps + 1):
-            image = Image.new("1", (display.width, display.height), 255)
-            
-            # Calculate current position (start from bottom, rise to final position)
-            progress = step / steps
-            current_y = display.height - int((display.height - y_final) * progress)
-            
-            # For the first few steps, apply dithering to simulate "fading in"
-            if step < 3:
-                # Create a dithered version by converting with dithering
-                temp_logo = logo.convert("L").convert("1", dither=Image.FLOYDSTEINBERG)
-                image.paste(temp_logo, (x, current_y))
-            else:
-                image.paste(logo, (x, current_y))
-            
-            display.image(image)
-            display.show()
-            time.sleep(delay)
-        
-        print("Animation completed!")
-        return True
-        
-    except Exception as e:
-        print(f"Error displaying logo: {e}")
-        return False
-
-def display_logo_with_scanline_effect():
-    """Version with scanline effect - reveals the logo line by line from bottom"""
-    try:
-        # Get the directory where this script is located
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        graphics_dir = os.path.join(script_dir, "assets")
-        logo_path = os.path.join(graphics_dir, "logo.bmp")
-        
-        # Check if logo file exists
-        if not os.path.exists(logo_path):
-            print(f"Logo file not found: {logo_path}")
-            print("Please create a 'assets' folder with 'logo.bmp'")
-            return False
-        
-        # Load and convert logo
-        logo = Image.open(logo_path)
-        print(f"Loaded logo: {logo.size[0]}x{logo.size[1]}, mode: {logo.mode}")
-        
-        if logo.mode != "1":
-            logo = logo.convert("L").convert("1", dither=Image.NONE)
-        
-        # Calculate position to center the logo
-        x = (display.width - logo.size[0]) // 2
-        y_final = (display.height - logo.size[1]) // 2
-        
-        # Create final positioned logo
+        # Ensure final image is perfectly displayed
         final_image = Image.new("1", (display.width, display.height), 255)
-        final_image.paste(logo, (x, y_final))
+        final_logo = logo_grayscale.convert("1", dither=Image.NONE)
+        final_image.paste(final_logo, (x, y))
+        display.image(final_image)
+        display.show()
         
-        # Animation - reveal from bottom with scanlines
-        steps = logo.size[1] + 10  # One step per line plus some extra
-        delay = 0.02
-        
-        print("Starting scanline reveal animation...")
-        
-        for step in range(steps + 1):
-            image = Image.new("1", (display.width, display.height), 255)
-            
-            # Calculate how many lines to show from bottom
-            lines_to_show = min(step, logo.size[1])
-            
-            if lines_to_show > 0:
-                # Crop the bottom part of the logo to show
-                crop_box = (0, logo.size[1] - lines_to_show, logo.size[0], logo.size[1])
-                visible_part = logo.crop(crop_box)
-                
-                # Paste at correct position
-                paste_y = y_final + (logo.size[1] - lines_to_show)
-                image.paste(visible_part, (x, paste_y))
-            
-            display.image(image)
-            display.show()
-            time.sleep(delay)
-        
-        print("Animation completed!")
+        print("Fade-in animation completed!")
         return True
         
     except Exception as e:
@@ -203,25 +86,10 @@ def display_logo_with_scanline_effect():
         return False
 
 if __name__ == "__main__":
-    print("=== Animated BMP Logo Display ===")
-    print("Choose animation style:")
-    print("1. Dithering rise effect")
-    print("2. Simple rise with dithering")
-    print("3. Scanline reveal from bottom")
-    
-    try:
-        choice = input("Enter choice (1-3, default=1): ").strip()
-        if choice == "2":
-            success = display_logo_with_simple_rise()
-        elif choice == "3":
-            success = display_logo_with_scanline_effect()
-        else:
-            success = display_logo_with_animation()
-    except:
-        # Default to first animation if input fails
-        success = display_logo_with_animation()
+    print("=== BMP Logo Fade-In ===")
+    success = display_logo_fade_in()
     
     if success:
-        print("Logo animation completed successfully!")
+        print("Logo fade-in completed!")
     else:
         print("Failed to display logo")
