@@ -173,7 +173,7 @@ def handle_file_creation():
                 # Check if file already exists
                 script_dir = os.path.dirname(os.path.abspath(__file__))
                 files_dir = os.path.join(script_dir, "files")
-                full_filename = filename + ".txt"
+                full_filename = filename + " .txt"
                 file_path = os.path.join(files_dir, full_filename)
 
                 if os.path.exists(file_path):
