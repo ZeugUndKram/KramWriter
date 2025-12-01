@@ -95,7 +95,7 @@ def display_file_menu(selected_index=0, scroll_offset=0):
             actual_selected_index = scroll_offset + i
             if actual_selected_index == selected_index and arrow and file_list[0] != "No files found":
                 arrow_x = x_position - arrow.width - 15
-                arrow_y = y_position + (text_height // 2 - arrow.height // 2) + 10
+                arrow_y = y_position + (text_height // 2 - arrow.height // 2) + 8
                 image.paste(arrow, (arrow_x, arrow_y))
 
         # Update display
@@ -145,7 +145,7 @@ def handle_file_selection():
     item_height = 40
     max_visible_items = display.height // item_height
 
-    print("Use UP/DOWN arrows to navigate, ENTER to select, BACKSPACE to return to menu")
+    print("Use UP/DOWN arrows to navigate, ENTER to select, BACKSPACE to return")
     print(f"Files: {len(file_list)}, Visible: {max_visible_items}")
 
     while True:
@@ -177,17 +177,7 @@ def handle_file_selection():
                 break
 
             elif key == '\x7f' or key == '\x08':  # Backspace or Delete
-                print("Returning to menu...")
-                # Return to menu.py
-                script_dir = os.path.dirname(os.path.abspath(__file__))
-                menu_path = os.path.join(script_dir, "menu.py")
-
-                if os.path.exists(menu_path):
-                    print(f"Returning to {menu_path}...")
-                    exec(open(menu_path).read())
-                    return  # Exit after launching menu.py
-                else:
-                    print(f"menu.py not found at {menu_path}")
+                print("Returning...")
                 break
 
             elif key == 'q' or key == 'Q':  # Quit
