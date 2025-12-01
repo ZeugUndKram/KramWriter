@@ -19,7 +19,7 @@ def draw_menu_text(draw, x, y, text, font):
     draw.text((x, y), text, font=font, fill=0)
 
 
-def display_file_menu(selected_index=0):
+def display_file_menu(selected_index=0, scroll_offset=0):
     try:
         # Load arrow image
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -36,7 +36,7 @@ def display_file_menu(selected_index=0):
         # Load custom font
         font_path = os.path.join(script_dir, "fonts", "BebasNeue-Regular.ttf")
         if os.path.exists(font_path):
-            font = ImageFont.truetype(font_path, 32)  # Slightly smaller for file names
+            font = ImageFont.truetype(font_path, 32)
         else:
             print(f"Custom font not found: {font_path}")
             font = ImageFont.load_default()
@@ -44,7 +44,7 @@ def display_file_menu(selected_index=0):
         # Get list of files from /files/ folder
         files_dir = os.path.join(script_dir, "files")
         if not os.path.exists(files_dir):
-            os.makedirs(files_dir)  # Create folder if it doesn't exist
+            os.makedirs(files_dir)
             print("Created files directory")
 
         file_list = []
@@ -54,23 +54,31 @@ def display_file_menu(selected_index=0):
                 if os.path.isfile(item_path):
                     file_list.append(item)
 
-        # Sort files alphabetically
         file_list.sort()
 
         if not file_list:
             file_list = ["No files found"]
 
+        # Calculate how many items can fit on screen
+        item_height = 40
+        max_visible_items = display.height // item_height
+
+        # Ensure scroll_offset is within bounds
+        max_scroll = max(0, len(file_list) - max_visible_items)
+        scroll_offset = max(0, min(scroll_offset, max_scroll))
+
+        # Get the visible subset of files
+        visible_files = file_list[scroll_offset:scroll_offset + max_visible_items]
+
         # Create display image with white background
         image = Image.new("1", (display.width, display.height), 255)
         draw = ImageDraw.Draw(image)
 
-        # Calculate positions for text
-        item_height = 40
-        total_height = len(file_list) * item_height
-        start_y = (display.height - total_height) // 2
+        # Calculate starting position for visible items
+        start_y = 0  # Start at top since we're scrolling
 
-        # Draw each file item centered
-        for i, filename in enumerate(file_list):
+        # Draw each visible file item centered
+        for i, filename in enumerate(visible_files):
             y_position = start_y + (i * item_height)
 
             # Get text bounding box for proper centering
@@ -83,8 +91,9 @@ def display_file_menu(selected_index=0):
             # Draw text using custom font
             draw_menu_text(draw, x_position, y_position, filename, font)
 
-            # Draw arrow next to selected item (only if there are actual files)
-            if i == selected_index and arrow and file_list[0] != "No files found":
+            # Draw arrow next to selected item if it's the currently visible selected item
+            actual_selected_index = scroll_offset + i
+            if actual_selected_index == selected_index and arrow and file_list[0] != "No files found":
                 arrow_x = x_position - arrow.width - 15
                 arrow_y = y_position + (text_height // 2 - arrow.height // 2) + 10
                 image.paste(arrow, (arrow_x, arrow_y))
@@ -93,13 +102,13 @@ def display_file_menu(selected_index=0):
         display.image(image)
         display.show()
 
-        return file_list
+        return file_list, scroll_offset
 
     except Exception as e:
         print(f"Error displaying file menu: {e}")
         import traceback
         traceback.print_exc()
-        return []
+        return [], 0
 
 
 def get_key():
@@ -109,7 +118,6 @@ def get_key():
     try:
         tty.setraw(sys.stdin.fileno())
         ch = sys.stdin.read(1)
-        # Check for escape sequences (arrow keys)
         if ch == '\x1b':
             next_ch = sys.stdin.read(1)
             if next_ch == '[':
@@ -124,42 +132,58 @@ def get_key():
 
 
 def handle_file_selection():
-    """Handle file navigation with instant arrow keys"""
+    """Handle file navigation with scroll mechanics"""
     selected_index = 0
-    file_list = display_file_menu(selected_index)
+    scroll_offset = 0
+    file_list, scroll_offset = display_file_menu(selected_index, scroll_offset)
 
     if not file_list:
         print("No files to display")
         return
 
+    # Calculate how many items can fit on screen
+    item_height = 40
+    max_visible_items = display.height // item_height
+
     print("Use UP/DOWN arrows to navigate, ENTER to select, BACKSPACE to return")
-    print("Arrow keys should work instantly without pressing Enter")
+    print(f"Files: {len(file_list)}, Visible: {max_visible_items}")
 
     while True:
         try:
-            # Get key press without waiting for Enter
             key = get_key()
 
             if key == 'up':  # Up arrow
-                selected_index = (selected_index - 1) % len(file_list)
-                file_list = display_file_menu(selected_index)
-                print(f"↑ Selected: {file_list[selected_index]}")
+                if selected_index > 0:
+                    selected_index -= 1
+                    # If selection moves above visible area, scroll up
+                    if selected_index < scroll_offset:
+                        scroll_offset = selected_index
+                file_list, scroll_offset = display_file_menu(selected_index, scroll_offset)
+                print(f"↑ Selected: {file_list[selected_index]} ({selected_index + 1}/{len(file_list)})")
+
             elif key == 'down':  # Down arrow
-                selected_index = (selected_index + 1) % len(file_list)
-                file_list = display_file_menu(selected_index)
-                print(f"↓ Selected: {file_list[selected_index]}")
+                if selected_index < len(file_list) - 1:
+                    selected_index += 1
+                    # If selection moves below visible area, scroll down
+                    if selected_index >= scroll_offset + max_visible_items:
+                        scroll_offset = selected_index - max_visible_items + 1
+                file_list, scroll_offset = display_file_menu(selected_index, scroll_offset)
+                print(f"↓ Selected: {file_list[selected_index]} ({selected_index + 1}/{len(file_list)})")
+
             elif key == '\r' or key == '\n':  # Enter key
                 if file_list[0] != "No files found":
                     print(f"✓ Selected file: {file_list[selected_index]}")
-                    # File selection functionality can be added here later
                     print(f"File '{file_list[selected_index]}' would be opened here")
                 break
+
             elif key == '\x7f' or key == '\x08':  # Backspace or Delete
                 print("Returning...")
                 break
+
             elif key == 'q' or key == 'Q':  # Quit
                 print("Quitting file browser...")
                 break
+
             else:
                 print(f"Key pressed: {repr(key)} - Use arrow keys, Enter, Backspace, or Q")
 
@@ -172,5 +196,5 @@ def handle_file_selection():
 
 
 if __name__ == "__main__":
-    print("=== File Browser ===")
+    print("=== File Browser with Scroll ===")
     handle_file_selection()
