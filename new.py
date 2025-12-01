@@ -19,7 +19,7 @@ def draw_menu_text(draw, x, y, text, font):
     draw.text((x, y), text, font=font, fill=0)
 
 
-def display_input_screen(filename="", error_message=""):
+def display_input_screen(filename="", cursor_pos=0, error_message=""):
     try:
         # Load custom font
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -57,19 +57,29 @@ def display_input_screen(filename="", error_message=""):
         bbox = draw.textbbox((0, 0), display_text, font=font_large)
         text_width = bbox[2] - bbox[0]
 
-        # Center text in input field (with some padding)
+        # Calculate text position (centered in input field with some padding)
         text_x = input_x + 10
         if text_width < input_width - 20:  # If text fits, center it
             text_x = input_x + (input_width - text_width) // 2
 
         draw_menu_text(draw, text_x, input_y + 10, display_text, font_large)
 
-        # Display cursor (blinking would be complex, so just show a static indicator)
-        cursor_x = text_x + text_width + 2
+        # Calculate cursor position
+        if cursor_pos <= len(filename):
+            # Calculate width of text before cursor
+            text_before_cursor = filename[:cursor_pos]
+            bbox_before = draw.textbbox((0, 0), text_before_cursor, font=font_large)
+            text_before_width = bbox_before[2] - bbox_before[0]
+
+            cursor_x = text_x + text_before_width + 2
+        else:
+            cursor_x = text_x + text_width + 2
+
+        # Draw cursor (vertical line)
         draw.line([cursor_x, input_y + 10, cursor_x, input_y + 40], fill=0, width=2)
 
         # Display instructions
-        instructions = "Type filename and press Enter"
+        instructions = "Type filename, use arrows to move cursor, Enter to create"
         bbox = draw.textbbox((0, 0), instructions, font=font_small)
         instructions_width = bbox[2] - bbox[0]
         instructions_x = (display.width - instructions_width) // 2
@@ -102,6 +112,21 @@ def get_key():
     try:
         tty.setraw(sys.stdin.fileno())
         ch = sys.stdin.read(1)
+
+        # Check for escape sequences (arrow keys)
+        if ch == '\x1b':
+            next_ch = sys.stdin.read(1)
+            if next_ch == '[':
+                arrow_ch = sys.stdin.read(1)
+                if arrow_ch == 'A':
+                    return 'up'
+                elif arrow_ch == 'B':
+                    return 'down'
+                elif arrow_ch == 'C':
+                    return 'right'
+                elif arrow_ch == 'D':
+                    return 'left'
+
         return ch
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
@@ -120,12 +145,13 @@ def is_valid_filename(filename):
 def handle_file_creation():
     """Handle filename input and file creation"""
     filename = ""
+    cursor_pos = 0  # Cursor position within the filename
     error_message = ""
 
     # Initial display
-    display_input_screen(filename, error_message)
-    print("Type filename (without .txt extension) and press Enter")
-    print("Press Backspace to delete, Escape to cancel")
+    display_input_screen(filename, cursor_pos, error_message)
+    print("Type filename (without .txt extension)")
+    print("Use ← → arrows to move cursor, Backspace to delete, Enter to create, Escape to cancel")
 
     while True:
         try:
@@ -134,13 +160,13 @@ def handle_file_creation():
             if key == '\r' or key == '\n':  # Enter key
                 if not filename.strip():
                     error_message = "Filename cannot be empty"
-                    display_input_screen(filename, error_message)
+                    display_input_screen(filename, cursor_pos, error_message)
                     print("Error: Filename cannot be empty")
                     continue
 
                 if not is_valid_filename(filename):
                     error_message = "Invalid characters in filename"
-                    display_input_screen(filename, error_message)
+                    display_input_screen(filename, cursor_pos, error_message)
                     print("Error: Invalid characters in filename")
                     continue
 
@@ -152,7 +178,7 @@ def handle_file_creation():
 
                 if os.path.exists(file_path):
                     error_message = "File already exists!"
-                    display_input_screen(filename, error_message)
+                    display_input_screen(filename, cursor_pos, error_message)
                     print(f"Error: File '{full_filename}' already exists")
                 else:
                     # Create the file
@@ -163,29 +189,35 @@ def handle_file_creation():
                         f.write("")  # Create empty file
 
                     print(f"✓ Created file: {full_filename}")
-                    display_input_screen(filename, "File created successfully!")
+                    display_input_screen(filename, cursor_pos, "File created successfully!")
                     # Wait a moment to show success message
                     import time
                     time.sleep(2)
                     break
 
+            elif key == 'left':  # Left arrow
+                if cursor_pos > 0:
+                    cursor_pos -= 1
+                display_input_screen(filename, cursor_pos, error_message)
+                print(f"Cursor moved left to position {cursor_pos}")
+
+            elif key == 'right':  # Right arrow
+                if cursor_pos < len(filename):
+                    cursor_pos += 1
+                display_input_screen(filename, cursor_pos, error_message)
+                print(f"Cursor moved right to position {cursor_pos}")
+
             elif key == '\x7f' or key == '\x08':  # Backspace
-                if filename:
-                    filename = filename[:-1]
+                if filename and cursor_pos > 0:
+                    filename = filename[:cursor_pos - 1] + filename[cursor_pos:]
+                    cursor_pos -= 1
                     error_message = ""
-                display_input_screen(filename, error_message)
-                print(f"Current input: {filename}")
+                display_input_screen(filename, cursor_pos, error_message)
+                print(f"Deleted character, cursor at {cursor_pos}")
 
             elif key == '\x1b':  # Escape key
                 print("Cancelled file creation")
                 break
-
-            elif key in ['\x7f', '\x08']:  # Backspace (alternative)
-                if filename:
-                    filename = filename[:-1]
-                    error_message = ""
-                display_input_screen(filename, error_message)
-                print(f"Current input: {filename}")
 
             elif key == 'q' or key == 'Q':  # Quit
                 print("Quitting file creation...")
@@ -194,10 +226,12 @@ def handle_file_creation():
             elif len(key) == 1 and key.isprintable():  # Regular characters
                 # Limit filename length
                 if len(filename) < 30:  # Reasonable limit
-                    filename += key
+                    # Insert character at cursor position
+                    filename = filename[:cursor_pos] + key + filename[cursor_pos:]
+                    cursor_pos += 1
                     error_message = ""
-                display_input_screen(filename, error_message)
-                print(f"Current input: {filename}")
+                display_input_screen(filename, cursor_pos, error_message)
+                print(f"Added '{key}', cursor at {cursor_pos}")
 
             else:
                 print(f"Key pressed: {repr(key)}")
