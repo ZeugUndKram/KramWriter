@@ -145,7 +145,7 @@ def handle_file_selection():
     item_height = 40
     max_visible_items = display.height // item_height
 
-    print("Use UP/DOWN arrows to navigate, ENTER to select, BACKSPACE to return")
+    print("Use UP/DOWN arrows to navigate, ENTER to select, BACKSPACE to return to menu")
     print(f"Files: {len(file_list)}, Visible: {max_visible_items}")
 
     while True:
@@ -177,7 +177,17 @@ def handle_file_selection():
                 break
 
             elif key == '\x7f' or key == '\x08':  # Backspace or Delete
-                print("Returning...")
+                print("Returning to menu...")
+                # Return to menu.py
+                script_dir = os.path.dirname(os.path.abspath(__file__))
+                menu_path = os.path.join(script_dir, "menu.py")
+
+                if os.path.exists(menu_path):
+                    print(f"Returning to {menu_path}...")
+                    exec(open(menu_path).read())
+                    return  # Exit after launching menu.py
+                else:
+                    print(f"menu.py not found at {menu_path}")
                 break
 
             elif key == 'q' or key == 'Q':  # Quit
