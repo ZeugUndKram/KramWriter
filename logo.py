@@ -5,11 +5,13 @@ from PIL import Image
 import adafruit_sharpmemorydisplay
 import os
 
-# Initialize display
+# Initialize display with CS on GPIO 8 (pin 24)
 spi = busio.SPI(board.SCK, MOSI=board.MOSI)
-scs = digitalio.DigitalInOut(board.D6)
-display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 400, 240)
+cs = digitalio.DigitalInOut(board.D24)  # GPIO 8 for CS (pin 24)
+scs = digitalio.DigitalInOut(board.D6)   # Keep SCS on GPIO 6 (pin 22)
 
+# Create display instance - parameters: spi, cs, width, height
+display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, cs, 400, 240)
 
 def display_logo():
     try:
@@ -25,11 +27,12 @@ def display_logo():
         # Load and convert the BMP image
         logo = Image.open(logo_path)
 
-        # Convert to 1-bit monochrome
+        # Convert to 1-bit monochrome (required by Sharp display)
         if logo.mode != "1":
             logo = logo.convert("1", dither=Image.NONE)
 
-        # Create display image with white background
+        # Create display image with white background (1 = white, 0 = black)
+        # For Sharp Memory Display: 1=white, 0=black
         image = Image.new("1", (display.width, display.height), 255)
 
         # Calculate position to center the logo
