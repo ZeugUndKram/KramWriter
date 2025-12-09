@@ -13,7 +13,7 @@ spi.max_speed_hz = 2000000
 spi.mode = 0
 
 # Sharp display initialization sequence
-def sharp_cmd(cmd)
+def sharp_cmd(cmd):
     GPIO.output(CS_PIN, GPIO.LOW)
     spi.xfer([cmd])
     GPIO.output(CS_PIN, GPIO.HIGH)
