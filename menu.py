@@ -14,236 +14,199 @@ spi = busio.SPI(board.SCK, MOSI=board.MOSI)
 scs = digitalio.DigitalInOut(board.D6)
 display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 400, 240)
 
-# Cached resources
-_arrow_image = None
-_font = None
-_base_image = None  # Image with all text (no arrows)
-_display_buffer = None  # Current display buffer
-_text_positions = []  # Pre-calculated positions
-_menu_items = ["NEW FILE", "OPEN FILE", "SETTINGS", "CREDITS"]
-_current_selection = 0
+# State
+arrow_image = None
+font = None
+menu_items = ["NEW FILE", "OPEN FILE", "SETTINGS", "CREDITS"]
+current_selection = 0
+last_selection = -1
+text_positions = []
 
-def init_resources():
-    """Initialize and cache all resources once"""
-    global _arrow_image, _font, _base_image, _display_buffer, _text_positions
+def setup():
+    """One-time setup of all resources"""
+    global arrow_image, font, text_positions
     
     script_dir = os.path.dirname(os.path.abspath(__file__))
     
-    # Load arrow (small and optimized)
-    if _arrow_image is None:
-        arrow_path = os.path.join(script_dir, "assets", "arrow.bmp")
-        if os.path.exists(arrow_path):
-            _arrow_image = Image.open(arrow_path)
-            if _arrow_image.mode != "1":
-                _arrow_image = _arrow_image.convert("1", dither=Image.NONE)
-        else:
-            # Create minimal arrow
-            _arrow_image = Image.new("1", (15, 10), 255)  # Smaller!
-            draw = ImageDraw.Draw(_arrow_image)
-            draw.polygon([(10, 0), (10, 10), (0, 5)], fill=0)
+    # Load arrow
+    arrow_path = os.path.join(script_dir, "assets", "arrow.bmp")
+    if os.path.exists(arrow_path):
+        arrow_image = Image.open(arrow_path)
+        if arrow_image.mode != "1":
+            arrow_image = arrow_image.convert("1", dither=Image.NONE)
+    else:
+        arrow_image = Image.new("1", (20, 20), 255)
+        draw = ImageDraw.Draw(arrow_image)
+        draw.polygon([(15, 0), (15, 20), (0, 10)], fill=0)
     
     # Load font
-    if _font is None:
-        font_path = os.path.join(script_dir, "fonts", "BebasNeue-Regular.ttf")
-        if os.path.exists(font_path):
-            _font = ImageFont.truetype(font_path, 36)  # Slightly smaller font
-        else:
-            _font = ImageFont.load_default()
+    font_path = os.path.join(script_dir, "fonts", "BebasNeue-Regular.ttf")
+    if os.path.exists(font_path):
+        font = ImageFont.truetype(font_path, 38)
+    else:
+        font = ImageFont.load_default()
     
-    # Create base image with all text
-    if _base_image is None:
-        _base_image = Image.new("1", (display.width, display.height), 255)
-        draw = ImageDraw.Draw(_base_image)
+    # Pre-calculate all text positions (ONE TIME)
+    temp_image = Image.new("1", (display.width, display.height), 255)
+    temp_draw = ImageDraw.Draw(temp_image)
+    
+    item_height = 45
+    total_height = len(menu_items) * item_height
+    start_y = (display.height - total_height) // 2
+    
+    text_positions = []
+    for i, item in enumerate(menu_items):
+        y = start_y + (i * item_height)
+        bbox = temp_draw.textbbox((0, 0), item, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        x = (display.width - text_width) // 2
         
-        # Calculate positions
-        item_height = 40  # Reduced from 45
-        total_height = len(_menu_items) * item_height
-        start_y = (display.height - total_height) // 2
-        
-        # Store positions and draw text
-        _text_positions = []
-        for i, item in enumerate(_menu_items):
-            y = start_y + (i * item_height)
-            
-            # Get text size
-            bbox = draw.textbbox((0, 0), item, font=_font)
-            text_width = bbox[2] - bbox[0]
-            text_height = bbox[3] - bbox[1]
-            
-            # Center text
-            x = (display.width - text_width) // 2
-            draw.text((x, y), item, font=_font, fill=0)
-            
-            # Store position for arrow with padding
-            arrow_x = x - _arrow_image.width - 10  # Reduced padding
-            arrow_y = y + (text_height // 2 - _arrow_image.height // 2) + 5
-            
-            # Define arrow area to clear (white rectangle)
-            clear_area = (
-                arrow_x - 1, arrow_y - 1,
-                arrow_x + _arrow_image.width + 1,
-                arrow_y + _arrow_image.height + 1
-            )
-            
-            _text_positions.append({
-                'arrow_x': arrow_x,
-                'arrow_y': arrow_y,
-                'clear_area': clear_area
-            })
-        
-        # Create initial display buffer
-        _display_buffer = _base_image.copy()
-        draw = ImageDraw.Draw(_display_buffer)
-        
-        # Draw initial arrow
-        pos = _text_positions[0]
-        _display_buffer.paste(_arrow_image, (pos['arrow_x'], pos['arrow_y']))
-        
-        # Display initial image
-        display.image(_display_buffer)
-        display.show()
+        text_positions.append({
+            'x': x,
+            'y': y,
+            'text_width': text_width,
+            'text_height': text_height,
+            'arrow_x': x - arrow_image.width - 15,
+            'arrow_y': y + (text_height // 2 - arrow_image.height // 2) + 9
+        })
 
-def move_arrow(new_selection):
-    """ULTRA FAST: Only update arrow position by clearing old and drawing new"""
-    global _current_selection, _display_buffer
+def draw_initial_menu():
+    """Draw complete menu once"""
+    # Create clean white background
+    image = Image.new("1", (display.width, display.height), 255)
+    draw = ImageDraw.Draw(image)
     
-    if new_selection == _current_selection:
+    # Draw all menu items
+    for i, item in enumerate(menu_items):
+        pos = text_positions[i]
+        draw.text((pos['x'], pos['y']), item, font=font, fill=0)
+    
+    # Draw initial arrow
+    pos = text_positions[current_selection]
+    image.paste(arrow_image, (pos['arrow_x'], pos['arrow_y']))
+    
+    # Show on display
+    display.image(image)
+    display.show()
+
+def update_arrow_position(new_selection):
+    """Fast update: only move the arrow"""
+    global current_selection, last_selection
+    
+    if new_selection == last_selection:
         return
     
-    # Get positions
-    old_pos = _text_positions[_current_selection]
-    new_pos = _text_positions[new_selection]
-    
-    # Clear old arrow (draw white rectangle)
-    display_rect = old_pos['clear_area']
-    display.fill_rect(
-        display_rect[0], display_rect[1],
-        display_rect[2] - display_rect[0] + 1,
-        display_rect[3] - display_rect[1] + 1,
-        1  # White
-    )
+    # Clear old arrow (draw white rectangle over it)
+    if last_selection >= 0:
+        old_pos = text_positions[last_selection]
+        display.fill_rect(
+            old_pos['arrow_x'] - 2, old_pos['arrow_y'] - 2,
+            arrow_image.width + 4, arrow_image.height + 4,
+            1  # White
+        )
     
     # Draw new arrow
+    new_pos = text_positions[new_selection]
     display.bitmap(
         new_pos['arrow_x'], new_pos['arrow_y'],
-        _arrow_image.width, _arrow_image.height,
-        _arrow_image.getdata(), 1
+        arrow_image.width, arrow_image.height,
+        arrow_image.getdata(), 1
     )
-    
-    # Update buffer in memory
-    draw = ImageDraw.Draw(_display_buffer)
-    draw.rectangle(old_pos['clear_area'], fill=255)
-    _display_buffer.paste(_arrow_image, (new_pos['arrow_x'], new_pos['arrow_y']))
     
     # Show updates
     display.show()
-    _current_selection = new_selection
+    
+    # Update state
+    last_selection = current_selection
+    current_selection = new_selection
 
 def get_key():
-    """Non-blocking key check"""
+    """Simple, reliable blocking input"""
     fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(fd)
     
     try:
         tty.setraw(fd)
-        # Set non-blocking
-        import fcntl
-        fl = fcntl.fcntl(fd, fcntl.F_GETFL)
-        fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+        ch = sys.stdin.read(1)
         
-        try:
-            ch = sys.stdin.read(1)
-            
-            # Check for arrow keys
-            if ch == '\x1b':
-                try:
-                    next_ch = sys.stdin.read(1)
-                    if next_ch == '[':
-                        arrow_ch = sys.stdin.read(1)
-                        if arrow_ch == 'A':
-                            return 'up'
-                        elif arrow_ch == 'B':
-                            return 'down'
-                except:
-                    pass
-            
-            return ch if ch else None
-        except:
-            return None
+        if ch == '\x1b':  # Escape sequence for arrows
+            next_ch = sys.stdin.read(1)
+            if next_ch == '[':
+                arrow_ch = sys.stdin.read(1)
+                if arrow_ch == 'A':
+                    return 'up'
+                elif arrow_ch == 'B':
+                    return 'down'
+        
+        return ch
     finally:
-        fcntl.fcntl(fd, fcntl.F_SETFL, fl)
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
-def handle_menu():
-    """Main menu - optimized for maximum speed"""
-    global _current_selection
+def run_menu():
+    """Main menu loop - simple and fast"""
+    global current_selection
     
-    # Initialize once
-    init_resources()
+    # Setup once
+    setup()
     
-    # Skip initial print to save time
-    # print(f"Selected: {_menu_items[_current_selection]}")
+    # Draw initial menu
+    draw_initial_menu()
+    last_selection = current_selection
     
-    # Buffer for debouncing
-    last_update = time.time()
-    update_delay = 0.05  # 50ms minimum between updates
+    print("MENU: ↑↓ = Navigate, Enter = Select, Backspace = Logo, Q = Quit")
+    print(f"Current: {menu_items[current_selection]}")
     
     while True:
         try:
             key = get_key()
             
-            if not key:
-                time.sleep(0.01)  # Small sleep to reduce CPU
-                continue
-            
-            current_time = time.time()
-            
             if key == 'up':
-                new_selection = (_current_selection - 1) % len(_menu_items)
-                if current_time - last_update >= update_delay:
-                    move_arrow(new_selection)
-                    # print(f"↑ {_menu_items[new_selection]}")
-                    last_update = current_time
+                new_sel = (current_selection - 1) % len(menu_items)
+                update_arrow_position(new_sel)
+                print(f"↑ {menu_items[new_sel]}")
                 
             elif key == 'down':
-                new_selection = (_current_selection + 1) % len(_menu_items)
-                if current_time - last_update >= update_delay:
-                    move_arrow(new_selection)
-                    # print(f"↓ {_menu_items[new_selection]}")
-                    last_update = current_time
+                new_sel = (current_selection + 1) % len(menu_items)
+                update_arrow_position(new_sel)
+                print(f"↓ {menu_items[new_sel]}")
                 
             elif key == '\r' or key == '\n':  # Enter
-                print(f"\n✓ {_menu_items[_current_selection]}")
+                print(f"\n✓ SELECTED: {menu_items[current_selection]}")
                 
-                # Handle selection
-                if _current_selection == 0:
-                    print("NEW FILE")
-                elif _current_selection == 1:
-                    print("OPEN FILE")
-                elif _current_selection == 2:
-                    print("SETTINGS")
-                elif _current_selection == 3:
-                    print("CREDITS")
+                if current_selection == 0:
+                    print("NEW FILE functionality")
+                elif current_selection == 1:
+                    print("OPEN FILE functionality")
+                elif current_selection == 2:
+                    print("SETTINGS functionality")
+                elif current_selection == 3:
+                    print("CREDITS functionality")
                 
-                # Wait a moment and continue
-                time.sleep(0.5)
+                # Brief pause then continue
+                time.sleep(0.3)
+                print("Menu ready...")
                 
             elif key == '\x7f' or key == '\x08':  # Backspace
-                print("\nBack to logo...")
+                print("\nReturning to logo...")
                 import logo
                 logo.display_logo()
-                time.sleep(1)
-                return
+                time.sleep(2)
+                return  # Exit menu
                 
             elif key == 'q' or key == 'Q':
-                print("\nQuit")
+                print("\nQuitting menu...")
                 break
                 
+            else:
+                print(f"Key: {repr(key)}")
+                
         except KeyboardInterrupt:
+            print("\nMenu cancelled")
             break
         except Exception as e:
             print(f"Error: {e}")
             break
 
 if __name__ == "__main__":
-    handle_menu()
+    run_menu()
