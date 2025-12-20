@@ -8,240 +8,178 @@ import time
 import sys
 import termios
 import tty
-import select
 
 # Initialize display
 spi = busio.SPI(board.SCK, MOSI=board.MOSI)
 scs = digitalio.DigitalInOut(board.D6)
 display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 400, 240)
 
-# CACHED GLOBALS
-_arrow_image = None
-_font = None
-_base_image = None
-_menu_items = ["NEW FILE", "OPEN FILE", "SETTINGS", "CREDITS"]
-_item_height = 45
-_start_y = None
-_text_positions = []
+# Global variables
+arrow_image = None
+font = None
+menu_items = ["NEW FILE", "OPEN FILE", "SETTINGS", "CREDITS"]
+current_selection = 0
 
-def _init_resources():
-    """Initialize and cache expensive resources once"""
-    global _arrow_image, _font, _base_image, _start_y, _text_positions
+def load_resources():
+    """Load images and fonts once"""
+    global arrow_image, font
     
-    if _arrow_image is None:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        arrow_path = os.path.join(script_dir, "assets", "arrow.bmp")
-        
-        if os.path.exists(arrow_path):
-            _arrow_image = Image.open(arrow_path)
-            if _arrow_image.mode != "1":
-                _arrow_image = _arrow_image.convert("1", dither=Image.NONE)
-        else:
-            print(f"Arrow image not found: {arrow_path}")
-            # Create a simple arrow as fallback
-            _arrow_image = Image.new("1", (20, 20), 255)
-            draw = ImageDraw.Draw(_arrow_image)
-            draw.polygon([(15, 0), (15, 20), (0, 10)], fill=0)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
     
-    if _font is None:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        font_path = os.path.join(script_dir, "fonts", "BebasNeue-Regular.ttf")
-        
-        if os.path.exists(font_path):
-            _font = ImageFont.truetype(font_path, 38)
-        else:
-            print(f"Custom font not found: {font_path}")
-            _font = ImageFont.load_default()
+    # Load arrow
+    arrow_path = os.path.join(script_dir, "assets", "arrow.bmp")
+    if os.path.exists(arrow_path):
+        arrow_image = Image.open(arrow_path)
+        if arrow_image.mode != "1":
+            arrow_image = arrow_image.convert("1", dither=Image.NONE)
+    else:
+        print(f"Arrow not found: {arrow_path}")
+        # Create simple arrow
+        arrow_image = Image.new("1", (20, 20), 255)
+        draw = ImageDraw.Draw(arrow_image)
+        draw.polygon([(15, 0), (15, 20), (0, 10)], fill=0)
     
-    # Create base image with all menu text (no arrows)
-    if _base_image is None:
-        _base_image = Image.new("1", (display.width, display.height), 255)
-        draw = ImageDraw.Draw(_base_image)
-        
-        # Calculate total height and starting Y
-        total_height = len(_menu_items) * _item_height
-        _start_y = (display.height - total_height) // 2
-        
-        # Draw all menu items and store their positions
-        _text_positions = []
-        for i, item in enumerate(_menu_items):
-            y_position = _start_y + (i * _item_height)
-            
-            # Get text bounding box
-            bbox = draw.textbbox((0, 0), item, font=_font)
-            text_width = bbox[2] - bbox[0]
-            text_height = bbox[3] - bbox[1]
-            
-            x_position = (display.width - text_width) // 2
-            
-            # Draw text
-            draw.text((x_position, y_position), item, font=_font, fill=0)
-            
-            # Store position for arrow placement
-            _text_positions.append({
-                'x': x_position,
-                'y': y_position,
-                'width': text_width,
-                'height': text_height,
-                'arrow_x': x_position - _arrow_image.width - 15,
-                'arrow_y': y_position + (text_height // 2 - _arrow_image.height // 2) + 9
-            })
+    # Load font
+    font_path = os.path.join(script_dir, "fonts", "BebasNeue-Regular.ttf")
+    if os.path.exists(font_path):
+        font = ImageFont.truetype(font_path, 38)
+    else:
+        print(f"Font not found: {font_path}")
+        font = ImageFont.load_default()
 
-def display_menu(selected_index=0):
-    """Display menu with arrow at selected position"""
-    try:
-        # Initialize resources if needed
-        _init_resources()
+def draw_menu(selection=0):
+    """Draw the menu with selection highlight"""
+    # Create blank white image
+    image = Image.new("1", (display.width, display.height), 255)
+    draw = ImageDraw.Draw(image)
+    
+    # Calculate positions
+    item_height = 45
+    total_height = len(menu_items) * item_height
+    start_y = (display.height - total_height) // 2
+    
+    # Draw each menu item
+    for i, item in enumerate(menu_items):
+        y = start_y + (i * item_height)
         
-        # Start with clean base image (no arrows)
-        image = _base_image.copy()
-        draw = ImageDraw.Draw(image)
+        # Get text size
+        bbox = draw.textbbox((0, 0), item, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
         
-        # Draw arrow at selected position
-        if _arrow_image and selected_index < len(_text_positions):
-            pos = _text_positions[selected_index]
-            
-            # Draw arrow
-            image.paste(_arrow_image, (pos['arrow_x'], pos['arrow_y']))
+        # Center text
+        x = (display.width - text_width) // 2
+        draw.text((x, y), item, font=font, fill=0)
         
-        # Update display
-        display.image(image)
-        display.show()
-        
-        return True
-        
-    except Exception as e:
-        print(f"Error displaying menu: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
+        # Draw arrow for selected item
+        if i == selection and arrow_image:
+            arrow_x = x - arrow_image.width - 15
+            arrow_y = y + (text_height // 2 - arrow_image.height // 2) + 9
+            image.paste(arrow_image, (arrow_x, arrow_y))
+    
+    # Update display
+    display.image(image)
+    display.show()
 
-class InputHandler:
-    """Handles non-blocking keyboard input"""
-    
-    def __init__(self):
-        self.fd = sys.stdin.fileno()
-        self.old_settings = termios.tcgetattr(self.fd)
-        self._setup_raw_mode()
-        
-    def _setup_raw_mode(self):
-        """Set terminal to raw mode for direct key reading"""
-        tty.setraw(self.fd)
-        # Set minimal timeout
-        new_settings = termios.tcgetattr(self.fd)
-        new_settings[6][termios.VMIN] = 0  # Non-blocking
-        new_settings[6][termios.VTIME] = 0  # No timeout
-        termios.tcsetattr(self.fd, termios.TCSADRAIN, new_settings)
-    
-    def get_key(self):
-        """Get a single key press, returns None if no key"""
-        try:
-            # Check if key is available
-            if select.select([sys.stdin], [], [], 0.01)[0]:
-                ch = sys.stdin.read(1)
-                
-                # Check for escape sequences (arrow keys)
-                if ch == '\x1b':
-                    # Check if more characters are available
-                    if select.select([sys.stdin], [], [], 0.01)[0]:
-                        next_ch = sys.stdin.read(1)
-                        if next_ch == '[':
-                            if select.select([sys.stdin], [], [], 0.01)[0]:
-                                arrow_ch = sys.stdin.read(1)
-                                if arrow_ch == 'A':
-                                    return 'up'
-                                elif arrow_ch == 'B':
-                                    return 'down'
-                                else:
-                                    # Read any remaining chars to clear buffer
-                                    while select.select([sys.stdin], [], [], 0)[0]:
-                                        sys.stdin.read(1)
-                return ch
-            return None
-        except Exception as e:
-            return None
-    
-    def cleanup(self):
-        """Restore terminal settings"""
-        termios.tcsetattr(self.fd, termios.TCSADRAIN, self.old_settings)
-
-def handle_menu_selection():
-    """Optimized menu navigation with proper input handling"""
-    selected_index = 0
-    
-    print("=== Optimized Menu ===")
-    print("UP/DOWN: navigate, ENTER: select, BACKSPACE: return to logo, Q: quit")
-    
-    # Create input handler
-    input_handler = InputHandler()
+def get_key():
+    """Simple blocking key input"""
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
     
     try:
-        # Initial display
-        display_menu(selected_index)
-        print(f"Selected: {_menu_items[selected_index]}")
+        tty.setraw(fd)
+        ch = sys.stdin.read(1)
         
-        while True:
-            key = input_handler.get_key()
-            
-            if key:
-                if key == 'up':
-                    selected_index = (selected_index - 1) % len(_menu_items)
-                    display_menu(selected_index)
-                    print(f"↑ {_menu_items[selected_index]}")
-                        
-                elif key == 'down':
-                    selected_index = (selected_index + 1) % len(_menu_items)
-                    display_menu(selected_index)
-                    print(f"↓ {_menu_items[selected_index]}")
-                        
-                elif key == '\r' or key == '\n':  # Enter
-                    print(f"✓ Executing: {_menu_items[selected_index]}")
-                    # Execute functionality
-                    if selected_index == 0:
-                        print("NEW FILE functionality")
-                    elif selected_index == 1:
-                        print("OPEN FILE functionality")
-                    elif selected_index == 2:
-                        print("SETTINGS functionality")
-                    elif selected_index == 3:
-                        print("CREDITS functionality")
-                    break
-                        
-                elif key == '\x7f' or key == '\x08':  # Backspace
-                    print("Returning to logo...")
-                    input_handler.cleanup()  # Clean up before switching
-                    
-                    # Import and run logo module directly
-                    import logo
-                    logo.display_logo()
-                    time.sleep(2)  # Show logo for 2 seconds
-                    
-                    # Re-initialize input for when we return
-                    input_handler = InputHandler()
-                    continue
-                    
-                elif key == 'q' or key == 'Q':
-                    print("Quitting menu...")
-                    break
-                    
-                else:
-                    print(f"Key pressed: {repr(key)}")
-            else:
-                # No key pressed, sleep briefly to reduce CPU usage
-                time.sleep(0.01)
-                
-    except KeyboardInterrupt:
-        print("\nMenu interrupted")
-    except Exception as e:
-        print(f"Error: {e}")
-        import traceback
-        traceback.print_exc()
+        # Check for arrow keys
+        if ch == '\x1b':
+            # Read the next 2 characters
+            next_ch = sys.stdin.read(1)
+            if next_ch == '[':
+                arrow_ch = sys.stdin.read(1)
+                if arrow_ch == 'A':
+                    return 'up'
+                elif arrow_ch == 'B':
+                    return 'down'
+        
+        return ch
     finally:
-        # Always clean up terminal settings
-        input_handler.cleanup()
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
-# Pre-initialize resources on import
-_init_resources()
+def handle_menu():
+    """Main menu handling function"""
+    global current_selection
+    
+    # Load resources
+    load_resources()
+    
+    print("=== MENU ===")
+    print("Arrow Keys: Navigate")
+    print("Enter: Select")
+    print("Backspace: Return to logo")
+    print("Q: Quit")
+    print("=" * 11)
+    
+    # Initial draw
+    draw_menu(current_selection)
+    print(f"Selected: {menu_items[current_selection]}")
+    
+    while True:
+        try:
+            print("\nWaiting for input...")
+            key = get_key()
+            
+            if key == 'up':
+                current_selection = (current_selection - 1) % len(menu_items)
+                draw_menu(current_selection)
+                print(f"↑ {menu_items[current_selection]}")
+                
+            elif key == 'down':
+                current_selection = (current_selection + 1) % len(menu_items)
+                draw_menu(current_selection)
+                print(f"↓ {menu_items[current_selection]}")
+                
+            elif key == '\r' or key == '\n':  # Enter
+                print(f"\n✓ SELECTED: {menu_items[current_selection]}")
+                print("-" * 30)
+                
+                # Handle selection
+                if current_selection == 0:
+                    print("NEW FILE selected")
+                    # Add your new file code here
+                elif current_selection == 1:
+                    print("OPEN FILE selected")
+                    # Add your open file code here
+                elif current_selection == 2:
+                    print("SETTINGS selected")
+                    # Add your settings code here
+                elif current_selection == 3:
+                    print("CREDITS selected")
+                    # Add your credits code here
+                
+                print("Press any key to continue...")
+                get_key()  # Wait for key press
+                draw_menu(current_selection)  # Redraw menu
+                
+            elif key == '\x7f' or key == '\x08':  # Backspace
+                print("\nReturning to logo...")
+                import logo
+                logo.display_logo()
+                time.sleep(2)
+                return  # Exit menu, back to logo
+                
+            elif key == 'q' or key == 'Q':
+                print("\nQuitting...")
+                break
+                
+            else:
+                print(f"Key pressed: {repr(key)} (not a menu command)")
+                
+        except KeyboardInterrupt:
+            print("\n\nExiting...")
+            break
+        except Exception as e:
+            print(f"\nError: {e}")
+            break
 
 if __name__ == "__main__":
-    handle_menu_selection()
+    handle_menu()
