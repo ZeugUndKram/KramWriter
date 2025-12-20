@@ -18,14 +18,15 @@ display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 400, 240)
 # CACHED GLOBALS
 _arrow_image = None
 _font = None
-_menu_cache = {}  # Cache rendered menu images by selected_index
+_base_image = None
 _menu_items = ["NEW FILE", "OPEN FILE", "SETTINGS", "CREDITS"]
 _item_height = 45
-_last_selected_index = -1  # Track last selected index to clear previous arrow
+_start_y = None
+_text_positions = []
 
 def _init_resources():
     """Initialize and cache expensive resources once"""
-    global _arrow_image, _font
+    global _arrow_image, _font, _base_image, _start_y, _text_positions
     
     if _arrow_image is None:
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -52,94 +53,56 @@ def _init_resources():
             print(f"Custom font not found: {font_path}")
             _font = ImageFont.load_default()
     
-    # Pre-calculate text dimensions for all menu items
-    if not hasattr(_font, '_text_dimensions'):
-        _font._text_dimensions = []
-        temp_draw = ImageDraw.Draw(Image.new("1", (1, 1)))
-        for item in _menu_items:
-            bbox = temp_draw.textbbox((0, 0), item, font=_font)
-            _font._text_dimensions.append({
-                'width': bbox[2] - bbox[0],
-                'height': bbox[3] - bbox[1],
-                'bbox': bbox  # Store full bbox for calculations
-            })
-
-def _render_menu_image(selected_index=0):
-    """Render menu image with arrow at selected position"""
-    global _last_selected_index
-    
-    # Check cache first (only if we don't need to clear previous arrow)
-    if selected_index in _menu_cache and _last_selected_index == -1:
-        return _menu_cache[selected_index]
-    
-    # Initialize resources if needed
-    _init_resources()
-    
-    # Create base menu image or get cached version
-    if "base_image" not in _menu_cache:
-        image = Image.new("1", (display.width, display.height), 255)
-        draw = ImageDraw.Draw(image)
+    # Create base image with all menu text (no arrows)
+    if _base_image is None:
+        _base_image = Image.new("1", (display.width, display.height), 255)
+        draw = ImageDraw.Draw(_base_image)
         
         # Calculate total height and starting Y
         total_height = len(_menu_items) * _item_height
-        start_y = (display.height - total_height) // 2
+        _start_y = (display.height - total_height) // 2
         
-        # Draw all menu items (without arrows)
+        # Draw all menu items and store their positions
+        _text_positions = []
         for i, item in enumerate(_menu_items):
-            y_position = start_y + (i * _item_height)
-            dim = _font._text_dimensions[i]
-            x_position = (display.width - dim['width']) // 2
+            y_position = _start_y + (i * _item_height)
+            
+            # Get text bounding box
+            bbox = draw.textbbox((0, 0), item, font=_font)
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
+            
+            x_position = (display.width - text_width) // 2
+            
+            # Draw text
             draw.text((x_position, y_position), item, font=_font, fill=0)
-        
-        _menu_cache["base_image"] = image
-        _menu_cache["start_y"] = start_y
-        _menu_cache["image_copy"] = image.copy()  # Keep a clean copy
-    else:
-        # Start with clean base image (no arrows)
-        image = _menu_cache["image_copy"].copy()
-        draw = ImageDraw.Draw(image)
-        start_y = _menu_cache["start_y"]
-    
-    # Clear previous arrow if exists
-    if _last_selected_index >= 0 and _last_selected_index < len(_menu_items):
-        prev_dim = _font._text_dimensions[_last_selected_index]
-        prev_y = start_y + (_last_selected_index * _item_height)
-        prev_x = (display.width - prev_dim['width']) // 2
-        prev_arrow_x = prev_x - _arrow_image.width - 15
-        prev_arrow_y = prev_y + (prev_dim['height'] // 2 - _arrow_image.height // 2) + 9
-        
-        # Clear previous arrow area (draw white rectangle)
-        draw.rectangle(
-            (prev_arrow_x - 2, prev_arrow_y - 2, 
-             prev_arrow_x + _arrow_image.width + 2, 
-             prev_arrow_y + _arrow_image.height + 2),
-            fill=255, outline=255
-        )
-    
-    # Draw new arrow for current selection
-    if _arrow_image:
-        dim = _font._text_dimensions[selected_index]
-        y_position = start_y + (selected_index * _item_height)
-        x_position = (display.width - dim['width']) // 2
-        
-        arrow_x = x_position - _arrow_image.width - 15
-        arrow_y = y_position + (dim['height'] // 2 - _arrow_image.height // 2) + 9
-        
-        # Paste new arrow
-        image.paste(_arrow_image, (arrow_x, arrow_y))
-    
-    # Update last selected index
-    _last_selected_index = selected_index
-    
-    # Cache the result
-    _menu_cache[selected_index] = image
-    return image
+            
+            # Store position for arrow placement
+            _text_positions.append({
+                'x': x_position,
+                'y': y_position,
+                'width': text_width,
+                'height': text_height,
+                'arrow_x': x_position - _arrow_image.width - 15,
+                'arrow_y': y_position + (text_height // 2 - _arrow_image.height // 2) + 9
+            })
 
 def display_menu(selected_index=0):
-    """Optimized display update - moves arrow between options"""
+    """Display menu with arrow at selected position"""
     try:
-        # Get rendered image with arrow at correct position
-        image = _render_menu_image(selected_index)
+        # Initialize resources if needed
+        _init_resources()
+        
+        # Start with clean base image (no arrows)
+        image = _base_image.copy()
+        draw = ImageDraw.Draw(image)
+        
+        # Draw arrow at selected position
+        if _arrow_image and selected_index < len(_text_positions):
+            pos = _text_positions[selected_index]
+            
+            # Draw arrow
+            image.paste(_arrow_image, (pos['arrow_x'], pos['arrow_y']))
         
         # Update display
         display.image(image)
@@ -204,9 +167,7 @@ class InputHandler:
 
 def handle_menu_selection():
     """Optimized menu navigation with proper input handling"""
-    global _last_selected_index
     selected_index = 0
-    _last_selected_index = -1  # Reset when starting menu
     
     print("=== Optimized Menu ===")
     print("UP/DOWN: navigate, ENTER: select, BACKSPACE: return to logo, Q: quit")
