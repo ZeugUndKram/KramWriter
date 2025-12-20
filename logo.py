@@ -1,57 +1,49 @@
 import board
 import busio
 import digitalio
-from PIL import Image
+from PIL import Image, ImageDraw
 import adafruit_sharpmemorydisplay
 import os
 import time
 
-# Initialize SPI and CS pin (genau wie im Beispiel)
+# Initialize SPI and CS pin
 spi = busio.SPI(board.SCK, MOSI=board.MOSI)
-scs = digitalio.DigitalInOut(board.D6)  # inverted chip select
-
-# Initialize display
+scs = digitalio.DigitalInOut(board.D6)
 display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 400, 240)
 
 def display_logo():
     try:
-        # Clear display
         display.fill(1)
         display.show()
         
-        # Load logo
         script_dir = os.path.dirname(os.path.abspath(__file__))
         logo_path = os.path.join(script_dir, "assets", "logo.bmp")
 
         if not os.path.exists(logo_path):
             print(f"Logo nicht gefunden: {logo_path}")
-            # Zeige Testmuster (wie im Beispiel)
-            image = Image.new("1", (display.width, display.height))
-            from PIL import ImageDraw
-            draw = ImageDraw.Draw(image)
-            draw.rectangle((0, 0, display.width, display.height), outline=0, fill=0)
-            draw.rectangle((50, 50, 350, 190), outline=1, fill=1)
-            display.image(image)
-            display.show()
             return False
 
-        # Load and convert image
-        logo = Image.open(logo_path).convert("1")
+        # Load image
+        logo = Image.open(logo_path)
+        print(f"Original: {logo.size}, Mode: {logo.mode}")
         
-        # Create blank image (wie im Beispiel)
+        # Convert WITHOUT dithering
+        if logo.mode != "1":
+            logo = logo.convert("L")  # Zu Grayscale
+            # Threshold-basierte Konvertierung (kein Dithering)
+            threshold = 128  # Anpassen falls nötig: 100-150
+            logo = logo.point(lambda x: 0 if x < threshold else 255, '1')
+        
+        # Create display image
         image = Image.new("1", (display.width, display.height))
-        
-        # Optional: Weißer Hintergrund
-        from PIL import ImageDraw
         draw = ImageDraw.Draw(image)
         draw.rectangle((0, 0, display.width, display.height), outline=1, fill=1)
         
-        # Center logo
+        # Center and paste
         x = (display.width - logo.size[0]) // 2
         y = (display.height - logo.size[1]) // 2
         image.paste(logo, (x, y))
         
-        # Display (genau wie im Beispiel)
         display.image(image)
         display.show()
         
@@ -68,8 +60,4 @@ if __name__ == "__main__":
     print("Starte Display-Test...")
     if display_logo():
         print("Erfolgreich!")
-    else:
-        print("Logo konnte nicht geladen werden")
-    
-    print("Display bleibt für 30 Sekunden an...")
     time.sleep(30)
