@@ -8,6 +8,7 @@ import time
 import sys
 import termios
 import tty
+import select
 
 # Initialize display
 spi = busio.SPI(board.SCK, MOSI=board.MOSI)
@@ -136,38 +137,57 @@ def display_menu(selected_index=0):
         traceback.print_exc()
         return False
 
-def get_key():
-    """Optimized key reading with timeout"""
-    fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
+class InputHandler:
+    """Handles non-blocking keyboard input"""
     
-    # Set shorter timeout for more responsive input
-    try:
-        tty.setraw(sys.stdin.fileno())
-        # Set non-blocking read with 0.01s timeout
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    def __init__(self):
+        self.fd = sys.stdin.fileno()
+        self.old_settings = termios.tcgetattr(self.fd)
+        self._setup_raw_mode()
         
-        # Use select for non-blocking input check
-        import select
-        if select.select([sys.stdin], [], [], 0.01)[0]:
-            ch = sys.stdin.read(1)
-            if ch == '\x1b':  # Escape sequence
-                # Quick check for arrow keys
-                sys.stdin.read(1)  # Skip '['
-                arrow_ch = sys.stdin.read(1)
-                if arrow_ch == 'A':
-                    return 'up'
-                elif arrow_ch == 'B':
-                    return 'down'
-            return ch
-        return None
-    except:
-        return None
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    def _setup_raw_mode(self):
+        """Set terminal to raw mode for direct key reading"""
+        tty.setraw(self.fd)
+        # Set minimal timeout
+        new_settings = termios.tcgetattr(self.fd)
+        new_settings[6][termios.VMIN] = 0  # Non-blocking
+        new_settings[6][termios.VTIME] = 0  # No timeout
+        termios.tcsetattr(self.fd, termios.TCSADRAIN, new_settings)
+    
+    def get_key(self):
+        """Get a single key press, returns None if no key"""
+        try:
+            # Check if key is available
+            if select.select([sys.stdin], [], [], 0.01)[0]:
+                ch = sys.stdin.read(1)
+                
+                # Check for escape sequences (arrow keys)
+                if ch == '\x1b':
+                    # Check if more characters are available
+                    if select.select([sys.stdin], [], [], 0.01)[0]:
+                        next_ch = sys.stdin.read(1)
+                        if next_ch == '[':
+                            if select.select([sys.stdin], [], [], 0.01)[0]:
+                                arrow_ch = sys.stdin.read(1)
+                                if arrow_ch == 'A':
+                                    return 'up'
+                                elif arrow_ch == 'B':
+                                    return 'down'
+                                else:
+                                    # Read any remaining chars to clear buffer
+                                    while select.select([sys.stdin], [], [], 0)[0]:
+                                        sys.stdin.read(1)
+                return ch
+            return None
+        except Exception as e:
+            return None
+    
+    def cleanup(self):
+        """Restore terminal settings"""
+        termios.tcsetattr(self.fd, termios.TCSADRAIN, self.old_settings)
 
 def handle_menu_selection():
-    """Optimized menu navigation with debouncing"""
+    """Optimized menu navigation with proper input handling"""
     selected_index = 0
     last_display_time = 0
     DISPLAY_DEBOUNCE = 0.05  # 50ms minimum between updates
@@ -175,68 +195,79 @@ def handle_menu_selection():
     print("=== Optimized Menu ===")
     print("UP/DOWN: navigate, ENTER: select, BACKSPACE: return to logo, Q: quit")
     
-    # Initial display
-    display_menu(selected_index)
-    print(f"Selected: {_menu_items[selected_index]}")
+    # Create input handler
+    input_handler = InputHandler()
     
-    while True:
-        try:
-            key = get_key()
+    try:
+        # Initial display
+        display_menu(selected_index)
+        print(f"Selected: {_menu_items[selected_index]}")
+        
+        while True:
+            key = input_handler.get_key()
             
-            if not key:
-                time.sleep(0.01)  # Small sleep to reduce CPU usage
-                continue
-            
-            current_time = time.time()
-            
-            if key == 'up':
-                selected_index = (selected_index - 1) % len(_menu_items)
-                if current_time - last_display_time >= DISPLAY_DEBOUNCE:
-                    display_menu(selected_index)
-                    print(f"↑ {_menu_items[selected_index]}")
-                    last_display_time = current_time
-                    
-            elif key == 'down':
-                selected_index = (selected_index + 1) % len(_menu_items)
-                if current_time - last_display_time >= DISPLAY_DEBOUNCE:
-                    display_menu(selected_index)
-                    print(f"↓ {_menu_items[selected_index]}")
-                    last_display_time = current_time
-                    
-            elif key == '\r' or key == '\n':  # Enter
-                print(f"✓ Executing: {_menu_items[selected_index]}")
-                # Execute functionality
-                if selected_index == 0:
-                    print("NEW FILE functionality")
-                elif selected_index == 1:
-                    print("OPEN FILE functionality")
-                elif selected_index == 2:
-                    print("SETTINGS functionality")
-                elif selected_index == 3:
-                    print("CREDITS functionality")
-                break
-                    
-            elif key == '\x7f' or key == '\x08':  # Backspace
-                print("Returning to logo...")
-                # Import and run logo module directly
-                import logo
-                logo.display_logo()
-                time.sleep(2)  # Show logo for 2 seconds
-                return
+            if key:
+                current_time = time.time()
                 
-            elif key == 'q' or key == 'Q':
-                print("Quitting menu...")
-                break
+                if key == 'up':
+                    selected_index = (selected_index - 1) % len(_menu_items)
+                    if current_time - last_display_time >= DISPLAY_DEBOUNCE:
+                        display_menu(selected_index)
+                        print(f"↑ {_menu_items[selected_index]}")
+                        last_display_time = current_time
+                        
+                elif key == 'down':
+                    selected_index = (selected_index + 1) % len(_menu_items)
+                    if current_time - last_display_time >= DISPLAY_DEBOUNCE:
+                        display_menu(selected_index)
+                        print(f"↓ {_menu_items[selected_index]}")
+                        last_display_time = current_time
+                        
+                elif key == '\r' or key == '\n':  # Enter
+                    print(f"✓ Executing: {_menu_items[selected_index]}")
+                    # Execute functionality
+                    if selected_index == 0:
+                        print("NEW FILE functionality")
+                    elif selected_index == 1:
+                        print("OPEN FILE functionality")
+                    elif selected_index == 2:
+                        print("SETTINGS functionality")
+                    elif selected_index == 3:
+                        print("CREDITS functionality")
+                    break
+                        
+                elif key == '\x7f' or key == '\x08':  # Backspace
+                    print("Returning to logo...")
+                    input_handler.cleanup()  # Clean up before switching
+                    
+                    # Import and run logo module directly
+                    import logo
+                    logo.display_logo()
+                    time.sleep(2)  # Show logo for 2 seconds
+                    
+                    # Re-initialize input for when we return
+                    input_handler = InputHandler()
+                    continue
+                    
+                elif key == 'q' or key == 'Q':
+                    print("Quitting menu...")
+                    break
+                    
+                else:
+                    print(f"Key pressed: {repr(key)}")
+            else:
+                # No key pressed, sleep briefly to reduce CPU usage
+                time.sleep(0.01)
                 
-            elif key:
-                print(f"Key: {repr(key)}")
-                
-        except KeyboardInterrupt:
-            print("\nMenu interrupted")
-            break
-        except Exception as e:
-            print(f"Error: {e}")
-            break
+    except KeyboardInterrupt:
+        print("\nMenu interrupted")
+    except Exception as e:
+        print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        # Always clean up terminal settings
+        input_handler.cleanup()
 
 # Pre-initialize resources on import
 _init_resources()
