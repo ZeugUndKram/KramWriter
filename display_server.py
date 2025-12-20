@@ -1,8 +1,5 @@
+cat > display_server.py << 'EOF'
 #!/usr/bin/env python3
-"""
-Display Server für Sharp Memory Display
-Kommuniziert über Unix Socket mit C-Programmen
-"""
 import board
 import busio
 import digitalio
@@ -13,24 +10,20 @@ import os
 import struct
 import sys
 
-# Display Setup
 spi = busio.SPI(board.SCK, MOSI=board.MOSI)
 scs = digitalio.DigitalInOut(board.D6)
 display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 400, 240)
 
-# Socket path
 SOCKET_PATH = "/tmp/display_server.sock"
-
-# Cache für Bilder
 image_cache = {}
 
 def clear_display():
-    """Leert das Display"""
+    print("  -> Clearing display")
     display.fill(1)
     display.show()
 
 def draw_text(text, x, y, font_size=20):
-    """Zeigt Text an"""
+    print(f"  -> Drawing text: '{text}' at ({x}, {y})")
     image = Image.new("1", (display.width, display.height))
     draw = ImageDraw.Draw(image)
     draw.rectangle((0, 0, display.width, display.height), outline=1, fill=1)
@@ -45,8 +38,12 @@ def draw_text(text, x, y, font_size=20):
     display.show()
 
 def draw_image(path, x=None, y=None):
-    """Zeigt Bild an (zentriert wenn x,y=None)"""
-    # Cache check
+    print(f"  -> Drawing image: {path} at ({x}, {y})")
+    
+    if not os.path.exists(path):
+        print(f"  -> ERROR: File not found: {path}")
+        return False
+    
     if path in image_cache:
         logo = image_cache[path]
     else:
@@ -55,22 +52,26 @@ def draw_image(path, x=None, y=None):
             logo = logo.convert("L")
             logo = logo.point(lambda p: 0 if p < 128 else 255, '1')
         image_cache[path] = logo
+        print(f"  -> Loaded and cached: {logo.size}")
     
     image = Image.new("1", (display.width, display.height))
     draw = ImageDraw.Draw(image)
     draw.rectangle((0, 0, display.width, display.height), outline=1, fill=1)
     
-    if x is None:
+    if x is None or x == -1:
         x = (display.width - logo.size[0]) // 2
-    if y is None:
+    if y is None or y == -1:
         y = (display.height - logo.size[1]) // 2
     
+    print(f"  -> Pasting at ({x}, {y})")
     image.paste(logo, (x, y))
     display.image(image)
     display.show()
+    print("  -> Display updated!")
+    return True
 
 def draw_rect(x, y, w, h, fill=False):
-    """Zeichnet Rechteck"""
+    print(f"  -> Drawing rect: ({x}, {y}, {w}, {h}), fill={fill}")
     image = Image.new("1", (display.width, display.height))
     draw = ImageDraw.Draw(image)
     draw.rectangle((0, 0, display.width, display.height), outline=1, fill=1)
@@ -79,24 +80,28 @@ def draw_rect(x, y, w, h, fill=False):
     display.show()
 
 def draw_raw_buffer(data):
-    """Zeigt raw 1-bit Buffer (400x240 bits = 12000 bytes)"""
+    print(f"  -> Drawing raw buffer: {len(data)} bytes")
     if len(data) != 12000:
+        print(f"  -> ERROR: Expected 12000 bytes, got {len(data)}")
         return False
     
-    image = Image.frombytes("1", (400, 240), data)
+    # PIL erwartet die Bits in einem bestimmten Format
+    # 400x240 = 96000 bits = 12000 bytes
+    image = Image.frombytes("1", (400, 240), bytes(data))
     display.image(image)
     display.show()
+    print("  -> Raw buffer displayed!")
     return True
 
 def handle_command(command, data):
-    """Verarbeitet Kommandos"""
+    print(f"Command: {command}, Data length: {len(data)}")
+    
     try:
-        if command == b"CLEAR":
+        if command == b"CLEAR\x00\x00\x00":
             clear_display()
             return b"OK"
         
-        elif command == b"TEXT":
-            # Format: x(4) y(4) size(4) text(rest)
+        elif command == b"TEXT\x00\x00\x00\x00":
             x = struct.unpack("i", data[0:4])[0]
             y = struct.unpack("i", data[4:8])[0]
             size = struct.unpack("i", data[8:12])[0]
@@ -104,23 +109,22 @@ def handle_command(command, data):
             draw_text(text, x, y, size)
             return b"OK"
         
-        elif command == b"IMAGE":
-            # Format: x(4) y(4) path(rest)
+        elif command == b"IMAGE\x00\x00\x00":
             x = struct.unpack("i", data[0:4])[0]
             y = struct.unpack("i", data[4:8])[0]
             path = data[8:].decode('utf-8')
+            print(f"  -> Params: x={x}, y={y}, path={path}")
             
-            # -1 bedeutet zentriert
             if x == -1:
                 x = None
             if y == -1:
                 y = None
             
-            draw_image(path, x, y)
-            return b"OK"
+            if draw_image(path, x, y):
+                return b"OK"
+            return b"ERROR"
         
-        elif command == b"RECT":
-            # Format: x(4) y(4) w(4) h(4) fill(1)
+        elif command == b"RECT\x00\x00\x00\x00":
             x = struct.unpack("i", data[0:4])[0]
             y = struct.unpack("i", data[4:8])[0]
             w = struct.unpack("i", data[8:12])[0]
@@ -129,30 +133,30 @@ def handle_command(command, data):
             draw_rect(x, y, w, h, fill)
             return b"OK"
         
-        elif command == b"RAWBUF":
-            # Raw 12000 byte buffer
+        elif command == b"RAWBUF\x00\x00":
             if draw_raw_buffer(data):
                 return b"OK"
             return b"ERROR"
         
         else:
+            print(f"  -> UNKNOWN command: {command}")
             return b"UNKNOWN"
     
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"  -> ERROR: {e}")
+        import traceback
+        traceback.print_exc()
         return b"ERROR"
 
 def main():
-    # Remove old socket
     try:
         os.unlink(SOCKET_PATH)
     except OSError:
         pass
     
-    # Create socket
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     sock.bind(SOCKET_PATH)
-    os.chmod(SOCKET_PATH, 0o666)  # Allow all users
+    os.chmod(SOCKET_PATH, 0o666)
     sock.listen(1)
     
     print(f"Display Server läuft auf {SOCKET_PATH}")
@@ -160,21 +164,26 @@ def main():
     
     try:
         while True:
+            print("\nWaiting for connection...")
             conn, _ = sock.accept()
+            print("Client connected!")
+            
             try:
-                # Empfange Command (8 bytes)
                 cmd = conn.recv(8)
                 if not cmd:
+                    print("No command received")
                     continue
                 
-                # Empfange Data Length (4 bytes)
+                print(f"Received command: {cmd}")
+                
                 length_data = conn.recv(4)
                 if not length_data:
+                    print("No length received")
                     continue
                 
                 data_len = struct.unpack("i", length_data)[0]
+                print(f"Data length: {data_len}")
                 
-                # Empfange Data
                 data = b""
                 while len(data) < data_len:
                     chunk = conn.recv(min(4096, data_len - len(data)))
@@ -182,12 +191,15 @@ def main():
                         break
                     data += chunk
                 
-                # Verarbeite
+                print(f"Received {len(data)} bytes of data")
+                
                 response = handle_command(cmd, data)
                 conn.sendall(response)
+                print(f"Sent response: {response}")
             
             finally:
                 conn.close()
+                print("Connection closed")
     
     except KeyboardInterrupt:
         print("\nShutdown...")
@@ -197,3 +209,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+EOF
