@@ -21,10 +21,12 @@ menu_items = ["NEW FILE", "OPEN FILE", "SETTINGS", "CREDITS"]
 current_selection = 0
 last_selection = -1
 text_positions = []
+base_image = None  # Image without arrows
+current_image = None  # Current displayed image
 
 def setup():
     """One-time setup of all resources"""
-    global arrow_image, font, text_positions
+    global arrow_image, font, text_positions, base_image
     
     script_dir = os.path.dirname(os.path.abspath(__file__))
     
@@ -47,8 +49,8 @@ def setup():
         font = ImageFont.load_default()
     
     # Pre-calculate all text positions (ONE TIME)
-    temp_image = Image.new("1", (display.width, display.height), 255)
-    temp_draw = ImageDraw.Draw(temp_image)
+    base_image = Image.new("1", (display.width, display.height), 255)
+    draw = ImageDraw.Draw(base_image)
     
     item_height = 45
     total_height = len(menu_items) * item_height
@@ -57,64 +59,63 @@ def setup():
     text_positions = []
     for i, item in enumerate(menu_items):
         y = start_y + (i * item_height)
-        bbox = temp_draw.textbbox((0, 0), item, font=font)
+        bbox = draw.textbbox((0, 0), item, font=font)
         text_width = bbox[2] - bbox[0]
         text_height = bbox[3] - bbox[1]
         x = (display.width - text_width) // 2
         
+        # Draw text to base image
+        draw.text((x, y), item, font=font, fill=0)
+        
         text_positions.append({
             'x': x,
             'y': y,
-            'text_width': text_width,
-            'text_height': text_height,
             'arrow_x': x - arrow_image.width - 15,
-            'arrow_y': y + (text_height // 2 - arrow_image.height // 2) + 9
+            'arrow_y': y + (text_height // 2 - arrow_image.height // 2) + 9,
+            'clear_area': (
+                x - arrow_image.width - 17,  # x - 2
+                y + (text_height // 2 - arrow_image.height // 2) + 7,  # y - 2
+                x - 13,  # x + arrow_image.width + 2
+                y + (text_height // 2 - arrow_image.height // 2) + 11 + arrow_image.height  # y + arrow_image.height + 2
+            )
         })
 
 def draw_initial_menu():
     """Draw complete menu once"""
-    # Create clean white background
-    image = Image.new("1", (display.width, display.height), 255)
-    draw = ImageDraw.Draw(image)
+    global current_image
     
-    # Draw all menu items
-    for i, item in enumerate(menu_items):
-        pos = text_positions[i]
-        draw.text((pos['x'], pos['y']), item, font=font, fill=0)
+    # Start with base image (text only)
+    current_image = base_image.copy()
     
     # Draw initial arrow
     pos = text_positions[current_selection]
-    image.paste(arrow_image, (pos['arrow_x'], pos['arrow_y']))
+    current_image.paste(arrow_image, (pos['arrow_x'], pos['arrow_y']))
     
     # Show on display
-    display.image(image)
+    display.image(current_image)
     display.show()
 
 def update_arrow_position(new_selection):
-    """Fast update: only move the arrow"""
-    global current_selection, last_selection
+    """Fast update: only move the arrow by updating the image buffer"""
+    global current_selection, last_selection, current_image
     
     if new_selection == last_selection:
         return
     
+    # Create a draw object for our current image
+    draw = ImageDraw.Draw(current_image)
+    
     # Clear old arrow (draw white rectangle over it)
     if last_selection >= 0:
         old_pos = text_positions[last_selection]
-        display.fill_rect(
-            old_pos['arrow_x'] - 2, old_pos['arrow_y'] - 2,
-            arrow_image.width + 4, arrow_image.height + 4,
-            1  # White
-        )
+        draw.rectangle(old_pos['clear_area'], fill=255, outline=255)
     
     # Draw new arrow
     new_pos = text_positions[new_selection]
-    display.bitmap(
-        new_pos['arrow_x'], new_pos['arrow_y'],
-        arrow_image.width, arrow_image.height,
-        arrow_image.getdata(), 1
-    )
+    current_image.paste(arrow_image, (new_pos['arrow_x'], new_pos['arrow_y']))
     
-    # Show updates
+    # Update display with the modified image
+    display.image(current_image)
     display.show()
     
     # Update state
@@ -144,8 +145,8 @@ def get_key():
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 def run_menu():
-    """Main menu loop - simple and fast"""
-    global current_selection
+    """Main menu loop - optimized for SharpMemoryDisplay"""
+    global current_selection, last_selection
     
     # Setup once
     setup()
