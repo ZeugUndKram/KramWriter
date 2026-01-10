@@ -1,10 +1,7 @@
 import board
 import busio
 import digitalio
-import sys
-import select
-import termios
-import tty
+import keyboard  # pip install keyboard
 import time
 from PIL import Image, ImageDraw, ImageFont
 import adafruit_sharpmemorydisplay
@@ -14,108 +11,115 @@ WHITE = 255
 
 # Parameters to Change
 BORDER = 5
-FONTSIZE = 30
-LINE_SPACING = 5  # Space between text lines
+FONTSIZE = 24  # Increased for better visibility
+LINE_SPACING = 10
+NORMAL_TEXT = "Hello World!"
+PENIS_TEXT = "penis"
 
 # Initialize SPI and display
 spi = busio.SPI(board.SCK, MOSI=board.MOSI)
 scs = digitalio.DigitalInOut(board.D6)  # inverted chip select
-
 display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 400, 240)
 
-# Initial text values
-text_lines = [
-    "Hello World!",
-    "Welcome!"
-]
+# Track current state
+current_top_text = NORMAL_TEXT
+space_was_pressed = False
 
-def update_display():
-    """Update the display with current text lines"""
-    # Create blank image for drawing.
+def update_display(top_text, bottom_text="Welcome!"):
+    """Update the display with the given text"""
+    # Create blank image
     image = Image.new("1", (display.width, display.height))
     draw = ImageDraw.Draw(image)
 
-    # Draw a black background
+    # Draw background
     draw.rectangle((0, 0, display.width, display.height), outline=BLACK, fill=BLACK)
-
-    # Draw a smaller inner rectangle
     draw.rectangle(
         (BORDER, BORDER, display.width - BORDER - 1, display.height - BORDER - 1),
         outline=WHITE,
         fill=WHITE,
     )
 
-    # Load a TTF font.
-    font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", FONTSIZE)
+    # Load font
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", FONTSIZE)
+    except:
+        # Fallback to default font
+        font = ImageFont.load_default()
 
-    # Calculate dimensions for each line
-    line_metrics = []
-    for line in text_lines:
-        bbox = font.getbbox(line)
-        width = bbox[2] - bbox[0]
-        height = bbox[3] - bbox[1]
-        line_metrics.append({"text": line, "width": width, "height": height})
+    # Calculate text positions
+    top_bbox = font.getbbox(top_text)
+    bottom_bbox = font.getbbox(bottom_text)
+    
+    top_width = top_bbox[2] - top_bbox[0]
+    top_height = top_bbox[3] - top_bbox[1]
+    bottom_width = bottom_bbox[2] - bottom_bbox[0]
+    bottom_height = bottom_bbox[3] - bottom_bbox[1]
 
-    # Assuming all lines have similar height, use the first one
-    font_height = line_metrics[0]["height"]
+    # Center both lines
+    top_x = display.width // 2 - top_width // 2
+    bottom_x = display.width // 2 - bottom_width // 2
+    
+    # Position lines with spacing
+    total_height = top_height + LINE_SPACING + bottom_height
+    start_y = display.height // 2 - total_height // 2
+    
+    # Draw top text
+    draw.text((top_x, start_y), top_text, font=font, fill=BLACK)
+    
+    # Draw bottom text
+    draw.text((bottom_x, start_y + top_height + LINE_SPACING), 
+              bottom_text, font=font, fill=BLACK)
 
-    # Calculate total text block height
-    total_text_height = (font_height * len(text_lines)) + (LINE_SPACING * (len(text_lines) - 1))
-
-    # Calculate starting Y position
-    start_y = display.height // 2 - total_text_height // 2
-
-    # Draw each line
-    for i, metrics in enumerate(line_metrics):
-        y_position = start_y + i * (font_height + LINE_SPACING)
-        x_position = display.width // 2 - metrics["width"] // 2
-        draw.text(
-            (x_position, y_position),
-            metrics["text"],
-            font=font,
-            fill=BLACK,
-        )
-
+    # Update display
     display.image(image)
     display.show()
 
-def get_key():
-    """Get a single keypress without waiting for Enter"""
-    fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
-    try:
-        tty.setraw(sys.stdin.fileno())
-        ch = sys.stdin.read(1)
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-    return ch
-
 # Initial display
-update_display()
+print("=" * 50)
+print("PENIS DISPLAY CONTROLLER")
+print("=" * 50)
+print("INSTRUCTIONS:")
+print("- Press SPACE to toggle between 'Hello World!' and 'penis'")
+print("- Press ESC to exit")
+print("- No need to press Enter!")
+print("=" * 50)
 
-print("Press SPACE to change the first line to 'penis'")
-print("Press 'q' to exit")
+update_display(current_top_text)
 
 try:
     while True:
-        # Check for key press
-        if select.select([sys.stdin], [], [], 0)[0]:
-            key = get_key()
-            if key == 'k':  # Space key
-                text_lines[0] = "penis"
-                update_display()
-                print("Changed first line to 'penis'")
-            elif key.lower() == 'q':  # Quit
-                print("Exiting...")
-                break
-            elif key == '\x03':  # Ctrl+C
-                raise KeyboardInterrupt
-        time.sleep(0.1)
-        
+        # Check for space key (toggle text)
+        if keyboard.is_pressed('space'):
+            if not space_was_pressed:  # Prevent holding key from spamming
+                if current_top_text == NORMAL_TEXT:
+                    current_top_text = PENIS_TEXT
+                    print(f"Text changed to: {PENIS_TEXT}")
+                else:
+                    current_top_text = NORMAL_TEXT
+                    print(f"Text changed to: {NORMAL_TEXT}")
+                
+                update_display(current_top_text)
+                space_was_pressed = True
+        else:
+            space_was_pressed = False  # Reset when space is released
+
+        # Check for escape key to exit
+        if keyboard.is_pressed('esc'):
+            print("\nExiting program...")
+            break
+
+        # Small delay to prevent CPU overload
+        time.sleep(0.05)
+
 except KeyboardInterrupt:
-    print("\nProgram interrupted")
+    print("\nProgram interrupted by user")
+
 except Exception as e:
-    print(f"Error: {e}")
+    print(f"\nError: {e}")
+
 finally:
-    # Reset terminal
-    termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, termios.tcgetattr(sys.stdin.fileno()))
+    print("Cleaning up...")
+    # Clear display
+    display.fill(1)
+    display.show()
+    print("Display cleared. Goodbye!")
