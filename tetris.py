@@ -56,6 +56,13 @@ class Tetris:
         # Initialize field
         self.field = [[0 for _ in range(width)] for _ in range(height)]
         
+        # Line clearing animation
+        self.lines_to_clear = []  # Stores lines that need to be cleared
+        self.line_clear_timer = 0  # Timer for blinking animation
+        self.line_blink_state = True  # Current blink state (True = visible, False = invisible)
+        self.line_clear_duration = 0.5  # Total duration of clearing animation in seconds
+        self.line_blink_interval = 0.1  # Time between blinks in seconds
+        
         # Load font
         try:
             self.font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
@@ -83,21 +90,52 @@ class Tetris:
                     self.field[i + self.figure.y][j + self.figure.x] = self.figure.color
         
         # Check for completed lines
-        lines_to_remove = []
+        self.lines_to_clear = []
         for i in range(self.height):
             if all(cell > 0 for cell in self.field[i]):
-                lines_to_remove.append(i)
+                self.lines_to_clear.append(i)
         
-        # Remove lines and add to score
-        for line in reversed(lines_to_remove):
-            del self.field[line]
-            self.field.insert(0, [0 for _ in range(self.width)])
-            self.score += 10 * self.level
+        # Start blinking animation if there are lines to clear
+        if self.lines_to_clear:
+            self.line_clear_timer = time.time()
+            self.state = "clearing"
+            return
         
         # Create new figure
         self.new_figure()
         if self.intersects():
             self.state = "gameover"
+
+    def clear_lines(self):
+        """Remove completed lines and update score"""
+        lines_cleared = len(self.lines_to_clear)
+        
+        # Remove lines and add to score
+        for line in reversed(self.lines_to_clear):
+            del self.field[line]
+            self.field.insert(0, [0 for _ in range(self.width)])
+        
+        # Add score based on number of lines cleared
+        if lines_cleared > 0:
+            # Standard Tetris scoring: more points for multiple lines
+            if lines_cleared == 1:
+                self.score += 100 * self.level
+            elif lines_cleared == 2:
+                self.score += 300 * self.level
+            elif lines_cleared == 3:
+                self.score += 500 * self.level
+            elif lines_cleared >= 4:
+                self.score += 800 * self.level  # Tetris!
+        
+        # Reset line clearing state
+        self.lines_to_clear = []
+        
+        # Create new figure
+        self.new_figure()
+        if self.intersects():
+            self.state = "gameover"
+        else:
+            self.state = "start"
 
     def go_down(self):
         self.figure.y += 1
@@ -133,8 +171,12 @@ class Tetris:
             outline=WHITE, fill=BLACK
         )
         
-        # Draw placed blocks
+        # Draw placed blocks (except blinking lines if in clearing state)
         for i in range(self.height):
+            # Skip drawing if this line is being cleared and it's in the "off" blink state
+            if self.state == "clearing" and i in self.lines_to_clear and not self.line_blink_state:
+                continue
+                
             for j in range(self.width):
                 if self.field[i][j] > 0:
                     x = self.x + j * self.zoom
@@ -142,8 +184,8 @@ class Tetris:
                     draw.rectangle([x, y, x + self.zoom - 1, y + self.zoom - 1], 
                                   outline=WHITE, fill=WHITE)
         
-        # Draw current figure
-        if self.figure:
+        # Draw current figure (if not in clearing state)
+        if self.figure and self.state != "clearing":
             for i in range(4):
                 for j in range(4):
                     if i * 4 + j in self.figure.image():
@@ -159,6 +201,13 @@ class Tetris:
         # Draw level
         level_text = f"Level: {self.level}"
         draw.text((display.width - 80, 10), level_text, font=self.font, fill=WHITE)
+        
+        # Draw lines cleared indicator during animation
+        if self.state == "clearing" and self.lines_to_clear:
+            lines_text = f"Lines: {len(self.lines_to_clear)}"
+            text_width = draw.textlength(lines_text, font=self.font)
+            draw.text((display.width // 2 - text_width // 2, self.y + self.height * self.zoom + 10), 
+                     lines_text, font=self.font, fill=WHITE)
         
         # Draw controls help
         if self.state == "start":
@@ -179,12 +228,25 @@ class Tetris:
             draw.text((display.width // 2 - 50, display.height // 2 + 20), 
                      restart, font=self.font, fill=WHITE)
 
+    def update_animation(self, current_time):
+        """Update line clearing animation"""
+        if self.state == "clearing" and self.lines_to_clear:
+            elapsed_time = current_time - self.line_clear_timer
+            
+            # Calculate blink state based on elapsed time
+            blink_count = int(elapsed_time / self.line_blink_interval)
+            self.line_blink_state = (blink_count % 2 == 0)
+            
+            # If animation duration has passed, clear the lines
+            if elapsed_time >= self.line_clear_duration:
+                self.clear_lines()
+
 
 def curses_main(stdscr):
     # Setup curses
     curses.curs_set(0)
     stdscr.nodelay(True)
-    stdscr.timeout(100)  # 100ms timeout
+    stdscr.timeout(50)  # 50ms timeout for smoother animation
     
     # Create game
     game = Tetris(20, 10)
@@ -194,6 +256,7 @@ def curses_main(stdscr):
     counter = 0
     last_drop_time = time.time()
     drop_interval = 0.5  # Start with 0.5 seconds per drop
+    last_animation_update = time.time()
     
     print("\n" + "=" * 50)
     print("TETRIS on Sharp Memory Display")
@@ -204,26 +267,31 @@ def curses_main(stdscr):
         while True:
             current_time = time.time()
             
-            # Handle input
-            key = stdscr.getch()
+            # Update animation if in clearing state
+            if game.state == "clearing":
+                game.update_animation(current_time)
             
-            if key != -1:
-                if key == curses.KEY_UP:
-                    game.rotate()
-                elif key == curses.KEY_DOWN:
-                    game.go_down()
-                elif key == curses.KEY_LEFT:
-                    game.go_side(-1)
-                elif key == curses.KEY_RIGHT:
-                    game.go_side(1)
-                elif key == ord('r') or key == ord('R'):
-                    if game.state == "gameover":
-                        game = Tetris(20, 10)
-                        game.new_figure()
-                elif key == ord('q') or key == ord('Q'):
-                    break
+            # Handle input (only if not in clearing state)
+            if game.state != "clearing":
+                key = stdscr.getch()
+                
+                if key != -1:
+                    if key == curses.KEY_UP:
+                        game.rotate()
+                    elif key == curses.KEY_DOWN:
+                        game.go_down()
+                    elif key == curses.KEY_LEFT:
+                        game.go_side(-1)
+                    elif key == curses.KEY_RIGHT:
+                        game.go_side(1)
+                    elif key == ord('r') or key == ord('R'):
+                        if game.state == "gameover":
+                            game = Tetris(20, 10)
+                            game.new_figure()
+                    elif key == ord('q') or key == ord('Q'):
+                        break
             
-            # Auto-drop
+            # Auto-drop (only if in start state)
             if game.state == "start" and current_time - last_drop_time > drop_interval:
                 game.go_down()
                 last_drop_time = current_time
@@ -242,7 +310,7 @@ def curses_main(stdscr):
                 # Increase level every 100 updates
                 game.level = 1 + game.score // 100
             
-            # Small delay
+            # Small delay for smoother animation
             time.sleep(0.01)
             
     except KeyboardInterrupt:
