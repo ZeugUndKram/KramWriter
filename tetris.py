@@ -48,9 +48,14 @@ class Tetris:
         self.state = "start"
         self.height = height
         self.width = width
-        self.x = 50  # X offset
-        self.y = 30  # Y offset
         self.zoom = 8  # Block size
+        
+        # Center the playing field
+        field_width = width * self.zoom
+        field_height = height * self.zoom
+        self.x = (display.width - field_width) // 2  # Center horizontally
+        self.y = 50  # Leave space at top for score/level display
+        
         self.figure = None
         
         # Initialize field
@@ -105,6 +110,19 @@ class Tetris:
         self.new_figure()
         if self.intersects():
             self.state = "gameover"
+
+    def hard_drop(self):
+        """Hard drop - instantly drop piece to bottom"""
+        if not self.figure or self.state != "start":
+            return
+            
+        # Move down until collision
+        while True:
+            self.figure.y += 1
+            if self.intersects():
+                self.figure.y -= 1
+                self.freeze()
+                break
 
     def clear_lines(self):
         """Remove completed lines and update score"""
@@ -200,7 +218,8 @@ class Tetris:
         
         # Draw level
         level_text = f"Level: {self.level}"
-        draw.text((display.width - 80, 10), level_text, font=self.font, fill=WHITE)
+        level_text_width = draw.textlength(level_text, font=self.font)
+        draw.text((display.width - level_text_width - 10, 10), level_text, font=self.font, fill=WHITE)
         
         # Draw lines cleared indicator during animation
         if self.state == "clearing" and self.lines_to_clear:
@@ -211,21 +230,31 @@ class Tetris:
         
         # Draw controls help
         if self.state == "start":
-            controls = "←→:Move  ↑:Rotate  ↓:Fast"
-            draw.text((display.width // 2 - 70, display.height - 20), 
+            controls = "←→:Move  ↑:Rotate  Space:Drop  ↓:Fast"
+            text_width = draw.textlength(controls, font=self.font)
+            draw.text((display.width // 2 - text_width // 2, display.height - 25), 
                      controls, font=self.font, fill=WHITE)
+            
+            # Add hint for restart/quit
+            restart_hint = "R:Restart  Q:Quit"
+            hint_width = draw.textlength(restart_hint, font=self.font)
+            draw.text((display.width // 2 - hint_width // 2, display.height - 10), 
+                     restart_hint, font=self.font, fill=WHITE)
         
         # Game over screen
         if self.state == "gameover":
             draw.rectangle((0, 0, display.width, display.height), fill=BLACK)
             game_over = "GAME OVER"
-            draw.text((display.width // 2 - 40, display.height // 2 - 20), 
+            game_over_width = draw.textlength(game_over, font=self.font)
+            draw.text((display.width // 2 - game_over_width // 2, display.height // 2 - 20), 
                      game_over, font=self.font, fill=WHITE)
             final_score = f"Score: {self.score}"
-            draw.text((display.width // 2 - 30, display.height // 2), 
+            final_score_width = draw.textlength(final_score, font=self.font)
+            draw.text((display.width // 2 - final_score_width // 2, display.height // 2), 
                      final_score, font=self.font, fill=WHITE)
             restart = "Press R to restart"
-            draw.text((display.width // 2 - 50, display.height // 2 + 20), 
+            restart_width = draw.textlength(restart, font=self.font)
+            draw.text((display.width // 2 - restart_width // 2, display.height // 2 + 20), 
                      restart, font=self.font, fill=WHITE)
 
     def update_animation(self, current_time):
@@ -260,7 +289,11 @@ def curses_main(stdscr):
     
     print("\n" + "=" * 50)
     print("TETRIS on Sharp Memory Display")
-    print("Controls: Arrow keys to move, R to restart, Q to quit")
+    print("Controls:")
+    print("  Arrow keys: Move/Rotate/Fast drop")
+    print("  Spacebar: Hard drop (instant)")
+    print("  R: Restart game")
+    print("  Q: Quit game")
     print("=" * 50)
     
     try:
@@ -284,8 +317,10 @@ def curses_main(stdscr):
                         game.go_side(-1)
                     elif key == curses.KEY_RIGHT:
                         game.go_side(1)
+                    elif key == ord(' '):  # Spacebar for hard drop
+                        game.hard_drop()
                     elif key == ord('r') or key == ord('R'):
-                        if game.state == "gameover":
+                        if game.state == "gameover" or game.state == "start":
                             game = Tetris(20, 10)
                             game.new_figure()
                     elif key == ord('q') or key == ord('Q'):
