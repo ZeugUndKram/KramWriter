@@ -26,7 +26,7 @@ class Figure:
         [[1, 4, 5, 6], [1, 4, 5, 9], [4, 5, 6, 9], [1, 5, 6, 9]], # T
         [[1, 2, 5, 6]], # O
     ]
-
+    
     def __init__(self, x, y):
         self.x = x
         self.y = y
@@ -39,6 +39,13 @@ class Figure:
 
     def rotate(self):
         self.rotation = (self.rotation + 1) % len(self.figures[self.type])
+    
+    def copy(self):
+        """Create a copy of this figure"""
+        new_figure = Figure(self.x, self.y)
+        new_figure.type = self.type
+        new_figure.rotation = self.rotation
+        return new_figure
 
 
 class Tetris:
@@ -49,14 +56,22 @@ class Tetris:
         self.height = height
         self.width = width
         self.zoom = 8  # Block size
+        self.preview_zoom = 6  # Smaller zoom for preview
         
-        # Center the playing field
+        # Center the playing field vertically and horizontally
         field_width = width * self.zoom
         field_height = height * self.zoom
-        self.x = (display.width - field_width) // 2  # Center horizontally
-        self.y = 50  # Leave space at top for score/level display
+        
+        # Space for preview on the right (preview area: 80 pixels)
+        self.x = (display.width - field_width - 100) // 2  # Leave space for preview
+        self.y = (display.height - field_height) // 2  # Center vertically
+        
+        # Preview position (to the right of main field)
+        self.preview_x = self.x + field_width + 20
+        self.preview_y = self.y + 30
         
         self.figure = None
+        self.next_figure = None  # Next piece preview
         
         # Initialize field
         self.field = [[0 for _ in range(width)] for _ in range(height)]
@@ -71,11 +86,25 @@ class Tetris:
         # Load font
         try:
             self.font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
+            self.small_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
         except:
             self.font = ImageFont.load_default()
+            self.small_font = ImageFont.load_default()
 
     def new_figure(self):
-        self.figure = Figure(self.width // 2 - 2, 0)
+        # If we have a next figure, use it as current
+        if self.next_figure:
+            self.figure = self.next_figure
+            self.figure.x = self.width // 2 - 2
+            self.figure.y = 0
+        else:
+            self.figure = Figure(self.width // 2 - 2, 0)
+        
+        # Create new next figure for preview
+        self.next_figure = Figure(0, 0)
+        # Position the preview figure in the center of preview area
+        self.next_figure.x = 0
+        self.next_figure.y = 0
 
     def intersects(self):
         for i in range(4):
@@ -173,12 +202,65 @@ class Tetris:
         if self.intersects():
             self.figure.rotation = old_rotation
 
+    def draw_preview(self, draw):
+        """Draw the next piece preview"""
+        if not self.next_figure:
+            return
+            
+        # Draw preview box
+        preview_width = 5 * self.preview_zoom  # 5 blocks wide
+        preview_height = 5 * self.preview_zoom  # 5 blocks high
+        box_left = self.preview_x - 1
+        box_top = self.preview_y - 1
+        box_right = self.preview_x + preview_width + 1
+        box_bottom = self.preview_y + preview_height + 1
+        
+        # Draw preview border
+        draw.rectangle(
+            (box_left, box_top, box_right, box_bottom),
+            outline=WHITE, fill=BLACK
+        )
+        
+        # Draw "NEXT" label
+        next_text = "NEXT"
+        next_width = draw.textlength(next_text, font=self.small_font)
+        draw.text(
+            (self.preview_x + preview_width // 2 - next_width // 2, self.preview_y - 20),
+            next_text, font=self.small_font, fill=WHITE
+        )
+        
+        # Draw the preview piece
+        # Center the preview piece in the preview box
+        # Calculate piece dimensions
+        min_x = min([j % 4 for j in self.next_figure.image()])
+        max_x = max([j % 4 for j in self.next_figure.image()])
+        min_y = min([j // 4 for j in self.next_figure.image()])
+        max_y = max([j // 4 for j in self.next_figure.image()])
+        
+        piece_width = (max_x - min_x + 1) * self.preview_zoom
+        piece_height = (max_y - min_y + 1) * self.preview_zoom
+        
+        # Center position
+        piece_x = self.preview_x + (preview_width - piece_width) // 2
+        piece_y = self.preview_y + (preview_height - piece_height) // 2
+        
+        # Draw each block of the preview piece
+        for j in self.next_figure.image():
+            block_x = j % 4 - min_x
+            block_y = j // 4 - min_y
+            x = piece_x + block_x * self.preview_zoom
+            y = piece_y + block_y * self.preview_zoom
+            draw.rectangle(
+                [x, y, x + self.preview_zoom - 1, y + self.preview_zoom - 1],
+                outline=WHITE, fill=WHITE
+            )
+
     def draw(self, draw):
         """Draw game on display"""
         # Clear display
         draw.rectangle((0, 0, display.width, display.height), fill=BLACK)
         
-        # Draw border
+        # Draw main game border
         border_left = self.x - 1
         border_top = self.y - 1
         border_right = self.x + self.width * self.zoom + 1
@@ -212,11 +294,14 @@ class Tetris:
                         draw.rectangle([x, y, x + self.zoom - 1, y + self.zoom - 1], 
                                       outline=WHITE, fill=WHITE)
         
-        # Draw score
+        # Draw next piece preview
+        self.draw_preview(draw)
+        
+        # Draw score (top left)
         score_text = f"Score: {self.score}"
         draw.text((10, 10), score_text, font=self.font, fill=WHITE)
         
-        # Draw level
+        # Draw level (top right)
         level_text = f"Level: {self.level}"
         level_text_width = draw.textlength(level_text, font=self.font)
         draw.text((display.width - level_text_width - 10, 10), level_text, font=self.font, fill=WHITE)
@@ -225,37 +310,42 @@ class Tetris:
         if self.state == "clearing" and self.lines_to_clear:
             lines_text = f"Lines: {len(self.lines_to_clear)}"
             text_width = draw.textlength(lines_text, font=self.font)
-            draw.text((display.width // 2 - text_width // 2, self.y + self.height * self.zoom + 10), 
+            draw.text((display.width // 2 - text_width // 2, self.y - 30), 
                      lines_text, font=self.font, fill=WHITE)
         
         # Draw controls help
         if self.state == "start":
             controls = "←→:Move  ↑:Rotate  Space:Drop  ↓:Fast"
-            text_width = draw.textlength(controls, font=self.font)
+            text_width = draw.textlength(controls, font=self.small_font)
             draw.text((display.width // 2 - text_width // 2, display.height - 25), 
-                     controls, font=self.font, fill=WHITE)
+                     controls, font=self.small_font, fill=WHITE)
             
             # Add hint for restart/quit
             restart_hint = "R:Restart  Q:Quit"
-            hint_width = draw.textlength(restart_hint, font=self.font)
+            hint_width = draw.textlength(restart_hint, font=self.small_font)
             draw.text((display.width // 2 - hint_width // 2, display.height - 10), 
-                     restart_hint, font=self.font, fill=WHITE)
+                     restart_hint, font=self.small_font, fill=WHITE)
         
         # Game over screen
         if self.state == "gameover":
-            draw.rectangle((0, 0, display.width, display.height), fill=BLACK)
+            # Semi-transparent overlay
+            for i in range(0, display.height, 2):
+                draw.line([(0, i), (display.width, i)], fill=WHITE, width=1)
+            
             game_over = "GAME OVER"
             game_over_width = draw.textlength(game_over, font=self.font)
-            draw.text((display.width // 2 - game_over_width // 2, display.height // 2 - 20), 
-                     game_over, font=self.font, fill=WHITE)
+            draw.text((display.width // 2 - game_over_width // 2, display.height // 2 - 30), 
+                     game_over, font=self.font, fill=BLACK)
+            
             final_score = f"Score: {self.score}"
             final_score_width = draw.textlength(final_score, font=self.font)
             draw.text((display.width // 2 - final_score_width // 2, display.height // 2), 
-                     final_score, font=self.font, fill=WHITE)
+                     final_score, font=self.font, fill=BLACK)
+            
             restart = "Press R to restart"
             restart_width = draw.textlength(restart, font=self.font)
-            draw.text((display.width // 2 - restart_width // 2, display.height // 2 + 20), 
-                     restart, font=self.font, fill=WHITE)
+            draw.text((display.width // 2 - restart_width // 2, display.height // 2 + 30), 
+                     restart, font=self.font, fill=BLACK)
 
     def update_animation(self, current_time):
         """Update line clearing animation"""
@@ -294,6 +384,8 @@ def curses_main(stdscr):
     print("  Spacebar: Hard drop (instant)")
     print("  R: Restart game")
     print("  Q: Quit game")
+    print("=" * 50)
+    print("Next piece preview shown on the right")
     print("=" * 50)
     
     try:
