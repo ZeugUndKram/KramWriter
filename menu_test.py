@@ -23,7 +23,7 @@ display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 400, 240)
 
 # Track current state
 current_top_text = NORMAL_TEXT
-space_was_pressed = False
+k_was_pressed = False  # Changed from space_was_pressed
 
 def update_display(top_text, bottom_text="Welcome!"):
     """Update the display with the given text"""
@@ -79,7 +79,7 @@ print("=" * 50)
 print("PENIS DISPLAY CONTROLLER")
 print("=" * 50)
 print("INSTRUCTIONS:")
-print("- Press SPACE to toggle between 'Hello World!' and 'penis'")
+print("- Press K to toggle between 'Hello World!' and 'penis'")
 print("- Press ESC to exit")
 print("- No need to press Enter!")
 print("=" * 50)
@@ -88,9 +88,9 @@ update_display(current_top_text)
 
 try:
     while True:
-        # Check for space key (toggle text)
-        if keyboard.is_pressed('space'):
-            if not space_was_pressed:  # Prevent holding key from spamming
+        # Check for 'k' key (toggle text) - CHANGED FROM SPACE
+        if keyboard.is_pressed('k'):
+            if not k_was_pressed:  # Prevent holding key from spamming
                 if current_top_text == NORMAL_TEXT:
                     current_top_text = PENIS_TEXT
                     print(f"Text changed to: {PENIS_TEXT}")
@@ -99,9 +99,9 @@ try:
                     print(f"Text changed to: {NORMAL_TEXT}")
                 
                 update_display(current_top_text)
-                space_was_pressed = True
+                k_was_pressed = True
         else:
-            space_was_pressed = False  # Reset when space is released
+            k_was_pressed = False  # Reset when 'k' is released
 
         # Check for escape key to exit
         if keyboard.is_pressed('esc'):
