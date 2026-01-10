@@ -1,12 +1,13 @@
 import board
 import busio
 import digitalio
+import sys
+import select
+import termios
+import tty
 import time
 from PIL import Image, ImageDraw, ImageFont
 import adafruit_sharpmemorydisplay
-import usb_hid
-from adafruit_hid.keyboard import Keyboard
-from adafruit_hid.keycode import Keycode
 
 BLACK = 0
 WHITE = 255
@@ -16,9 +17,7 @@ BORDER = 5
 FONTSIZE = 10
 LINE_SPACING = 5  # Space between text lines
 
-# Initialize keyboard
-keyboard = Keyboard(usb_hid.devices)
-
+# Initialize SPI and display
 spi = busio.SPI(board.SCK, MOSI=board.MOSI)
 scs = digitalio.DigitalInOut(board.D6)  # inverted chip select
 
@@ -30,13 +29,8 @@ text_lines = [
     "Welcome!"
 ]
 
-# Flag to track if space was pressed
-space_pressed = False
-
 def update_display():
     """Update the display with current text lines"""
-    display.fill(1)
-    
     # Create blank image for drawing.
     image = Image.new("1", (display.width, display.height))
     draw = ImageDraw.Draw(image)
@@ -85,36 +79,43 @@ def update_display():
     display.image(image)
     display.show()
 
+def get_key():
+    """Get a single keypress without waiting for Enter"""
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setraw(sys.stdin.fileno())
+        ch = sys.stdin.read(1)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+    return ch
+
 # Initial display
 update_display()
 
 print("Press SPACE to change the first line to 'penis'")
-print("Press any other key to exit (or Ctrl+C)")
+print("Press 'q' to exit")
 
 try:
     while True:
-        # Check for keyboard input
-        try:
-            # Check if space is pressed
-            if keyboard.keys:
-                for key in keyboard.keys:
-                    if key == Keycode.SPACE:
-                        if not space_pressed:  # Only change on initial press, not hold
-                            text_lines[0] = "penis"
-                            update_display()
-                            print("Changed first line to 'penis'")
-                            space_pressed = True
-                    else:
-                        print("Exiting...")
-                        break
-            else:
-                space_pressed = False  # Reset when space is released
-                
-        except Exception as e:
-            # Keyboard might not be available or other error
-            pass
-            
-        time.sleep(0.1)  # Small delay to prevent CPU overload
+        # Check for key press
+        if select.select([sys.stdin], [], [], 0)[0]:
+            key = get_key()
+            if key == ' ':  # Space key
+                text_lines[0] = "penis"
+                update_display()
+                print("Changed first line to 'penis'")
+            elif key.lower() == 'q':  # Quit
+                print("Exiting...")
+                break
+            elif key == '\x03':  # Ctrl+C
+                raise KeyboardInterrupt
+        time.sleep(0.1)
         
 except KeyboardInterrupt:
     print("\nProgram interrupted")
+except Exception as e:
+    print(f"Error: {e}")
+finally:
+    # Reset terminal
+    termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, termios.tcgetattr(sys.stdin.fileno()))
