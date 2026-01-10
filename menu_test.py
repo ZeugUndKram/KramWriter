@@ -14,7 +14,7 @@ WHITE = 255
 
 # Parameters to Change
 BORDER = 5
-FONTSIZE = 10
+FONTSIZE = 30
 LINE_SPACING = 5  # Space between text lines
 
 # Initialize SPI and display
@@ -101,7 +101,7 @@ try:
         # Check for key press
         if select.select([sys.stdin], [], [], 0)[0]:
             key = get_key()
-            if key == ' ':  # Space key
+            if key == 'k':  # Space key
                 text_lines[0] = "penis"
                 update_display()
                 print("Changed first line to 'penis'")
