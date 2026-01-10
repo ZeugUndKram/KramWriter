@@ -13,8 +13,8 @@ scs = digitalio.DigitalInOut(board.D6)
 display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 400, 240)
 
 # Colors
-BLACK = 0
-WHITE = 255
+BLACK = 255
+WHITE = 0
 
 # Game Boy style patterns for each tetromino type
 # Each pattern is defined as a 4x4 binary grid for the texture inside each block
