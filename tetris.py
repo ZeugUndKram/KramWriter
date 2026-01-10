@@ -1,6 +1,6 @@
+import pygame
 import random
 import time
-import curses
 import board
 import busio
 import digitalio
@@ -12,214 +12,121 @@ spi = busio.SPI(board.SCK, MOSI=board.MOSI)
 scs = digitalio.DigitalInOut(board.D6)
 display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 400, 240)
 
-# Colors
+# Tetris colors (converted to 1-bit)
 BLACK = 0
 WHITE = 255
-
-# Game Boy style patterns for each tetromino type
-# Each pattern is defined as a 4x4 binary grid for the texture inside each block
-PATTERNS = [
-    # 0: I-block (cyan) - vertical lines
-    [
-        [0, 1, 0, 1],
-        [0, 1, 0, 1],
-        [0, 1, 0, 1],
-        [0, 1, 0, 1]
-    ],
-    # 1: J-block (blue) - corner pattern
-    [
-        [1, 1, 0, 0],
-        [0, 1, 1, 0],
-        [0, 0, 1, 1],
-        [1, 0, 0, 1]
-    ],
-    # 2: L-block (orange) - opposite corner
-    [
-        [0, 0, 1, 1],
-        [0, 1, 1, 0],
-        [1, 1, 0, 0],
-        [1, 0, 0, 1]
-    ],
-    # 3: O-block (yellow) - checkerboard
-    [
-        [1, 0, 1, 0],
-        [0, 1, 0, 1],
-        [1, 0, 1, 0],
-        [0, 1, 0, 1]
-    ],
-    # 4: S-block (green) - diagonal stripes
-    [
-        [0, 1, 1, 0],
-        [1, 1, 0, 0],
-        [0, 0, 1, 1],
-        [0, 1, 1, 0]
-    ],
-    # 5: T-block (purple) - T pattern
-    [
-        [0, 1, 0, 0],
-        [1, 1, 1, 1],
-        [0, 1, 0, 0],
-        [0, 1, 0, 0]
-    ],
-    # 6: Z-block (red) - opposite diagonal
-    [
-        [1, 1, 0, 0],
-        [0, 1, 1, 0],
-        [0, 0, 1, 1],
-        [1, 0, 0, 1]
-    ]
+TETRIS_COLORS = [
+    (0, 0, 0),         # Black (empty)
+    (120, 37, 179),    # Purple
+    (100, 179, 179),   # Cyan
+    (80, 34, 22),      # Brown
+    (80, 134, 22),     # Green
+    (180, 34, 22),     # Red
+    (180, 34, 122),    # Pink
 ]
 
+# Convert colors to grayscale for 1-bit display
+def color_to_monochrome(color):
+    r, g, b = color
+    # Convert to grayscale using standard formula
+    gray = 0.299 * r + 0.587 * g + 0.114 * b
+    # Use threshold to convert to black/white
+    return BLACK if gray < 128 else WHITE
+
+# Create monochrome versions of tetris colors
+MONO_COLORS = [color_to_monochrome(color) for color in TETRIS_COLORS]
+
 class Figure:
-    # Tetromino shapes and their rotations
-    shapes = [
-        # I
-        [
-            [1, 5, 9, 13],
-            [4, 5, 6, 7]
-        ],
-        # J
-        [
-            [1, 2, 5, 9],
-            [0, 4, 5, 6],
-            [1, 5, 9, 8],
-            [4, 5, 6, 10]
-        ],
-        # L
-        [
-            [1, 2, 6, 10],
-            [5, 6, 7, 9],
-            [2, 6, 10, 11],
-            [3, 5, 6, 7]
-        ],
-        # O
-        [
-            [1, 2, 5, 6]
-        ],
-        # S
-        [
-            [6, 7, 9, 10],
-            [1, 5, 6, 10]
-        ],
-        # T
-        [
-            [1, 4, 5, 6],
-            [1, 5, 6, 9],
-            [4, 5, 6, 9],
-            [1, 4, 5, 9]
-        ],
-        # Z
-        [
-            [4, 5, 9, 10],
-            [2, 6, 5, 9]
-        ]
+    x = 0
+    y = 0
+
+    figures = [
+        [[1, 5, 9, 13], [4, 5, 6, 7]],  # I
+        [[4, 5, 9, 10], [2, 6, 5, 9]],  # Z
+        [[6, 7, 9, 10], [1, 5, 6, 10]], # S
+        [[1, 2, 5, 9], [0, 4, 5, 6], [1, 5, 9, 8], [4, 5, 6, 10]], # J
+        [[1, 2, 6, 10], [5, 6, 7, 9], [2, 6, 10, 11], [3, 5, 6, 7]], # L
+        [[1, 4, 5, 6], [1, 4, 5, 9], [4, 5, 6, 9], [1, 5, 6, 9]], # T
+        [[1, 2, 5, 6]], # O
     ]
-    
-    # Names for each shape (for debugging)
-    names = ["I", "J", "L", "O", "S", "T", "Z"]
-    
+
     def __init__(self, x, y):
         self.x = x
         self.y = y
-        self.type = random.randint(0, len(self.shapes) - 1)
+        self.type = random.randint(0, len(self.figures) - 1)
+        self.color = random.randint(1, len(MONO_COLORS) - 1)
         self.rotation = 0
-        
+
     def image(self):
-        return self.shapes[self.type][self.rotation]
-    
+        return self.figures[self.type][self.rotation]
+
     def rotate(self):
-        self.rotation = (self.rotation + 1) % len(self.shapes[self.type])
-    
-    def get_pattern(self):
-        """Get the Game Boy pattern for this tetromino type"""
-        return PATTERNS[self.type]
+        self.rotation = (self.rotation + 1) % len(self.figures[self.type])
+
 
 class Tetris:
     def __init__(self, height, width):
-        self.level = 1
+        self.level = 2
         self.score = 0
-        self.lines = 0
         self.state = "start"
+        self.field = []
         self.height = height
         self.width = width
-        self.x = 50  # X offset
-        self.y = 30  # Y offset
-        self.zoom = 10  # Block size (must be at least 4 for patterns)
+        self.x = 30  # X offset on display
+        self.y = 20  # Y offset on display
+        self.zoom = 10  # Block size
         self.figure = None
-        self.next_figure = None
         
-        # Initialize field
-        self.field = [[-1 for _ in range(width)] for _ in range(height)]
+        # Initialize game field
+        self.field = []
+        for i in range(height):
+            new_line = []
+            for j in range(width):
+                new_line.append(0)
+            self.field.append(new_line)
         
-        # Load fonts
+        # Create font for score display
         try:
-            self.font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
-            self.small_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 10)
+            self.font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 16)
+            self.big_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24)
         except:
             self.font = ImageFont.load_default()
-            self.small_font = ImageFont.load_default()
-        
-        # Create initial figures
-        self.new_figure()
-        self.new_next_figure()
+            self.big_font = ImageFont.load_default()
 
     def new_figure(self):
-        if self.next_figure:
-            self.figure = self.next_figure
-            self.figure.x = self.width // 2 - 2
-            self.figure.y = 0
-        else:
-            self.figure = Figure(self.width // 2 - 2, 0)
-        self.new_next_figure()
-    
-    def new_next_figure(self):
-        self.next_figure = Figure(0, 0)
-        # Position for preview display
-        self.next_figure.x = 0
-        self.next_figure.y = 0
+        self.figure = Figure(self.width // 2 - 2, 0)
 
     def intersects(self):
+        intersection = False
         for i in range(4):
             for j in range(4):
                 if i * 4 + j in self.figure.image():
-                    if (i + self.figure.y >= self.height or
-                        j + self.figure.x >= self.width or
-                        j + self.figure.x < 0 or
-                        self.field[i + self.figure.y][j + self.figure.x] != -1):
-                        return True
-        return False
+                    if i + self.figure.y > self.height - 1 or \
+                            j + self.figure.x > self.width - 1 or \
+                            j + self.figure.x < 0 or \
+                            self.field[i + self.figure.y][j + self.figure.x] > 0:
+                        intersection = True
+        return intersection
 
-    def freeze(self):
-        for i in range(4):
-            for j in range(4):
-                if i * 4 + j in self.figure.image():
-                    self.field[i + self.figure.y][j + self.figure.x] = self.figure.type
-        
-        # Check for completed lines
-        lines_cleared = 0
-        lines_to_remove = []
-        for i in range(self.height):
-            if all(cell != -1 for cell in self.field[i]):
-                lines_to_remove.append(i)
-        
-        # Remove lines
-        for line in reversed(lines_to_remove):
-            del self.field[line]
-            self.field.insert(0, [-1 for _ in range(self.width)])
-            lines_cleared += 1
-        
-        # Update score
-        if lines_cleared > 0:
-            self.lines += lines_cleared
-            # Original Nintendo scoring system
-            points = [40, 100, 300, 1200]  # 1, 2, 3, 4 lines
-            self.score += points[min(lines_cleared - 1, 3)] * (self.level + 1)
-            self.level = self.lines // 10 + 1
-        
-        # Create new figure
-        self.new_figure()
-        if self.intersects():
-            self.state = "gameover"
+    def break_lines(self):
+        lines = 0
+        for i in range(1, self.height):
+            zeros = 0
+            for j in range(self.width):
+                if self.field[i][j] == 0:
+                    zeros += 1
+            if zeros == 0:
+                lines += 1
+                for i1 in range(i, 1, -1):
+                    for j in range(self.width):
+                        self.field[i1][j] = self.field[i1 - 1][j]
+        self.score += lines ** 2
+
+    def go_space(self):
+        while not self.intersects():
+            self.figure.y += 1
+        self.figure.y -= 1
+        self.freeze()
 
     def go_down(self):
         self.figure.y += 1
@@ -227,11 +134,15 @@ class Tetris:
             self.figure.y -= 1
             self.freeze()
 
-    def hard_drop(self):
-        while not self.intersects():
-            self.figure.y += 1
-        self.figure.y -= 1
-        self.freeze()
+    def freeze(self):
+        for i in range(4):
+            for j in range(4):
+                if i * 4 + j in self.figure.image():
+                    self.field[i + self.figure.y][j + self.figure.x] = self.figure.color
+        self.break_lines()
+        self.new_figure()
+        if self.intersects():
+            self.state = "gameover"
 
     def go_side(self, dx):
         old_x = self.figure.x
@@ -244,217 +155,169 @@ class Tetris:
         self.figure.rotate()
         if self.intersects():
             self.figure.rotation = old_rotation
-    
-    def draw_block(self, draw, x, y, block_type, size=None):
-        """Draw a single block with Game Boy texture"""
-        if size is None:
-            size = self.zoom
-        
-        # Draw block outline
-        draw.rectangle([x, y, x + size - 1, y + size - 1], 
-                      outline=WHITE, fill=BLACK)
-        
-        if block_type >= 0:
-            # Get pattern for this block type
-            pattern = PATTERNS[block_type]
-            
-            # Draw pattern inside block
-            pattern_size = size - 4  # Leave border
-            if pattern_size >= 4:  # Only draw pattern if block is big enough
-                for py in range(4):
-                    for px in range(4):
-                        if pattern[py][px]:
-                            px_pos = x + 2 + (px * pattern_size) // 4
-                            py_pos = y + 2 + (py * pattern_size) // 4
-                            px_end = x + 2 + ((px + 1) * pattern_size) // 4
-                            py_end = y + 2 + ((py + 1) * pattern_size) // 4
-                            draw.rectangle([px_pos, py_pos, px_end, py_end], 
-                                          outline=WHITE, fill=WHITE)
-            else:
-                # For very small blocks, just fill
-                draw.rectangle([x + 1, y + 1, x + size - 2, y + size - 2], 
-                              outline=WHITE, fill=WHITE)
 
     def draw(self, draw):
-        """Draw entire game on display"""
-        # Clear display
-        draw.rectangle((0, 0, display.width, display.height), fill=BLACK)
+        """Draw the game on a PIL ImageDraw object"""
+        # Clear display area
+        draw.rectangle((0, 0, display.width, display.height), outline=BLACK, fill=BLACK)
         
-        # Draw game border
-        game_left = self.x - 2
-        game_top = self.y - 2
-        game_right = self.x + self.width * self.zoom + 2
-        game_bottom = self.y + self.height * self.zoom + 2
+        # Draw border around game area
+        border_left = self.x - 2
+        border_top = self.y - 2
+        border_right = self.x + self.width * self.zoom + 2
+        border_bottom = self.y + self.height * self.zoom + 2
         
-        # Main game area
-        draw.rectangle([game_left, game_top, game_right, game_bottom], 
-                      outline=WHITE, fill=BLACK)
+        draw.rectangle(
+            (border_left, border_top, border_right, border_bottom),
+            outline=WHITE, fill=BLACK
+        )
         
-        # Draw placed blocks with textures
+        # Draw grid lines
+        for i in range(self.height + 1):
+            y = self.y + i * self.zoom
+            draw.line([(self.x, y), (self.x + self.width * self.zoom, y)], fill=WHITE)
+        
+        for j in range(self.width + 1):
+            x = self.x + j * self.zoom
+            draw.line([(x, self.y), (x, self.y + self.height * self.zoom)], fill=WHITE)
+        
+        # Draw placed blocks
         for i in range(self.height):
             for j in range(self.width):
-                if self.field[i][j] != -1:
+                if self.field[i][j] > 0:
                     x = self.x + j * self.zoom
                     y = self.y + i * self.zoom
-                    self.draw_block(draw, x, y, self.field[i][j])
+                    color = MONO_COLORS[self.field[i][j]]
+                    draw.rectangle([x, y, x + self.zoom - 1, y + self.zoom - 1], 
+                                  outline=WHITE, fill=color)
         
-        # Draw current falling piece
-        if self.figure:
+        # Draw current falling figure
+        if self.figure is not None:
             for i in range(4):
                 for j in range(4):
-                    if i * 4 + j in self.figure.image():
+                    p = i * 4 + j
+                    if p in self.figure.image():
                         x = self.x + (j + self.figure.x) * self.zoom
                         y = self.y + (i + self.figure.y) * self.zoom
-                        self.draw_block(draw, x, y, self.figure.type)
+                        color = MONO_COLORS[self.figure.color]
+                        draw.rectangle([x, y, x + self.zoom - 1, y + self.zoom - 1], 
+                                      outline=WHITE, fill=color)
         
-        # Draw next piece preview
-        preview_x = game_right + 20
-        preview_y = game_top
-        preview_size = self.zoom - 2
+        # Draw score
+        score_text = f"Score: {self.score}"
+        draw.text((10, display.height - 30), score_text, font=self.font, fill=WHITE)
         
-        draw.text((preview_x, preview_y), "NEXT:", font=self.font, fill=WHITE)
-        
-        if self.next_figure:
-            # Draw mini-grid for next piece
-            preview_grid_x = preview_x
-            preview_grid_y = preview_y + 25
-            
-            # Center the piece in the preview
-            min_x = min([(idx % 4) for idx in self.next_figure.image()])
-            max_x = max([(idx % 4) for idx in self.next_figure.image()])
-            min_y = min([(idx // 4) for idx in self.next_figure.image()])
-            max_y = max([(idx // 4) for idx in self.next_figure.image()])
-            
-            piece_width = (max_x - min_x + 1) * preview_size
-            piece_height = (max_y - min_y + 1) * preview_size
-            
-            start_x = preview_grid_x + (40 - piece_width) // 2
-            start_y = preview_grid_y + (40 - piece_height) // 2
-            
-            for idx in self.next_figure.image():
-                i = idx // 4
-                j = idx % 4
-                x = start_x + (j - min_x) * preview_size
-                y = start_y + (i - min_y) * preview_size
-                self.draw_block(draw, x, y, self.next_figure.type, preview_size)
-        
-        # Draw score and stats panel
-        panel_x = preview_x
-        panel_y = preview_y + 80
-        
-        draw.text((panel_x, panel_y), f"SCORE:", font=self.font, fill=WHITE)
-        draw.text((panel_x, panel_y + 20), f"{self.score:06d}", font=self.font, fill=WHITE)
-        
-        draw.text((panel_x, panel_y + 45), f"LINES:", font=self.font, fill=WHITE)
-        draw.text((panel_x, panel_y + 65), f"{self.lines:03d}", font=self.font, fill=WHITE)
-        
-        draw.text((panel_x, panel_y + 90), f"LEVEL:", font=self.font, fill=WHITE)
-        draw.text((panel_x, panel_y + 110), f"{self.level:02d}", font=self.font, fill=WHITE)
-        
-        # Draw controls
-        controls_y = display.height - 40
-        draw.text((10, controls_y), "←→:MOVE", font=self.small_font, fill=WHITE)
-        draw.text((90, controls_y), "↑:ROTATE", font=self.small_font, fill=WHITE)
-        draw.text((170, controls_y), "↓:FAST", font=self.small_font, fill=WHITE)
-        draw.text((240, controls_y), "SPACE:DROP", font=self.small_font, fill=WHITE)
+        # Draw level
+        level_text = f"Level: {self.level}"
+        draw.text((display.width - 100, display.height - 30), level_text, font=self.font, fill=WHITE)
         
         # Draw game over screen
         if self.state == "gameover":
             # Semi-transparent overlay
-            overlay = Image.new("1", (display.width, display.height), BLACK)
-            overlay_draw = ImageDraw.Draw(overlay)
-            for y in range(0, display.height, 2):
-                for x in range(0, display.width, 2):
-                    if (x + y) % 4 == 0:
-                        overlay_draw.point((x, y), WHITE)
-            
-            # Composite with original
-            original = Image.new("1", (display.width, display.height), BLACK)
-            original_draw = ImageDraw.Draw(original)
-            self.draw_game_only(original_draw)
-            display.image(Image.eval(Image.blend(original, overlay, 0.5), lambda x: 0 if x < 128 else 255))
+            draw.rectangle((0, 0, display.width, display.height), outline=BLACK, fill=BLACK)
             
             # Game over text
-            game_over = "GAME OVER"
-            draw.text((display.width // 2 - 45, display.height // 2 - 30), 
-                     game_over, font=self.font, fill=WHITE)
+            game_over_text = "GAME OVER"
+            text_bbox = draw.textbbox((0, 0), game_over_text, font=self.big_font)
+            text_width = text_bbox[2] - text_bbox[0]
+            text_x = (display.width - text_width) // 2
+            text_y = display.height // 2 - 40
+            draw.text((text_x, text_y), game_over_text, font=self.big_font, fill=WHITE)
             
-            final_score = f"FINAL SCORE: {self.score}"
-            draw.text((display.width // 2 - 70, display.height // 2), 
-                     final_score, font=self.font, fill=WHITE)
+            # Final score
+            final_score = f"Score: {self.score}"
+            score_bbox = draw.textbbox((0, 0), final_score, font=self.font)
+            score_width = score_bbox[2] - score_bbox[0]
+            score_x = (display.width - score_width) // 2
+            score_y = text_y + 40
+            draw.text((score_x, score_y), final_score, font=self.font, fill=WHITE)
             
-            restart = "PRESS R TO RESTART"
-            draw.text((display.width // 2 - 85, display.height // 2 + 30), 
-                     restart, font=self.font, fill=WHITE)
-    
-    def draw_game_only(self, draw):
-        """Draw just the game area without UI (for game over effect)"""
-        # Draw placed blocks
-        for i in range(self.height):
-            for j in range(self.width):
-                if self.field[i][j] != -1:
-                    x = self.x + j * self.zoom
-                    y = self.y + i * self.zoom
-                    self.draw_block(draw, x, y, self.field[i][j])
+            # Restart instructions
+            restart_text = "Press UP to restart"
+            restart_bbox = draw.textbbox((0, 0), restart_text, font=self.font)
+            restart_width = restart_bbox[2] - restart_bbox[0]
+            restart_x = (display.width - restart_width) // 2
+            restart_y = score_y + 30
+            draw.text((restart_x, restart_y), restart_text, font=self.font, fill=WHITE)
 
 
-def curses_main(stdscr):
-    # Setup curses
-    curses.curs_set(0)
-    stdscr.nodelay(True)
-    stdscr.timeout(100)
+def main():
+    # Initialize pygame for keyboard input
+    pygame.init()
+    pygame.display.set_mode((1, 1))  # Minimal window
     
-    # Create game
+    # Create Tetris game
     game = Tetris(20, 10)
-    
-    print("\n" + "=" * 60)
-    print("TETRIS - Game Boy Edition")
-    print("=" * 60)
-    print("Each block type has a unique Game Boy-style pattern!")
-    print("=" * 60)
-    print("CONTROLS:")
-    print("  Arrow Keys  - Move and rotate")
-    print("  Space       - Hard drop")
-    print("  R           - Restart (when game over)")
-    print("  Q           - Quit")
-    print("=" * 60)
+    game.new_figure()
     
     # Game loop variables
-    drop_counter = 0
-    drop_speed = 20  # Frames per drop (higher = slower)
-    fast_drop = False
+    done = False
+    fps = 25
+    counter = 0
+    pressing_down = False
+    
+    # Control debouncing
+    last_key_time = 0
+    key_delay = 0.1  # seconds
+    
+    print("=" * 50)
+    print("TETRIS on Sharp Memory Display")
+    print("=" * 50)
+    print("CONTROLS:")
+    print("  UP    - Rotate")
+    print("  DOWN  - Speed drop")
+    print("  LEFT  - Move left")
+    print("  RIGHT - Move right")
+    print("  SPACE - Hard drop")
+    print("  ESC   - Exit")
+    print("=" * 50)
     
     try:
-        while True:
-            # Handle input
-            key = stdscr.getch()
+        while not done:
+            current_time = time.time()
             
-            if key != -1:
-                if key == curses.KEY_UP:
-                    game.rotate()
-                elif key == curses.KEY_DOWN:
-                    fast_drop = True
-                elif key == curses.KEY_LEFT:
-                    game.go_side(-1)
-                elif key == curses.KEY_RIGHT:
-                    game.go_side(1)
-                elif key == ord(' '):  # Space bar
-                    game.hard_drop()
-                elif key == ord('r') or key == ord('R'):
-                    if game.state == "gameover":
-                        game = Tetris(20, 10)
-                elif key == ord('q') or key == ord('Q'):
-                    break
-            else:
-                fast_drop = False
+            # Game logic timing
+            counter += 1
+            if counter > 100000:
+                counter = 0
             
-            # Auto-drop logic
-            drop_counter += 1
-            current_drop_speed = drop_speed // (game.level * 2 if fast_drop else game.level)
+            if counter % (fps // game.level // 2) == 0 or pressing_down:
+                if game.state == "start":
+                    game.go_down()
             
-            if drop_counter >= current_drop_speed and game.state == "start":
-                game.go_down()
-                drop_counter = 0
+            # Handle keyboard input
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    done = True
+                
+                if event.type == pygame.KEYDOWN:
+                    if current_time - last_key_time > key_delay:
+                        if event.key == pygame.K_UP:
+                            game.rotate()
+                            last_key_time = current_time
+                        elif event.key == pygame.K_DOWN:
+                            pressing_down = True
+                            last_key_time = current_time
+                        elif event.key == pygame.K_LEFT:
+                            game.go_side(-1)
+                            last_key_time = current_time
+                        elif event.key == pygame.K_RIGHT:
+                            game.go_side(1)
+                            last_key_time = current_time
+                        elif event.key == pygame.K_SPACE:
+                            game.go_space()
+                            last_key_time = current_time
+                        elif event.key == pygame.K_ESCAPE:
+                            done = True
+                        elif event.key == pygame.K_r:
+                            # Restart game
+                            game = Tetris(20, 10)
+                            game.new_figure()
+                            last_key_time = current_time
+                
+                if event.type == pygame.KEYUP:
+                    if event.key == pygame.K_DOWN:
+                        pressing_down = False
             
             # Update display
             image = Image.new("1", (display.width, display.height))
@@ -463,26 +326,22 @@ def curses_main(stdscr):
             display.image(image)
             display.show()
             
-            # Small delay
+            # Small delay to prevent CPU overload
             time.sleep(0.01)
-            
+    
     except KeyboardInterrupt:
-        pass
+        print("\nGame interrupted")
     
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"\nError: {e}")
     
     finally:
-        # Clear display
+        pygame.quit()
+        print("\nCleaning up...")
         display.fill(1)
         display.show()
+        print("Display cleared. Goodbye!")
 
 
 if __name__ == "__main__":
-    try:
-        curses.wrapper(curses_main)
-    except KeyboardInterrupt:
-        print("\nGame interrupted")
-    finally:
-        print("\nThanks for playing!")
-        print("Display cleared.")
+    main()
