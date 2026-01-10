@@ -9,7 +9,7 @@ WHITE = 255
 
 # Parameters to Change
 BORDER = 5
-FONTSIZE = 10
+FONTSIZE = 20
 LINE_SPACING = 5
 
 spi = busio.SPI(board.SCK, MOSI=board.MOSI)
