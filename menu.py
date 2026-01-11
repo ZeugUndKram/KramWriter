@@ -23,7 +23,6 @@ WHITE = 255
 
 # Parameters to Change
 BORDER = 5
-FONTSIZE = 50
 
 spi = busio.SPI(board.SCK, MOSI=board.MOSI)
 scs = digitalio.DigitalInOut(board.D6)  # inverted chip select
@@ -46,19 +45,48 @@ draw = ImageDraw.Draw(image)
 # Draw a black background
 draw.rectangle((0, 0, display.width, display.height), outline=BLACK, fill=WHITE)
 
-# Load a TTF font.
-font = ImageFont.truetype("/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf", FONTSIZE)
+# Define text elements with their font sizes
+text_elements = [
+    ("Zeugtris", 30),      # First element - size 30
+    ("Element 2", 40),     # Second element - size 40
+    ("Element 3", 50),     # Third element - size 50
+    ("Element 4", 40),     # Fourth element - size 40
+    ("Final", 30)          # Fifth element - size 30
+]
 
-# Draw Some Text
-text = "Zeugtris"
-bbox = font.getbbox(text)
-(font_width, font_height) = bbox[2] - bbox[0], bbox[3] - bbox[1]
-draw.text(
-    (70, display.height // 2 - font_height // 2),
-    text,
-    font=font,
-    fill=BLACK,
-)
+# Calculate total height needed for all text elements
+total_text_height = 0
+spacing = 10  # Spacing between text elements
+all_heights = []
+
+# First pass to calculate heights
+for text, font_size in text_elements:
+    font = ImageFont.truetype("/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf", font_size)
+    bbox = font.getbbox(text)
+    font_height = bbox[3] - bbox[1]
+    all_heights.append(font_height)
+    total_text_height += font_height
+
+# Add spacing between elements
+total_text_height += spacing * (len(text_elements) - 1)
+
+# Calculate starting Y position to center all text elements vertically
+current_y = (display.height - total_text_height) // 2
+
+# Draw each text element
+for i, (text, font_size) in enumerate(text_elements):
+    font = ImageFont.truetype("/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf", font_size)
+    bbox = font.getbbox(text)
+    font_width = bbox[2] - bbox[0]
+    
+    # Center text horizontally
+    x = (display.width - font_width) // 2
+    
+    # Draw the text
+    draw.text((x, current_y), text, font=font, fill=BLACK)
+    
+    # Move to next position
+    current_y += all_heights[i] + spacing
 
 # Display image
 display.image(image)
