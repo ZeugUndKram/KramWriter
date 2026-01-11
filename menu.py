@@ -15,6 +15,8 @@ import busio
 import digitalio
 from PIL import Image, ImageDraw, ImageFont
 import time
+import sys
+import os
 
 import adafruit_sharpmemorydisplay
 
@@ -110,34 +112,80 @@ def create_menu_display(selected_idx):
 create_menu_display(selected_index)
 
 print("Menu Navigation Demo")
-print("Press UP/DOWN to navigate, 'q' to quit")
+print("Press UP/DOWN arrow keys to navigate, 'q' to quit")
 print(f"Current selection: {menu_items[selected_index]}")
 
-# Simple keyboard input loop (you'll need to adapt this for your actual input method)
+# Clear any pending input
 try:
-    while True:
-        # For testing purposes - you'll need to replace this with actual GPIO button input
-        # This assumes you're running on a system with keyboard input
-        import sys
-        import select
-        
-        if sys.stdin in select.select([sys.stdin], [], [], 0)[0]:
+    import termios
+    import tty
+    
+    # Save terminal settings
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    
+    # Set terminal to raw mode for single key reading
+    tty.setraw(fd)
+    
+    try:
+        while True:
+            # Read a single character
             key = sys.stdin.read(1)
             
             if key == 'q' or key == 'Q':
+                print("\nExiting...")
+                break
+            elif key == '\x1b':  # Escape sequence for arrow keys
+                # Read next two characters
+                next1 = sys.stdin.read(1)
+                next2 = sys.stdin.read(1)
+                if next1 == '[':
+                    if next2 == 'A':  # UP arrow
+                        selected_index = (selected_index - 1) % len(menu_items)
+                        print(f"\rSelected: {menu_items[selected_index]}", end="", flush=True)
+                        create_menu_display(selected_index)
+                    elif next2 == 'B':  # DOWN arrow
+                        selected_index = (selected_index + 1) % len(menu_items)
+                        print(f"\rSelected: {menu_items[selected_index]}", end="", flush=True)
+                        create_menu_display(selected_index)
+            elif key == 'w' or key == 'W':  # Alternative: W key for up
+                selected_index = (selected_index - 1) % len(menu_items)
+                print(f"\rSelected: {menu_items[selected_index]}", end="", flush=True)
+                create_menu_display(selected_index)
+            elif key == 's' or key == 'S':  # Alternative: S key for down
+                selected_index = (selected_index + 1) % len(menu_items)
+                print(f"\rSelected: {menu_items[selected_index]}", end="", flush=True)
+                create_menu_display(selected_index)
+    
+    finally:
+        # Restore terminal settings
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        print("\nTerminal restored.")
+
+except ImportError:
+    # Fallback for systems without termios (like Windows)
+    print("Termios not available. Using simple input (press Enter after each key).")
+    
+    while True:
+        try:
+            # Get input (requires Enter key)
+            user_input = input("Press w/s/q then Enter: ").strip().lower()
+            
+            if user_input == 'q':
                 print("Exiting...")
                 break
-            elif key == 'w' or key == 'W':  # UP
+            elif user_input == 'w':
                 selected_index = (selected_index - 1) % len(menu_items)
                 print(f"Selected: {menu_items[selected_index]}")
                 create_menu_display(selected_index)
-            elif key == 's' or key == 'S':  # DOWN
+            elif user_input == 's':
                 selected_index = (selected_index + 1) % len(menu_items)
                 print(f"Selected: {menu_items[selected_index]}")
                 create_menu_display(selected_index)
         
-        time.sleep(0.1)
-        
+        except KeyboardInterrupt:
+            print("\nExiting...")
+            break
 except KeyboardInterrupt:
     print("\nProgram interrupted")
 except Exception as e:
