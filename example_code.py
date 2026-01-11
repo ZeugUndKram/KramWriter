@@ -8,12 +8,8 @@ import board
 import busio
 import digitalio
 import adafruit_sharpmemorydisplay
-import select
-import sys
-import termios
-import tty
 import time
-import os
+import keyboard  # pip install keyboard
 
 # Initialize display
 spi = busio.SPI(board.SCK, MOSI=board.MOSI)
@@ -24,81 +20,43 @@ display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 144, 168)
 BLACK = 0
 WHITE = 255
 
-def setup_nonblocking_input():
-    """Configure stdin for non-blocking raw input"""
-    old_settings = termios.tcgetattr(sys.stdin)
-    tty.setraw(sys.stdin.fileno())
-    return old_settings
-
-def restore_input(old_settings):
-    """Restore terminal settings"""
-    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-
-def check_space_pressed():
-    """Fast non-blocking check for spacebar press using select()"""
-    # Check if there's input available
-    ready, _, _ = select.select([sys.stdin], [], [], 0)
-    if ready:
-        # Read available input
-        char = sys.stdin.read(1)
-        if char == ' ':
-            return True
-        elif char == '\x03':  # Ctrl-C
-            return None
-    return False
-
 def main():
-    """Main loop with optimized input handling"""
+    """Main loop using keyboard library for input"""
     print("Starting display controller. Press space to make screen black, release for white.")
     print("Press Ctrl-C to exit.")
     
-    # Setup non-blocking input
-    old_settings = setup_nonblocking_input()
+    last_state = None
     
     try:
-        last_state = None  # Track last display state to avoid unnecessary updates
-        
         while True:
-            # Fast input check
-            space_state = check_space_pressed()
+            # Check if space is pressed
+            space_pressed = keyboard.is_pressed('space')
             
-            if space_state is None:  # Ctrl-C detected
-                break
-            
-            # Determine new display state
-            if space_state:  # Space pressed = black screen
+            # Determine display state
+            if space_pressed:
                 new_state = BLACK
-            else:  # Space not pressed = white screen
+                state_text = "BLACK"
+            else:
                 new_state = WHITE
+                state_text = "WHITE"
             
-            # Only update display if state changed
+            # Update display if state changed
             if new_state != last_state:
                 display.fill(new_state)
                 display.show()
                 last_state = new_state
-                
-                # Debug output (optional)
-                # print(f"Screen: {'BLACK' if new_state == BLACK else 'WHITE'}")
+                print(f"Screen: {state_text}")
             
-            # Small sleep to prevent CPU hogging while still being responsive
-            # Adjust based on needed responsiveness vs CPU usage
-            time.sleep(0.001)  # 1ms delay - very responsive
+            # Small delay
+            time.sleep(0.01)  # 10ms
             
     except KeyboardInterrupt:
         pass
     finally:
-        # Clean up
-        restore_input(old_settings)
         # Clear display to white on exit
         display.fill(WHITE)
         display.show()
         print("\nExiting...")
 
 if __name__ == "__main__":
-    # Set high priority for the process (requires sudo)
-    try:
-        os.nice(-10)  # Increase priority
-    except:
-        pass  # Ignore if not running as sudo
-    
     main()
