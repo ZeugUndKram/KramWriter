@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """
-Event-driven display controller using proper image handling
+Simple spacebar input for Sharp Memory Display
 Spacebar pressed = Black screen, Released = White screen
 """
 
 import board
 import busio
 import digitalio
-from PIL import Image, ImageDraw
 import adafruit_sharpmemorydisplay
-from pynput import keyboard
+import sys
+import termios
+import tty
+import select
+import time
 
 # Initialize display
 spi = busio.SPI(board.SCK, MOSI=board.MOSI)
@@ -18,79 +21,70 @@ display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 144, 168)
 
 # Colors
 BLACK = 0
-WHITE = 255
+WHITE = 1  # Using 1 like in the example
 
-def create_blank_image(fill_color):
-    """Create a blank image with the specified color"""
-    image = Image.new("1", (display.width, display.height))
-    draw = ImageDraw.Draw(image)
-    draw.rectangle((0, 0, display.width, display.height), 
-                   outline=fill_color, fill=fill_color)
-    return image
+def setup_nonblocking():
+    """Setup terminal for non-blocking input"""
+    old_settings = termios.tcgetattr(sys.stdin)
+    tty.setcbreak(sys.stdin.fileno())
+    return old_settings
 
-class DisplayController:
-    def __init__(self):
-        # Create images upfront
-        self.black_image = create_blank_image(BLACK)
-        self.white_image = create_blank_image(WHITE)
-        
-        # Start with white screen
-        self.current_image = self.white_image
-        display.image(self.white_image)
-        display.show()
-        print("Screen: WHITE")
-    
-    def update_display(self, is_black):
-        """Update the display with the appropriate image"""
-        if is_black:
-            if self.current_image != self.black_image:
-                display.image(self.black_image)
-                display.show()
-                self.current_image = self.black_image
-                print("Screen: BLACK")
-        else:
-            if self.current_image != self.white_image:
-                display.image(self.white_image)
-                display.show()
-                self.current_image = self.white_image
-                print("Screen: WHITE")
-    
-    def on_press(self, key):
-        """Handle key press"""
-        try:
-            if key == keyboard.Key.space:
-                self.update_display(True)
-        except AttributeError:
-            pass
-    
-    def on_release(self, key):
-        """Handle key release"""
-        try:
-            if key == keyboard.Key.space:
-                self.update_display(False)
-            elif key == keyboard.Key.esc:
-                return False  # Stop listener
-        except AttributeError:
-            pass
+def restore_terminal(old_settings):
+    """Restore terminal settings"""
+    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
 
 def main():
     """Main function"""
-    controller = DisplayController()
+    print("Spacebar pressed = Black screen, released = White screen")
+    print("Press Ctrl-C to exit")
     
-    print("Press space to make screen black, release for white.")
-    print("Press ESC to exit.")
+    # Setup non-blocking input
+    old_settings = setup_nonblocking()
     
-    # Start keyboard listener
-    with keyboard.Listener(
-        on_press=controller.on_press,
-        on_release=controller.on_release) as listener:
-        
-        listener.join()
-    
-    # Clear to white on exit
-    display.image(controller.white_image)
+    # Start with white screen
+    display.fill(WHITE)
     display.show()
-    print("\nExiting...")
+    print("Screen: WHITE")
+    
+    last_state = WHITE
+    
+    try:
+        while True:
+            # Check for any input
+            ready, _, _ = select.select([sys.stdin], [], [], 0)
+            
+            if ready:
+                # Read the key
+                key = sys.stdin.read(1)
+                
+                if key == ' ':  # Space pressed
+                    new_state = BLACK
+                elif key == '\x03':  # Ctrl-C
+                    break
+                else:
+                    new_state = WHITE
+            else:
+                # No key pressed
+                new_state = WHITE
+            
+            # Update display if state changed
+            if new_state != last_state:
+                display.fill(new_state)
+                display.show()
+                last_state = new_state
+                print(f"Screen: {'BLACK' if new_state == BLACK else 'WHITE'}")
+            
+            # Tiny delay
+            time.sleep(0.001)
+            
+    except KeyboardInterrupt:
+        pass
+    finally:
+        # Cleanup
+        restore_terminal(old_settings)
+        display.fill(WHITE)
+        display.show()
+        print("\nExiting...")
 
 if __name__ == "__main__":
     main()
