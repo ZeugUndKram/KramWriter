@@ -50,7 +50,7 @@ draw.rectangle((0, 0, display.width, display.height), outline=BLACK, fill=WHITE)
 font = ImageFont.truetype("/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf", FONTSIZE)
 
 # Draw Some Text
-text = "Hello World!"
+text = "Zeugtris"
 bbox = font.getbbox(text)
 (font_width, font_height) = bbox[2] - bbox[0], bbox[3] - bbox[1]
 draw.text(
