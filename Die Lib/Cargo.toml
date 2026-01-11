@@ -1,0 +1,11 @@
+[package]
+name = "rpi_memory_display"
+version = "0.1.2"
+authors = ["Caolan McMahon <caolan@caolan.uk>"]
+edition = "2018"
+license = "MIT"
+categories = ["hardware-support", "embedded"]
+description = "Drive a Sharp Memory Display module from a Raspberry Pi"
+
+[dependencies]
+rppal = "0.11.3"
