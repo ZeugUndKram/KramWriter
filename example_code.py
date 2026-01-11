@@ -7,7 +7,6 @@ Spacebar pressed = Black screen, Released = White screen
 import board
 import busio
 import digitalio
-from PIL import Image, ImageDraw
 import adafruit_sharpmemorydisplay
 import time
 import pygame
@@ -17,18 +16,9 @@ spi = busio.SPI(board.SCK, MOSI=board.MOSI)
 scs = digitalio.DigitalInOut(board.D6)
 display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 144, 168)
 
-# Colors - IMPORTANT: Sharp Memory Display uses 1-bit color (0 or 1)
-# In the example: BLACK = 0, WHITE = 255 for PIL, but display.fill(1) for white
+# Colors
 BLACK = 0
-WHITE = 255  # For PIL ImageDraw
-
-def create_solid_image(color):
-    """Create a solid color image using PIL, matching the example"""
-    image = Image.new("1", (display.width, display.height))
-    draw = ImageDraw.Draw(image)
-    draw.rectangle((0, 0, display.width, display.height), 
-                   outline=color, fill=color)
-    return image
+WHITE = 255
 
 def main():
     """Main loop using pygame for reliable keyboard input"""
@@ -41,20 +31,11 @@ def main():
     print("Starting display controller. Press space to make screen black, release for white.")
     print("Press ESC to exit.")
     
-    # Create both images upfront for speed (like caching)
-    black_image = create_solid_image(BLACK)
-    white_image = create_solid_image(WHITE)
-    
-    # Start with white screen - using the SAME method as the example
-    display.image(white_image)
-    display.show()
-    print("Screen: WHITE")
-    
-    current_image = white_image
+    last_state = None
     
     try:
         while True:
-            # Handle pygame events for quit/esc
+            # Handle pygame events
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     return
@@ -66,19 +47,19 @@ def main():
             keys = pygame.key.get_pressed()
             space_pressed = keys[pygame.K_SPACE]
             
-            # Determine which image to show
+            # Determine display state
             if space_pressed:
-                new_image = black_image
+                new_state = BLACK
                 state_text = "BLACK"
             else:
-                new_image = white_image
+                new_state = WHITE
                 state_text = "WHITE"
             
-            # Update display if image changed
-            if new_image != current_image:
-                display.image(new_image)
+            # Update display if state changed
+            if new_state != last_state:
+                display.fill(new_state)
                 display.show()
-                current_image = new_image
+                last_state = new_state
                 print(f"Screen: {state_text}")
             
             # Small delay to prevent CPU hogging
@@ -89,8 +70,8 @@ def main():
     finally:
         # Clean up
         pygame.quit()
-        # Clear display to white on exit (using same method)
-        display.image(white_image)
+        # Clear display to white on exit
+        display.fill(WHITE)
         display.show()
         print("\nExiting...")
 
