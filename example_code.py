@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Spacebar pressed = Show "Hello World" image (like the example)
-Spacebar released = White screen (using display.fill for speed)
+Spacebar released = White screen
+For 400x240 Sharp Memory Display
 """
 
 import board
@@ -12,10 +13,10 @@ import adafruit_sharpmemorydisplay
 import time
 import keyboard  # pip install keyboard
 
-# Initialize display
+# Initialize display for 400x240
 spi = busio.SPI(board.SCK, MOSI=board.MOSI)
 scs = digitalio.DigitalInOut(board.D6)
-display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 144, 168)
+display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 400, 240)
 
 # Colors
 BLACK = 0
@@ -23,10 +24,10 @@ WHITE = 255
 
 # Parameters to Change (from the example)
 BORDER = 5
-FONTSIZE = 10
+FONTSIZE = 24  # Increased font size for larger display
 
 def create_hello_world_image():
-    """Create the exact "Hello World" image from the example"""
+    """Create the "Hello World" image for 400x240 display"""
     # Create blank image for drawing.
     # Make sure to create image with mode '1' for 1-bit color.
     image = Image.new("1", (display.width, display.height))
@@ -44,12 +45,17 @@ def create_hello_world_image():
         fill=WHITE,
     )
     
-    # Load a TTF font.
+    # Load a TTF font with larger size for 400x240 display
     try:
         font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", FONTSIZE)
     except:
-        # Fallback to default font if DejaVu is not available
-        font = ImageFont.load_default()
+        try:
+            # Try a different common font path
+            font = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", FONTSIZE)
+        except:
+            # Fallback to default font if others are not available
+            font = ImageFont.load_default()
+            print("Note: Using default font")
     
     # Draw Some Text (from the example)
     text = "Hello World!"
@@ -65,12 +71,14 @@ def create_hello_world_image():
     return image
 
 def main():
-    """Main loop with optimized white screen using display.fill()"""
+    """Main loop"""
+    print(f"Display size: {display.width}x{display.height}")
     print("Spacebar pressed = Show 'Hello World' image")
     print("Spacebar released = White screen")
     print("Press Ctrl-C to exit.")
     
-    # Create the hello world image once
+    # Create the hello world image
+    print("Creating Hello World image...")
     hello_image = create_hello_world_image()
     
     # Start with white screen (using display.fill like in the example)
