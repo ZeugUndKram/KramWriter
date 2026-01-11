@@ -23,7 +23,7 @@ WHITE = 255
 
 # Parameters to Change
 BORDER = 5
-FONTSIZE = 35
+FONTSIZE = 50
 
 spi = busio.SPI(board.SCK, MOSI=board.MOSI)
 scs = digitalio.DigitalInOut(board.D6)  # inverted chip select
