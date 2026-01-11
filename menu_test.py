@@ -1,125 +1,72 @@
+# SPDX-FileCopyrightText: 2021 ladyada for Adafruit Industries
+# SPDX-License-Identifier: MIT
+
+"""
+This demo will fill the screen with white, draw a black box on top
+and then print Hello World! in the center of the display
+
+This example is for use on (Linux) computers that are using CPython with
+Adafruit Blinka to support CircuitPython libraries. CircuitPython does
+not support PIL/pillow (python imaging library)!
+"""
+
 import board
 import busio
 import digitalio
-import keyboard  # pip install keyboard
-import time
 from PIL import Image, ImageDraw, ImageFont
+
 import adafruit_sharpmemorydisplay
 
+# Colors
 BLACK = 0
 WHITE = 255
 
 # Parameters to Change
 BORDER = 5
-FONTSIZE = 24  # Increased for better visibility
-LINE_SPACING = 10
-NORMAL_TEXT = "Hello World!"
-PENIS_TEXT = "penis"
+FONTSIZE = 10
 
-# Initialize SPI and display
 spi = busio.SPI(board.SCK, MOSI=board.MOSI)
 scs = digitalio.DigitalInOut(board.D6)  # inverted chip select
-display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 400, 240)
 
-# Track current state
-current_top_text = NORMAL_TEXT
-k_was_pressed = False  # Changed from space_was_pressed
+# display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 96, 96)
+# display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 400, 240)
+display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 144, 168)
 
-def update_display(top_text, bottom_text="Welcome!"):
-    """Update the display with the given text"""
-    # Create blank image
-    image = Image.new("1", (display.width, display.height))
-    draw = ImageDraw.Draw(image)
+# Clear display.
+display.fill(1)
+display.show()
 
-    # Draw background
-    draw.rectangle((0, 0, display.width, display.height), outline=BLACK, fill=BLACK)
-    draw.rectangle(
-        (BORDER, BORDER, display.width - BORDER - 1, display.height - BORDER - 1),
-        outline=WHITE,
-        fill=WHITE,
-    )
+# Create blank image for drawing.
+# Make sure to create image with mode '1' for 1-bit color.
+image = Image.new("1", (display.width, display.height))
 
-    # Load font
-    try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", FONTSIZE)
-    except:
-        # Fallback to default font
-        font = ImageFont.load_default()
+# Get drawing object to draw on image.
+draw = ImageDraw.Draw(image)
 
-    # Calculate text positions
-    top_bbox = font.getbbox(top_text)
-    bottom_bbox = font.getbbox(bottom_text)
-    
-    top_width = top_bbox[2] - top_bbox[0]
-    top_height = top_bbox[3] - top_bbox[1]
-    bottom_width = bottom_bbox[2] - bottom_bbox[0]
-    bottom_height = bottom_bbox[3] - bottom_bbox[1]
+# Draw a black background
+draw.rectangle((0, 0, display.width, display.height), outline=BLACK, fill=BLACK)
 
-    # Center both lines
-    top_x = display.width // 2 - top_width // 2
-    bottom_x = display.width // 2 - bottom_width // 2
-    
-    # Position lines with spacing
-    total_height = top_height + LINE_SPACING + bottom_height
-    start_y = display.height // 2 - total_height // 2
-    
-    # Draw top text
-    draw.text((top_x, start_y), top_text, font=font, fill=BLACK)
-    
-    # Draw bottom text
-    draw.text((bottom_x, start_y + top_height + LINE_SPACING), 
-              bottom_text, font=font, fill=BLACK)
+# Draw a smaller inner rectangle
+draw.rectangle(
+    (BORDER, BORDER, display.width - BORDER - 1, display.height - BORDER - 1),
+    outline=WHITE,
+    fill=WHITE,
+)
 
-    # Update display
-    display.image(image)
-    display.show()
+# Load a TTF font.
+font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", FONTSIZE)
 
-# Initial display
-print("=" * 50)
-print("PENIS DISPLAY CONTROLLER")
-print("=" * 50)
-print("INSTRUCTIONS:")
-print("- Press K to toggle between 'Hello World!' and 'penis'")
-print("- Press ESC to exit")
-print("- No need to press Enter!")
-print("=" * 50)
+# Draw Some Text
+text = "Hello World!"
+bbox = font.getbbox(text)
+(font_width, font_height) = bbox[2] - bbox[0], bbox[3] - bbox[1]
+draw.text(
+    (display.width // 2 - font_width // 2, display.height // 2 - font_height // 2),
+    text,
+    font=font,
+    fill=BLACK,
+)
 
-update_display(current_top_text)
-
-try:
-    while True:
-        # Check for 'k' key (toggle text) - CHANGED FROM SPACE
-        if keyboard.is_pressed('k'):
-            if not k_was_pressed:  # Prevent holding key from spamming
-                if current_top_text == NORMAL_TEXT:
-                    current_top_text = PENIS_TEXT
-                    print(f"Text changed to: {PENIS_TEXT}")
-                else:
-                    current_top_text = NORMAL_TEXT
-                    print(f"Text changed to: {NORMAL_TEXT}")
-                
-                update_display(current_top_text)
-                k_was_pressed = True
-        else:
-            k_was_pressed = False  # Reset when 'k' is released
-
-        # Check for escape key to exit
-        if keyboard.is_pressed('esc'):
-            print("\nExiting program...")
-            break
-
-        # Small delay to prevent CPU overload
-        time.sleep(0.05)
-
-except KeyboardInterrupt:
-    print("\nProgram interrupted by user")
-
-except Exception as e:
-    print(f"\nError: {e}")
-
-finally:
-    print("Cleaning up...")
-    # Clear display
-    display.fill(1)
-    display.show()
-    print("Display cleared. Goodbye!")
+# Display image
+display.image(image)
+display.show()
