@@ -57,7 +57,7 @@ def display_centered_image(image_path):
         return False
 
 def main():
-    assets_path = "/assets/"
+    assets_path = "/home/kramwriter/KramWriter/assets/"
     
     # Check if assets folder exists
     if not os.path.exists(assets_path):
