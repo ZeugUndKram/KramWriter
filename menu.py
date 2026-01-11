@@ -42,22 +42,39 @@ display.show()
 menu_items = ["Write", "Anki", "Zeugtris", "Settings", "Credits"]
 selected_index = 2  # Start with Zeugtris in the middle (index 2)
 
+# PRELOAD ALL FONTS - DO THIS ONLY ONCE
+print("Loading fonts...")
+font_cache = {
+    30: ImageFont.truetype("/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf", 30),
+    40: ImageFont.truetype("/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf", 40),
+    50: ImageFont.truetype("/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf", 50)
+}
+
+# Pre-calculate font metrics for each size
+font_metrics = {}
+for size, font in font_cache.items():
+    # Get metrics for all menu items with this font size
+    metrics = {}
+    for item in menu_items:
+        bbox = font.getbbox(item)
+        metrics[item] = {
+            'width': bbox[2] - bbox[0],
+            'height': bbox[3] - bbox[1]
+        }
+    font_metrics[size] = metrics
+
+print("Fonts loaded and cached!")
+
+# Create image and draw objects ONCE and reuse them
+image = Image.new("1", (display.width, display.height))
+draw = ImageDraw.Draw(image)
+
 def create_menu_display(selected_idx):
     """Create and display the menu with the selected item in the middle"""
-    # Create blank image for drawing.
-    # Make sure to create image with mode '1' for 1-bit color.
-    image = Image.new("1", (display.width, display.height))
-    draw = ImageDraw.Draw(image)
-    
-    # Draw a white background
+    # Clear the image (fill with white)
     draw.rectangle((0, 0, display.width, display.height), outline=BLACK, fill=WHITE)
     
-    # Create the text elements array with font sizes based on position
-    # The middle item (index 2 in the displayed array) gets size 50
-    # Items 1 and 3 get size 40, items 0 and 4 get size 30
-    text_elements = []
-    
-    # We need to create the display order based on selected index
+    # Create the display order based on selected index
     # The selected item should be in the middle (position 2 in the 5-element display)
     display_order = []
     for i in range(-2, 3):  # -2, -1, 0, 1, 2
@@ -67,42 +84,38 @@ def create_menu_display(selected_idx):
     # Assign font sizes based on position in display
     font_sizes = [30, 40, 50, 40, 30]
     
-    for i in range(5):
-        text_elements.append((display_order[i], font_sizes[i]))
-    
     # Calculate total height needed for all text elements
     total_text_height = 0
     spacing = 10  # Spacing between text elements
-    all_heights = []
     
-    # First pass to calculate heights
-    for text, font_size in text_elements:
-        font = ImageFont.truetype("/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf", font_size)
-        bbox = font.getbbox(text)
-        font_height = bbox[3] - bbox[1]
-        all_heights.append(font_height)
-        total_text_height += font_height
+    for i in range(5):
+        text = display_order[i]
+        font_size = font_sizes[i]
+        total_text_height += font_metrics[font_size][text]['height']
     
     # Add spacing between elements
-    total_text_height += spacing * (len(text_elements) - 1)
+    total_text_height += spacing * 4
     
     # Calculate starting Y position to center all text elements vertically
     current_y = (display.height - total_text_height) // 2
     
     # Draw each text element
-    for i, (text, font_size) in enumerate(text_elements):
-        font = ImageFont.truetype("/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf", font_size)
-        bbox = font.getbbox(text)
-        font_width = bbox[2] - bbox[0]
+    for i in range(5):
+        text = display_order[i]
+        font_size = font_sizes[i]
+        font = font_cache[font_size]
+        
+        # Get pre-calculated width
+        text_width = font_metrics[font_size][text]['width']
         
         # Center text horizontally
-        x = (display.width - font_width) // 2
+        x = (display.width - text_width) // 2
         
         # Draw the text
         draw.text((x, current_y), text, font=font, fill=BLACK)
         
         # Move to next position
-        current_y += all_heights[i] + spacing
+        current_y += font_metrics[font_size][text]['height'] + spacing
     
     # Display image
     display.image(image)
@@ -115,7 +128,7 @@ print("Menu Navigation Demo")
 print("Press UP/DOWN arrow keys to navigate, 'q' to quit")
 print(f"Current selection: {menu_items[selected_index]}")
 
-# Clear any pending input
+# Simple input for testing - MUCH faster now
 try:
     import termios
     import tty
@@ -128,47 +141,57 @@ try:
     tty.setraw(fd)
     
     try:
+        last_update_time = time.time()
+        update_count = 0
+        
         while True:
-            # Read a single character
-            key = sys.stdin.read(1)
+            # Check for key press without blocking for too long
+            import select
+            if select.select([sys.stdin], [], [], 0.01)[0]:
+                key = sys.stdin.read(1)
+                
+                if key == 'q' or key == 'Q':
+                    print("\nExiting...")
+                    break
+                elif key == '\x1b':  # Escape sequence for arrow keys
+                    # Read next two characters
+                    next1 = sys.stdin.read(1)
+                    next2 = sys.stdin.read(1)
+                    if next1 == '[':
+                        if next2 == 'A':  # UP arrow
+                            selected_index = (selected_index - 1) % len(menu_items)
+                        elif next2 == 'B':  # DOWN arrow
+                            selected_index = (selected_index + 1) % len(menu_items)
+                        
+                        update_count += 1
+                        if update_count % 10 == 0:  # Print every 10 updates
+                            print(f"\rUpdates: {update_count}, Selected: {menu_items[selected_index]:<15}", end="", flush=True)
+                        
+                        create_menu_display(selected_index)
+                
+                # Also accept w/s keys
+                elif key == 'w' or key == 'W':
+                    selected_index = (selected_index - 1) % len(menu_items)
+                    create_menu_display(selected_index)
+                elif key == 's' or key == 'S':
+                    selected_index = (selected_index + 1) % len(menu_items)
+                    create_menu_display(selected_index)
             
-            if key == 'q' or key == 'Q':
-                print("\nExiting...")
-                break
-            elif key == '\x1b':  # Escape sequence for arrow keys
-                # Read next two characters
-                next1 = sys.stdin.read(1)
-                next2 = sys.stdin.read(1)
-                if next1 == '[':
-                    if next2 == 'A':  # UP arrow
-                        selected_index = (selected_index - 1) % len(menu_items)
-                        print(f"\rSelected: {menu_items[selected_index]}", end="", flush=True)
-                        create_menu_display(selected_index)
-                    elif next2 == 'B':  # DOWN arrow
-                        selected_index = (selected_index + 1) % len(menu_items)
-                        print(f"\rSelected: {menu_items[selected_index]}", end="", flush=True)
-                        create_menu_display(selected_index)
-            elif key == 'w' or key == 'W':  # Alternative: W key for up
-                selected_index = (selected_index - 1) % len(menu_items)
-                print(f"\rSelected: {menu_items[selected_index]}", end="", flush=True)
-                create_menu_display(selected_index)
-            elif key == 's' or key == 'S':  # Alternative: S key for down
-                selected_index = (selected_index + 1) % len(menu_items)
-                print(f"\rSelected: {menu_items[selected_index]}", end="", flush=True)
-                create_menu_display(selected_index)
+            # Optional: Add a small delay to prevent CPU hogging
+            time.sleep(0.001)
     
     finally:
         # Restore terminal settings
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-        print("\nTerminal restored.")
+        print(f"\nTotal updates: {update_count}")
+        print("Terminal restored.")
 
 except ImportError:
-    # Fallback for systems without termios (like Windows)
-    print("Termios not available. Using simple input (press Enter after each key).")
+    # Fallback for systems without termios
+    print("Termios not available. Using simple input.")
     
     while True:
         try:
-            # Get input (requires Enter key)
             user_input = input("Press w/s/q then Enter: ").strip().lower()
             
             if user_input == 'q':
