@@ -54,7 +54,7 @@ text = "Hello World!"
 bbox = font.getbbox(text)
 (font_width, font_height) = bbox[2] - bbox[0], bbox[3] - bbox[1]
 draw.text(
-    (display.width // 2 - font_width // 2, display.height // 2 - font_height // 2),
+    (50, display.height // 2 - font_height // 2),
     text,
     font=font,
     fill=BLACK,
