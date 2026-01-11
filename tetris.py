@@ -365,14 +365,19 @@ def curses_main(stdscr):
     # Setup curses
     curses.curs_set(0)
     stdscr.nodelay(True)
-    stdscr.timeout(50)  # 50ms timeout for smoother animation
+    
+    # Disable cursor echo
+    curses.noecho()
+    curses.cbreak()
+    
+    # Enable keypad mode for special keys
+    stdscr.keypad(True)
     
     # Create game
     game = Tetris(20, 10)
     game.new_figure()
     
     # Game loop
-    counter = 0
     last_drop_time = time.time()
     drop_interval = 0.5  # Start with 0.5 seconds per drop
     last_animation_update = time.time()
@@ -388,6 +393,13 @@ def curses_main(stdscr):
     print("Next piece preview shown on the right")
     print("=" * 50)
     
+    # Key repeat delay tracking
+    last_key_time = 0
+    key_repeat_delay = 0.15  # 150ms initial delay before repeating
+    key_repeat_interval = 0.05  # 50ms repeat interval
+    last_key = None
+    key_press_time = 0
+    
     try:
         while True:
             current_time = time.time()
@@ -396,27 +408,56 @@ def curses_main(stdscr):
             if game.state == "clearing":
                 game.update_animation(current_time)
             
-            # Handle input (only if not in clearing state)
-            if game.state != "clearing":
-                key = stdscr.getch()
-                
-                if key != -1:
-                    if key == curses.KEY_UP:
-                        game.rotate()
-                    elif key == curses.KEY_DOWN:
-                        game.go_down()
-                    elif key == curses.KEY_LEFT:
-                        game.go_side(-1)
-                    elif key == curses.KEY_RIGHT:
-                        game.go_side(1)
-                    elif key == ord(' '):  # Spacebar for hard drop
-                        game.hard_drop()
-                    elif key == ord('r') or key == ord('R'):
-                        if game.state == "gameover" or game.state == "start":
-                            game = Tetris(20, 10)
-                            game.new_figure()
-                    elif key == ord('q') or key == ord('Q'):
-                        break
+            # Handle input
+            key = stdscr.getch()
+            
+            if key != -1:
+                # Handle immediate actions (not movement)
+                if key == ord(' '):  # Spacebar for hard drop
+                    game.hard_drop()
+                    last_key = None  # Reset repeat
+                elif key == ord('r') or key == ord('R'):
+                    if game.state == "gameover" or game.state == "start":
+                        game = Tetris(20, 10)
+                        game.new_figure()
+                    last_key = None  # Reset repeat
+                elif key == ord('q') or key == ord('Q'):
+                    break
+                else:
+                    # Handle movement keys with repeat
+                    if key in [curses.KEY_UP, curses.KEY_DOWN, curses.KEY_LEFT, curses.KEY_RIGHT]:
+                        # Check if this is a new key press
+                        if last_key != key:
+                            last_key = key
+                            key_press_time = current_time
+                            should_process = True
+                        else:
+                            # Same key - check repeat timing
+                            elapsed = current_time - key_press_time
+                            if elapsed > key_repeat_delay:
+                                # We're in repeat mode, use repeat interval
+                                if elapsed - key_repeat_delay > key_repeat_interval:
+                                    should_process = True
+                                    key_press_time = current_time - (key_repeat_delay - key_repeat_interval)
+                                else:
+                                    should_process = False
+                            else:
+                                should_process = False
+                        
+                        if should_process and game.state == "start":
+                            if key == curses.KEY_UP:
+                                game.rotate()
+                            elif key == curses.KEY_DOWN:
+                                game.go_down()
+                            elif key == curses.KEY_LEFT:
+                                game.go_side(-1)
+                            elif key == curses.KEY_RIGHT:
+                                game.go_side(1)
+                    else:
+                        last_key = None  # Reset for non-movement keys
+            else:
+                # No key pressed, reset last_key
+                last_key = None
             
             # Auto-drop (only if in start state)
             if game.state == "start" and current_time - last_drop_time > drop_interval:
@@ -429,22 +470,27 @@ def curses_main(stdscr):
             image = Image.new("1", (display.width, display.height))
             draw = ImageDraw.Draw(image)
             game.draw(draw)
-            display.image(image)
-            display.show()
             
-            counter += 1
-            if counter % 100 == 0:
-                # Increase level every 100 updates
-                game.level = 1 + game.score // 100
+            # Optimize display update - only update if something changed
+            try:
+                display.image(image)
+                display.show()
+            except Exception as e:
+                print(f"Display error: {e}")
             
-            # Small delay for smoother animation
-            time.sleep(0.01)
+            # Calculate sleep time based on game state
+            if game.state == "clearing":
+                time.sleep(0.05)  # Faster updates during animation
+            else:
+                time.sleep(0.01)  # Regular speed
             
     except KeyboardInterrupt:
         pass
     
     except Exception as e:
         print(f"Error: {e}")
+        import traceback
+        traceback.print_exc()
     
     finally:
         display.fill(1)
