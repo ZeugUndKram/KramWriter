@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-STABLE version - No flicker, maximum speed
+PROPER STATE TRACKING - No flicker
 Spacebar pressed = Black screen, released = White screen
 400x240 Sharp Memory Display
 """
@@ -12,85 +12,69 @@ import adafruit_sharpmemorydisplay
 import sys
 import termios
 import tty
-import fcntl
-import os
 import select
+import time
 
 # Display setup
 spi = busio.SPI(board.SCK, MOSI=board.MOSI)
 scs = digitalio.DigitalInOut(board.D6)
 display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 400, 240)
 
-# Save terminal settings
+# Save terminal
 old_settings = termios.tcgetattr(sys.stdin)
-tty.setraw(sys.stdin.fileno())
-old_flags = fcntl.fcntl(sys.stdin, fcntl.F_GETFL)
-fcntl.fcntl(sys.stdin, fcntl.F_SETFL, old_flags | os.O_NONBLOCK)
+tty.setcbreak(sys.stdin.fileno())  # Use cbreak instead of raw for better handling
 
-# State tracking
-current_state = 1  # 1 = white, 0 = black
-space_was_pressed = False
+# State
+display_state = 1  # 1=white, 0=black
+key_state = 0      # 0=no key, 32=space, 3=ctrl-c
 
-# Start with white screen
+# Start with white
 display.fill(1)
 display.show()
 
+print("Running. Space=Black, Release=White, Ctrl-C to exit")
+
 try:
     while True:
-        # Check for any input
-        ready, _, _ = select.select([sys.stdin], [], [], 0)
+        # Check for keypress
+        ready, _, _ = select.select([sys.stdin], [], [], 0.01)  # 10ms timeout
         
         if ready:
-            # Read ALL available input to check for spacebar state
-            space_now_pressed = False
-            ctrl_c = False
+            # Read key
+            try:
+                key = ord(sys.stdin.read(1))
+            except TypeError:
+                continue
             
-            # Read multiple characters if they're queued
-            while True:
-                try:
-                    char = sys.stdin.read(1)
-                    if not char:  # No more data
-                        break
-                    
-                    if char == ' ':
-                        space_now_pressed = True
-                    elif char == '\x03':  # Ctrl-C
-                        ctrl_c = True
-                        break
-                except (BlockingIOError, OSError):
-                    break
-            
-            if ctrl_c:
+            if key == 3:  # Ctrl-C
                 break
-            
-            # Only update if spacebar state changed
-            if space_now_pressed != space_was_pressed:
-                space_was_pressed = space_now_pressed
-                
-                if space_now_pressed:
-                    # Space pressed - show black
-                    if current_state != 0:
+            elif key == 32:  # Space
+                if key_state != 32:  # Space newly pressed
+                    key_state = 32
+                    if display_state != 0:
                         display.fill(0)
                         display.show()
-                        current_state = 0
-                else:
-                    # Space released - show white
-                    if current_state != 1:
+                        display_state = 0
+            else:
+                # Any other key means space is released
+                if key_state == 32:  # Space was pressed, now released
+                    key_state = 0
+                    if display_state != 1:
                         display.fill(1)
                         display.show()
-                        current_state = 1
+                        display_state = 1
         else:
-            # No input available - if we thought space was pressed, it's been released
-            if space_was_pressed:
-                space_was_pressed = False
-                if current_state != 1:
+            # No key pressed
+            if key_state == 32:  # Space was pressed but no input now
+                key_state = 0
+                if display_state != 1:
                     display.fill(1)
                     display.show()
-                    current_state = 1
+                    display_state = 1
             
 finally:
-    # Restore terminal
+    # Cleanup
     termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-    fcntl.fcntl(sys.stdin, fcntl.F_SETFL, old_flags)
     display.fill(1)
     display.show()
+    print("\nExited")
