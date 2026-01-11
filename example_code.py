@@ -1,60 +1,104 @@
+#!/usr/bin/env python3
+"""
+Fast input handling script for Sharp Memory Display on Pi Zero 2 W
+Spacebar pressed = Black screen, Released = White screen
+"""
+
 import board
 import busio
 import digitalio
-from PIL import Image, ImageDraw, ImageFont
-
 import adafruit_sharpmemorydisplay
+import select
+import sys
+import termios
+import tty
+import time
+import os
+
+# Initialize display
+spi = busio.SPI(board.SCK, MOSI=board.MOSI)
+scs = digitalio.DigitalInOut(board.D6)
+display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 144, 168)
 
 # Colors
 BLACK = 0
 WHITE = 255
 
-# Parameters to Change
-BORDER = 5
-FONTSIZE = 10
+def setup_nonblocking_input():
+    """Configure stdin for non-blocking raw input"""
+    old_settings = termios.tcgetattr(sys.stdin)
+    tty.setraw(sys.stdin.fileno())
+    return old_settings
 
-spi = busio.SPI(board.SCK, MOSI=board.MOSI)
-scs = digitalio.DigitalInOut(board.D6)  # inverted chip select
+def restore_input(old_settings):
+    """Restore terminal settings"""
+    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
 
-# display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 96, 96)
-display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 400, 240)
-#display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 144, 168)
+def check_space_pressed():
+    """Fast non-blocking check for spacebar press using select()"""
+    # Check if there's input available
+    ready, _, _ = select.select([sys.stdin], [], [], 0)
+    if ready:
+        # Read available input
+        char = sys.stdin.read(1)
+        if char == ' ':
+            return True
+        elif char == '\x03':  # Ctrl-C
+            return None
+    return False
 
-# Clear display.
-display.fill(1)
-display.show()
+def main():
+    """Main loop with optimized input handling"""
+    print("Starting display controller. Press space to make screen black, release for white.")
+    print("Press Ctrl-C to exit.")
+    
+    # Setup non-blocking input
+    old_settings = setup_nonblocking_input()
+    
+    try:
+        last_state = None  # Track last display state to avoid unnecessary updates
+        
+        while True:
+            # Fast input check
+            space_state = check_space_pressed()
+            
+            if space_state is None:  # Ctrl-C detected
+                break
+            
+            # Determine new display state
+            if space_state:  # Space pressed = black screen
+                new_state = BLACK
+            else:  # Space not pressed = white screen
+                new_state = WHITE
+            
+            # Only update display if state changed
+            if new_state != last_state:
+                display.fill(new_state)
+                display.show()
+                last_state = new_state
+                
+                # Debug output (optional)
+                # print(f"Screen: {'BLACK' if new_state == BLACK else 'WHITE'}")
+            
+            # Small sleep to prevent CPU hogging while still being responsive
+            # Adjust based on needed responsiveness vs CPU usage
+            time.sleep(0.001)  # 1ms delay - very responsive
+            
+    except KeyboardInterrupt:
+        pass
+    finally:
+        # Clean up
+        restore_input(old_settings)
+        # Clear display to white on exit
+        display.fill(WHITE)
+        display.show()
+        print("\nExiting...")
 
-# Create blank image for drawing.
-# Make sure to create image with mode '1' for 1-bit color.
-image = Image.new("1", (display.width, display.height))
-
-# Get drawing object to draw on image.
-draw = ImageDraw.Draw(image)
-
-# Draw a black background
-draw.rectangle((0, 0, display.width, display.height), outline=BLACK, fill=BLACK)
-
-# Draw a smaller inner rectangle
-draw.rectangle(
-    (BORDER, BORDER, display.width - BORDER - 1, display.height - BORDER - 1),
-    outline=WHITE,
-    fill=WHITE,
-)
-
-# Load a TTF font.
-font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", FONTSIZE)
-
-# Draw Some Text
-text = "Hello World!"
-bbox = font.getbbox(text)
-(font_width, font_height) = bbox[2] - bbox[0], bbox[3] - bbox[1]
-draw.text(
-    (display.width // 2 - font_width // 2, display.height // 2 - font_height // 2),
-    text,
-    font=font,
-    fill=BLACK,
-)
-
-# Display image
-display.image(image)
-display.show()
+if __name__ == "__main__":
+    # Set high priority for the process (requires sudo)
+    try:
+        os.nice(-10)  # Increase priority
+    except:
+        pass  # Ignore if not running as sudo
+    
+    main()
