@@ -9,7 +9,7 @@ import busio
 import digitalio
 import adafruit_sharpmemorydisplay
 import time
-import pygame
+import keyboard  # pip install keyboard
 
 # Initialize display
 spi = busio.SPI(board.SCK, MOSI=board.MOSI)
@@ -21,31 +21,16 @@ BLACK = 0
 WHITE = 255
 
 def main():
-    """Main loop using pygame for reliable keyboard input"""
-    # Initialize pygame
-    pygame.init()
-    
-    # Set up a minimal pygame display (invisible)
-    pygame.display.set_mode((1, 1), pygame.NOFRAME)
-    
+    """Main loop using keyboard library for input"""
     print("Starting display controller. Press space to make screen black, release for white.")
-    print("Press ESC to exit.")
+    print("Press Ctrl-C to exit.")
     
     last_state = None
     
     try:
         while True:
-            # Handle pygame events
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    return
-                elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_ESCAPE:
-                        return
-            
             # Check if space is pressed
-            keys = pygame.key.get_pressed()
-            space_pressed = keys[pygame.K_SPACE]
+            space_pressed = keyboard.is_pressed('space')
             
             # Determine display state
             if space_pressed:
@@ -62,14 +47,12 @@ def main():
                 last_state = new_state
                 print(f"Screen: {state_text}")
             
-            # Small delay to prevent CPU hogging
-            time.sleep(0.01)  # 10ms - still very responsive
+            # Small delay
+            time.sleep(0.01)  # 10ms
             
     except KeyboardInterrupt:
         pass
     finally:
-        # Clean up
-        pygame.quit()
         # Clear display to white on exit
         display.fill(WHITE)
         display.show()
