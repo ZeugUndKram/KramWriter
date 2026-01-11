@@ -54,7 +54,7 @@ text = "Zeugtris"
 bbox = font.getbbox(text)
 (font_width, font_height) = bbox[2] - bbox[0], bbox[3] - bbox[1]
 draw.text(
-    (50, display.height // 2 - font_height // 2),
+    (70, display.height // 2 - font_height // 2),
     text,
     font=font,
     fill=BLACK,
