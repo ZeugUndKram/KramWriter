@@ -1,6 +1,5 @@
 """
 Simple BMP Image Viewer for Sharp Memory Display
-Use left/right arrow keys or P/N to navigate
 """
 
 import board
@@ -26,85 +25,105 @@ image_files = [
 
 current_index = 0
 
-def display_centered_image(image_path):
+def display_image(image_path):
     """Display a BMP image centered on screen"""
     try:
-        image = Image.open(image_path)
+        # Open and convert image
+        img = Image.open(image_path)
         
         # Convert to 1-bit if needed
-        if image.mode != '1':
-            image = image.convert('1')
+        if img.mode != '1':
+            img = img.convert('1')
         
-        # Calculate centering
-        x_offset = (display.width - image.width) // 2
-        y_offset = (display.height - image.height) // 2
+        # Calculate position to center image
+        x = (display.width - img.width) // 2
+        y = (display.height - img.height) // 2
         
-        # Create blank canvas
-        canvas = Image.new("1", (display.width, display.height), 255)
+        # Create blank white image
+        canvas = Image.new("1", (display.width, display.height), 1)
         
-        # Paste image centered
-        canvas.paste(image, (x_offset, y_offset))
+        # Paste the image
+        canvas.paste(img, (x, y))
         
         # Display
         display.image(canvas)
         display.show()
         
-        print(f"Displaying: {os.path.basename(image_path)}")
+        print(f"Showing: {os.path.basename(image_path)}")
         return True
         
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error with {image_path}: {e}")
         return False
 
 def main():
-    assets_path = "/home/kramwriter/KramWriter/assets/"
+    # Find assets folder
+    assets_folder = None
+    for path in ["/assets/", "./assets/", "assets/"]:
+        if os.path.exists(path):
+            assets_folder = path
+            break
     
-    # Check if assets folder exists
-    if not os.path.exists(assets_path):
-        print(f"Trying ./assets/ instead...")
-        assets_path = "./assets/"
-        if not os.path.exists(assets_path):
-            print("Error: Could not find assets folder!")
-            return
-    
-    print(f"Image viewer started. Press:")
-    print("  N or Right Arrow - Next image")
-    print("  P or Left Arrow  - Previous image")
-    print("  Q                - Quit")
-    print()
-    
-    # Display first image
-    img_path = os.path.join(assets_path, image_files[current_index])
-    if not display_centered_image(img_path):
-        print("Failed to display initial image!")
+    if not assets_folder:
+        print("Error: No assets folder found!")
         return
     
-    try:
-        while True:
-            # Simple input (works on most systems)
-            try:
-                user_input = input("Command [N/P/Q]: ").strip().upper()
-            except EOFError:
-                break
+    print(f"Using assets from: {assets_folder}")
+    
+    # Check which images exist
+    existing_images = []
+    for f in image_files:
+        full_path = os.path.join(assets_folder, f)
+        if os.path.exists(full_path):
+            existing_images.append(f)
+        else:
+            print(f"Missing: {f}")
+    
+    if not existing_images:
+        print("No images found!")
+        return
+    
+    # Show first image
+    img_path = os.path.join(assets_folder, existing_images[current_index])
+    display_image(img_path)
+    
+    print("\nControls:")
+    print("  N or Enter - Next image")
+    print("  P - Previous image")
+    print("  Q - Quit")
+    print()
+    
+    while True:
+        try:
+            cmd = input("Command [N/P/Q]: ").strip().lower()
             
-            if user_input == 'Q':
+            if cmd == 'q':
                 print("Goodbye!")
                 break
-            elif user_input == 'N' or user_input == '':
+            elif cmd == 'n' or cmd == '':
                 # Next image
-                current_index = (current_index + 1) % len(image_files)
-                img_path = os.path.join(assets_path, image_files[current_index])
-                display_centered_image(img_path)
-            elif user_input == 'P':
+                current_index = (current_index + 1) % len(existing_images)
+            elif cmd == 'p':
                 # Previous image
-                current_index = (current_index - 1) % len(image_files)
-                img_path = os.path.join(assets_path, image_files[current_index])
-                display_centered_image(img_path)
+                current_index = (current_index - 1) % len(existing_images)
             else:
-                print("Invalid command. Use N (next), P (previous), or Q (quit)")
-                
-    except KeyboardInterrupt:
-        print("\nExiting...")
+                print("Unknown command. Use N, P, or Q")
+                continue
+            
+            # Display the selected image
+            img_path = os.path.join(assets_folder, existing_images[current_index])
+            display_image(img_path)
+            
+        except KeyboardInterrupt:
+            print("\nExiting...")
+            break
+        except Exception as e:
+            print(f"Error: {e}")
+            break
+    
+    # Clear display
+    display.fill(1)
+    display.show()
 
 if __name__ == "__main__":
     main()
