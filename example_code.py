@@ -1,66 +1,62 @@
 #!/usr/bin/env python3
 """
-Spacebar pressed = Black screen
-Spacebar released = White screen
-For 400x240 Sharp Memory Display
+MINIMAL MAX SPEED - No prints, no overhead
 """
 
 import board
 import busio
 import digitalio
 import adafruit_sharpmemorydisplay
-import time
-import keyboard  # pip install keyboard
+import sys
+import termios
+import tty
+import fcntl
+import os
+import select
 
-# Initialize display for 400x240
+# Display setup
 spi = busio.SPI(board.SCK, MOSI=board.MOSI)
 scs = digitalio.DigitalInOut(board.D6)
 display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 400, 240)
 
-def main():
-    """Simple main loop"""
-    print(f"Display size: {display.width}x{display.height}")
-    print("Spacebar pressed = Black screen")
-    print("Spacebar released = White screen")
-    print("Press Ctrl-C to exit.")
-    
-    # Start with white screen
-    display.fill(1)  # 1 = white
-    display.show()
-    print("Screen: WHITE")
-    
-    current_state = 1  # 1 = white, 0 = black
-    
-    try:
-        while True:
-            # Check if space is pressed
-            space_pressed = keyboard.is_pressed('space')
-            
-            # Determine screen color
-            if space_pressed:
-                new_state = 0  # black
-                state_text = "BLACK"
-            else:
-                new_state = 1  # white
-                state_text = "WHITE"
-            
-            # Update display if state changed
-            if new_state != current_state:
-                display.fill(new_state)
-                display.show()
-                current_state = new_state
-                print(f"Screen: {state_text}")
-            
-            # Small delay
-            time.sleep(0.01)
-            
-    except KeyboardInterrupt:
-        pass
-    finally:
-        # Clear to white on exit
-        display.fill(1)
-        display.show()
-        print("\nExiting...")
+# Save terminal
+old_settings = termios.tcgetattr(sys.stdin)
+tty.setraw(sys.stdin.fileno())
+old_flags = fcntl.fcntl(sys.stdin, fcntl.F_GETFL)
+fcntl.fcntl(sys.stdin, fcntl.F_SETFL, old_flags | os.O_NONBLOCK)
 
-if __name__ == "__main__":
-    main()
+# State
+state = 1
+display.fill(1)
+display.show()
+
+try:
+    while True:
+        # Check for input (FASTEST POSSIBLE)
+        ready, _, _ = select.select([sys.stdin], [], [], 0)
+        if ready:
+            char = sys.stdin.read(1)
+            if char == '\x03':
+                break
+            elif char == ' ':
+                # Consume any buffered input
+                while select.select([sys.stdin], [], [], 0)[0]:
+                    sys.stdin.read(1)
+                if state != 0:
+                    display.fill(0)
+                    display.show()
+                    state = 0
+                continue
+        
+        # Space not pressed
+        if state != 1:
+            display.fill(1)
+            display.show()
+            state = 1
+            
+finally:
+    # Restore
+    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+    fcntl.fcntl(sys.stdin, fcntl.F_SETFL, old_flags)
+    display.fill(1)
+    display.show()
