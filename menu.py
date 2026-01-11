@@ -47,11 +47,11 @@ draw.rectangle((0, 0, display.width, display.height), outline=BLACK, fill=WHITE)
 
 # Define text elements with their font sizes
 text_elements = [
-    ("Zeugtris", 30),      # First element - size 30
-    ("Element 2", 40),     # Second element - size 40
-    ("Element 3", 50),     # Third element - size 50
-    ("Element 4", 40),     # Fourth element - size 40
-    ("Final", 30)          # Fifth element - size 30
+    ("Write", 30),      # First element - size 30
+    ("Anki", 40),     # Second element - size 40
+    ("Zeugtris", 50),     # Third element - size 50
+    ("Settings", 40),     # Fourth element - size 40
+    ("Credits", 30)          # Fifth element - size 30
 ]
 
 # Calculate total height needed for all text elements
