@@ -44,14 +44,7 @@ image = Image.new("1", (display.width, display.height))
 draw = ImageDraw.Draw(image)
 
 # Draw a black background
-draw.rectangle((0, 0, display.width, display.height), outline=BLACK, fill=BLACK)
-
-# Draw a smaller inner rectangle
-draw.rectangle(
-    (BORDER, BORDER, display.width - BORDER - 1, display.height - BORDER - 1),
-    outline=WHITE,
-    fill=WHITE,
-)
+draw.rectangle((0, 0, display.width, display.height), outline=BLACK, fill=WHITE)
 
 # Load a TTF font.
 font = ImageFont.truetype("/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf", FONTSIZE)
