@@ -6,6 +6,8 @@ import busio
 import digitalio
 from PIL import Image, ImageDraw, ImageFont
 import adafruit_sharpmemorydisplay
+import threading
+import queue
 
 # Initialize the Sharp Memory Display
 spi = busio.SPI(board.SCK, MOSI=board.MOSI)
@@ -255,7 +257,7 @@ class Tetris:
                 outline=WHITE, fill=WHITE
             )
 
-    def draw(self, draw):
+    def draw(self, draw, fps=0):
         """Draw game on display"""
         # Clear display
         draw.rectangle((0, 0, display.width, display.height), fill=BLACK)
@@ -305,6 +307,11 @@ class Tetris:
         level_text = f"Level: {self.level}"
         level_text_width = draw.textlength(level_text, font=self.font)
         draw.text((display.width - level_text_width - 10, 10), level_text, font=self.font, fill=WHITE)
+        
+        # Draw FPS counter (top middle)
+        fps_text = f"FPS: {fps:.1f}"
+        fps_width = draw.textlength(fps_text, font=self.small_font)
+        draw.text((display.width // 2 - fps_width // 2, 10), fps_text, font=self.small_font, fill=WHITE)
         
         # Draw lines cleared indicator during animation
         if self.state == "clearing" and self.lines_to_clear:
@@ -361,26 +368,77 @@ class Tetris:
                 self.clear_lines()
 
 
-def curses_main(stdscr):
-    # Setup curses
-    curses.curs_set(0)
-    stdscr.nodelay(True)
-    
-    # Disable cursor echo
-    curses.noecho()
-    curses.cbreak()
-    
-    # Enable keypad mode for special keys
-    stdscr.keypad(True)
-    
-    # Create game
-    game = Tetris(20, 10)
-    game.new_figure()
-    
-    # Game loop
-    last_drop_time = time.time()
-    drop_interval = 0.5  # Start with 0.5 seconds per drop
-    last_animation_update = time.time()
+def display_worker(q, stop_event):
+    """Worker thread for display updates"""
+    while not stop_event.is_set():
+        try:
+            # Get image with timeout
+            image = q.get(timeout=0.01)
+            if image is None:  # Poison pill
+                break
+            display.image(image)
+            display.show()
+        except queue.Empty:
+            continue
+        except Exception as e:
+            print(f"Display error: {e}")
+
+
+def input_worker(input_queue, stop_event):
+    """Worker thread for input handling"""
+    try:
+        stdscr = curses.initscr()
+        curses.curs_set(0)
+        curses.noecho()
+        curses.cbreak()
+        stdscr.nodelay(True)
+        stdscr.keypad(True)
+        
+        # Key state tracking
+        key_states = {}
+        last_key_time = {}
+        key_repeat_initial = 0.2  # 200ms initial delay
+        key_repeat_interval = 0.05  # 50ms repeat interval
+        
+        while not stop_event.is_set():
+            current_time = time.time()
+            key = stdscr.getch()
+            
+            if key != -1:
+                # Check if this key is already pressed
+                if key in key_states:
+                    # Key is held, check for repeat
+                    elapsed = current_time - last_key_time[key]
+                    if elapsed > key_repeat_initial:
+                        # In repeat mode
+                        if elapsed - key_repeat_initial > key_repeat_interval:
+                            input_queue.put(key)
+                            last_key_time[key] = current_time - (key_repeat_initial - key_repeat_interval)
+                    else:
+                        # Still in initial delay, send once
+                        input_queue.put(key)
+                        last_key_time[key] = current_time
+                else:
+                    # New key press
+                    key_states[key] = True
+                    last_key_time[key] = current_time
+                    input_queue.put(key)
+            else:
+                # No key pressed, clear all key states
+                key_states.clear()
+            
+            time.sleep(0.001)  # Very short sleep for responsiveness
+            
+    except Exception as e:
+        print(f"Input error: {e}")
+    finally:
+        curses.nocbreak()
+        curses.echo()
+        curses.endwin()
+
+
+def curses_main():
+    """Main game function using threading for better responsiveness"""
     
     print("\n" + "=" * 50)
     print("TETRIS on Sharp Memory Display")
@@ -391,73 +449,79 @@ def curses_main(stdscr):
     print("  Q: Quit game")
     print("=" * 50)
     print("Next piece preview shown on the right")
+    print("FPS counter shown at top")
     print("=" * 50)
     
-    # Key repeat delay tracking
-    last_key_time = 0
-    key_repeat_delay = 0.15  # 150ms initial delay before repeating
-    key_repeat_interval = 0.05  # 50ms repeat interval
-    last_key = None
-    key_press_time = 0
+    # Create game
+    game = Tetris(20, 10)
+    game.new_figure()
+    
+    # Create queues and events
+    display_queue = queue.Queue(maxsize=2)
+    input_queue = queue.Queue()
+    stop_event = threading.Event()
+    
+    # Start worker threads
+    display_thread = threading.Thread(target=display_worker, args=(display_queue, stop_event))
+    input_thread = threading.Thread(target=input_worker, args=(input_queue, stop_event))
+    
+    display_thread.daemon = True
+    input_thread.daemon = True
+    
+    display_thread.start()
+    input_thread.start()
+    
+    # Game loop variables
+    last_drop_time = time.time()
+    drop_interval = 0.5
+    last_update_time = time.time()
+    
+    # FPS calculation
+    frame_count = 0
+    fps = 0
+    fps_last_time = time.time()
     
     try:
         while True:
             current_time = time.time()
+            frame_count += 1
+            
+            # Calculate FPS every second
+            if current_time - fps_last_time >= 1.0:
+                fps = frame_count / (current_time - fps_last_time)
+                frame_count = 0
+                fps_last_time = current_time
             
             # Update animation if in clearing state
             if game.state == "clearing":
                 game.update_animation(current_time)
             
-            # Handle input
-            key = stdscr.getch()
-            
-            if key != -1:
-                # Handle immediate actions (not movement)
-                if key == ord(' '):  # Spacebar for hard drop
-                    game.hard_drop()
-                    last_key = None  # Reset repeat
-                elif key == ord('r') or key == ord('R'):
-                    if game.state == "gameover" or game.state == "start":
-                        game = Tetris(20, 10)
-                        game.new_figure()
-                    last_key = None  # Reset repeat
-                elif key == ord('q') or key == ord('Q'):
+            # Process input from queue
+            while not input_queue.empty():
+                try:
+                    key = input_queue.get_nowait()
+                    
+                    if key == ord(' '):  # Spacebar for hard drop
+                        if game.state == "start":
+                            game.hard_drop()
+                    elif key == ord('r') or key == ord('R'):
+                        if game.state == "gameover" or game.state == "start":
+                            game = Tetris(20, 10)
+                            game.new_figure()
+                    elif key == ord('q') or key == ord('Q'):
+                        stop_event.set()
+                        return
+                    elif game.state == "start":
+                        if key == curses.KEY_UP:
+                            game.rotate()
+                        elif key == curses.KEY_DOWN:
+                            game.go_down()
+                        elif key == curses.KEY_LEFT:
+                            game.go_side(-1)
+                        elif key == curses.KEY_RIGHT:
+                            game.go_side(1)
+                except queue.Empty:
                     break
-                else:
-                    # Handle movement keys with repeat
-                    if key in [curses.KEY_UP, curses.KEY_DOWN, curses.KEY_LEFT, curses.KEY_RIGHT]:
-                        # Check if this is a new key press
-                        if last_key != key:
-                            last_key = key
-                            key_press_time = current_time
-                            should_process = True
-                        else:
-                            # Same key - check repeat timing
-                            elapsed = current_time - key_press_time
-                            if elapsed > key_repeat_delay:
-                                # We're in repeat mode, use repeat interval
-                                if elapsed - key_repeat_delay > key_repeat_interval:
-                                    should_process = True
-                                    key_press_time = current_time - (key_repeat_delay - key_repeat_interval)
-                                else:
-                                    should_process = False
-                            else:
-                                should_process = False
-                        
-                        if should_process and game.state == "start":
-                            if key == curses.KEY_UP:
-                                game.rotate()
-                            elif key == curses.KEY_DOWN:
-                                game.go_down()
-                            elif key == curses.KEY_LEFT:
-                                game.go_side(-1)
-                            elif key == curses.KEY_RIGHT:
-                                game.go_side(1)
-                    else:
-                        last_key = None  # Reset for non-movement keys
-            else:
-                # No key pressed, reset last_key
-                last_key = None
             
             # Auto-drop (only if in start state)
             if game.state == "start" and current_time - last_drop_time > drop_interval:
@@ -466,40 +530,57 @@ def curses_main(stdscr):
                 # Speed up as score increases
                 drop_interval = max(0.1, 0.5 - (game.score / 1000) * 0.1)
             
-            # Update display
+            # Create image for display
             image = Image.new("1", (display.width, display.height))
             draw = ImageDraw.Draw(image)
-            game.draw(draw)
+            game.draw(draw, fps)
             
-            # Optimize display update - only update if something changed
+            # Send to display thread (non-blocking)
+            if display_queue.full():
+                try:
+                    display_queue.get_nowait()  # Remove oldest
+                except queue.Empty:
+                    pass
+            
             try:
-                display.image(image)
-                display.show()
-            except Exception as e:
-                print(f"Display error: {e}")
+                display_queue.put_nowait(image)
+            except queue.Full:
+                pass  # Skip this frame if queue is full
             
-            # Calculate sleep time based on game state
-            if game.state == "clearing":
-                time.sleep(0.05)  # Faster updates during animation
+            # Adaptive sleep for optimal frame rate
+            elapsed = time.time() - current_time
+            target_frame_time = 1.0 / 60.0  # Aim for 60 FPS
+            
+            if elapsed < target_frame_time:
+                time.sleep(target_frame_time - elapsed)
             else:
-                time.sleep(0.01)  # Regular speed
+                # Frame took too long, skip sleep
+                pass
             
     except KeyboardInterrupt:
-        pass
-    
+        print("\nGame interrupted")
     except Exception as e:
         print(f"Error: {e}")
         import traceback
         traceback.print_exc()
-    
     finally:
+        # Clean up
+        stop_event.set()
+        
+        # Wait for threads to finish
+        display_thread.join(timeout=0.5)
+        input_thread.join(timeout=0.5)
+        
+        # Clear display
         display.fill(1)
         display.show()
+        
+        print("\nGame ended")
 
 
 if __name__ == "__main__":
     try:
-        curses.wrapper(curses_main)
+        curses_main()
     except KeyboardInterrupt:
         print("\nGame interrupted")
     finally:
