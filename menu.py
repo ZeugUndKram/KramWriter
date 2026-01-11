@@ -1,5 +1,5 @@
 """
-Simple BMP Image Viewer for Sharp Memory Display
+BMP Image Viewer for Sharp Memory Display
 """
 
 import board
@@ -15,15 +15,13 @@ scs = digitalio.DigitalInOut(board.D6)
 display = adafruit_sharpmemorydisplay.SharpMemoryDisplay(spi, scs, 400, 240)
 
 # Image files
-image_files = [
+IMAGE_FILES = [
     "Credits_0.bmp",
     "Learn_0.bmp", 
     "Settings_0.bmp",
     "Write_0.bmp",
     "Zeugtris_0.bmp"
 ]
-
-current_index = 0
 
 def display_image(image_path):
     """Display a BMP image centered on screen"""
@@ -56,14 +54,27 @@ def display_image(image_path):
         print(f"Error with {image_path}: {e}")
         return False
 
-def main():
-    # Find assets folder
-    assets_folder = None
+def find_assets_folder():
+    """Find the assets folder"""
     for path in ["/assets/", "./assets/", "assets/"]:
         if os.path.exists(path):
-            assets_folder = path
-            break
-    
+            return path
+    return None
+
+def get_existing_images(assets_folder):
+    """Get list of images that actually exist"""
+    existing = []
+    for img_file in IMAGE_FILES:
+        full_path = os.path.join(assets_folder, img_file)
+        if os.path.exists(full_path):
+            existing.append(img_file)
+        else:
+            print(f"Missing: {img_file}")
+    return existing
+
+def main():
+    # Find assets folder
+    assets_folder = find_assets_folder()
     if not assets_folder:
         print("Error: No assets folder found!")
         return
@@ -71,23 +82,20 @@ def main():
     print(f"Using assets from: {assets_folder}")
     
     # Check which images exist
-    existing_images = []
-    for f in image_files:
-        full_path = os.path.join(assets_folder, f)
-        if os.path.exists(full_path):
-            existing_images.append(f)
-        else:
-            print(f"Missing: {f}")
-    
+    existing_images = get_existing_images(assets_folder)
     if not existing_images:
         print("No images found!")
         return
+    
+    # Start with first image
+    current_index = 0
     
     # Show first image
     img_path = os.path.join(assets_folder, existing_images[current_index])
     display_image(img_path)
     
-    print("\nControls:")
+    print(f"\nLoaded {len(existing_images)} images")
+    print("Controls:")
     print("  N or Enter - Next image")
     print("  P - Previous image")
     print("  Q - Quit")
@@ -103,9 +111,11 @@ def main():
             elif cmd == 'n' or cmd == '':
                 # Next image
                 current_index = (current_index + 1) % len(existing_images)
+                print(f"Image {current_index + 1} of {len(existing_images)}")
             elif cmd == 'p':
                 # Previous image
                 current_index = (current_index - 1) % len(existing_images)
+                print(f"Image {current_index + 1} of {len(existing_images)}")
             else:
                 print("Unknown command. Use N, P, or Q")
                 continue
