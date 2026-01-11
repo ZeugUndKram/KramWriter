@@ -91,8 +91,14 @@ class Tetris:
             self.font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
             self.small_font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
         except:
+            # Use default font - this is faster
             self.font = ImageFont.load_default()
             self.small_font = ImageFont.load_default()
+        
+        # Cached images for faster drawing
+        self.cached_field = None
+        self.field_changed = True
+        self.last_full_draw = 0
 
     def new_figure(self):
         # If we have a next figure, use it as current
@@ -108,6 +114,7 @@ class Tetris:
         # Position the preview figure in the center of preview area
         self.next_figure.x = 0
         self.next_figure.y = 0
+        self.field_changed = True
 
     def intersects(self):
         for i in range(4):
@@ -125,6 +132,7 @@ class Tetris:
             for j in range(4):
                 if i * 4 + j in self.figure.image():
                     self.field[i + self.figure.y][j + self.figure.x] = self.figure.color
+        self.field_changed = True
         
         # Check for completed lines
         self.lines_to_clear = []
@@ -155,6 +163,7 @@ class Tetris:
                 self.figure.y -= 1
                 self.freeze()
                 break
+        self.field_changed = True
 
     def clear_lines(self):
         """Remove completed lines and update score"""
@@ -179,6 +188,7 @@ class Tetris:
         
         # Reset line clearing state
         self.lines_to_clear = []
+        self.field_changed = True
         
         # Create new figure
         self.new_figure()
@@ -192,6 +202,7 @@ class Tetris:
         if self.intersects():
             self.figure.y -= 1
             self.freeze()
+        self.field_changed = True
 
     def go_side(self, dx):
         old_x = self.figure.x
@@ -205,162 +216,6 @@ class Tetris:
         if self.intersects():
             self.figure.rotation = old_rotation
 
-    def draw_preview(self, draw):
-        """Draw the next piece preview"""
-        if not self.next_figure:
-            return
-            
-        # Draw preview box
-        preview_width = 5 * self.preview_zoom  # 5 blocks wide
-        preview_height = 5 * self.preview_zoom  # 5 blocks high
-        box_left = self.preview_x - 1
-        box_top = self.preview_y - 1
-        box_right = self.preview_x + preview_width + 1
-        box_bottom = self.preview_y + preview_height + 1
-        
-        # Draw preview border
-        draw.rectangle(
-            (box_left, box_top, box_right, box_bottom),
-            outline=WHITE, fill=BLACK
-        )
-        
-        # Draw "NEXT" label
-        next_text = "NEXT"
-        next_width = draw.textlength(next_text, font=self.small_font)
-        draw.text(
-            (self.preview_x + preview_width // 2 - next_width // 2, self.preview_y - 20),
-            next_text, font=self.small_font, fill=WHITE
-        )
-        
-        # Draw the preview piece
-        # Center the preview piece in the preview box
-        # Calculate piece dimensions
-        min_x = min([j % 4 for j in self.next_figure.image()])
-        max_x = max([j % 4 for j in self.next_figure.image()])
-        min_y = min([j // 4 for j in self.next_figure.image()])
-        max_y = max([j // 4 for j in self.next_figure.image()])
-        
-        piece_width = (max_x - min_x + 1) * self.preview_zoom
-        piece_height = (max_y - min_y + 1) * self.preview_zoom
-        
-        # Center position
-        piece_x = self.preview_x + (preview_width - piece_width) // 2
-        piece_y = self.preview_y + (preview_height - piece_height) // 2
-        
-        # Draw each block of the preview piece
-        for j in self.next_figure.image():
-            block_x = j % 4 - min_x
-            block_y = j // 4 - min_y
-            x = piece_x + block_x * self.preview_zoom
-            y = piece_y + block_y * self.preview_zoom
-            draw.rectangle(
-                [x, y, x + self.preview_zoom - 1, y + self.preview_zoom - 1],
-                outline=WHITE, fill=WHITE
-            )
-
-    def draw(self, draw, fps=0, input_lag=0):
-        """Draw game on display"""
-        # Clear display
-        draw.rectangle((0, 0, display.width, display.height), fill=BLACK)
-        
-        # Draw main game border
-        border_left = self.x - 1
-        border_top = self.y - 1
-        border_right = self.x + self.width * self.zoom + 1
-        border_bottom = self.y + self.height * self.zoom + 1
-        
-        draw.rectangle(
-            (border_left, border_top, border_right, border_bottom),
-            outline=WHITE, fill=BLACK
-        )
-        
-        # Draw placed blocks (except blinking lines if in clearing state)
-        for i in range(self.height):
-            # Skip drawing if this line is being cleared and it's in the "off" blink state
-            if self.state == "clearing" and i in self.lines_to_clear and not self.line_blink_state:
-                continue
-                
-            for j in range(self.width):
-                if self.field[i][j] > 0:
-                    x = self.x + j * self.zoom
-                    y = self.y + i * self.zoom
-                    draw.rectangle([x, y, x + self.zoom - 1, y + self.zoom - 1], 
-                                  outline=WHITE, fill=WHITE)
-        
-        # Draw current figure (if not in clearing state)
-        if self.figure and self.state != "clearing":
-            for i in range(4):
-                for j in range(4):
-                    if i * 4 + j in self.figure.image():
-                        x = self.x + (j + self.figure.x) * self.zoom
-                        y = self.y + (i + self.figure.y) * self.zoom
-                        draw.rectangle([x, y, x + self.zoom - 1, y + self.zoom - 1], 
-                                      outline=WHITE, fill=WHITE)
-        
-        # Draw next piece preview
-        self.draw_preview(draw)
-        
-        # Draw score (top left)
-        score_text = f"Score: {self.score}"
-        draw.text((10, 10), score_text, font=self.font, fill=WHITE)
-        
-        # Draw level (top right)
-        level_text = f"Level: {self.level}"
-        level_text_width = draw.textlength(level_text, font=self.font)
-        draw.text((display.width - level_text_width - 10, 10), level_text, font=self.font, fill=WHITE)
-        
-        # Draw FPS counter (top middle)
-        fps_text = f"FPS: {fps:.1f}"
-        fps_width = draw.textlength(fps_text, font=self.small_font)
-        
-        # Draw input lag (next to FPS)
-        lag_text = f"Lag: {input_lag:.0f}ms"
-        lag_width = draw.textlength(lag_text, font=self.small_font)
-        
-        draw.text((display.width // 2 - fps_width - 5, 10), fps_text, font=self.small_font, fill=WHITE)
-        draw.text((display.width // 2 + 5, 10), lag_text, font=self.small_font, fill=WHITE)
-        
-        # Draw lines cleared indicator during animation
-        if self.state == "clearing" and self.lines_to_clear:
-            lines_text = f"Lines: {len(self.lines_to_clear)}"
-            text_width = draw.textlength(lines_text, font=self.font)
-            draw.text((display.width // 2 - text_width // 2, self.y - 30), 
-                     lines_text, font=self.font, fill=WHITE)
-        
-        # Draw controls help
-        if self.state == "start":
-            controls = "←→:Move  ↑:Rotate  Space:Drop  ↓:Fast"
-            text_width = draw.textlength(controls, font=self.small_font)
-            draw.text((display.width // 2 - text_width // 2, display.height - 25), 
-                     controls, font=self.small_font, fill=WHITE)
-            
-            # Add hint for restart/quit
-            restart_hint = "R:Restart  Q:Quit"
-            hint_width = draw.textlength(restart_hint, font=self.small_font)
-            draw.text((display.width // 2 - hint_width // 2, display.height - 10), 
-                     restart_hint, font=self.small_font, fill=WHITE)
-        
-        # Game over screen
-        if self.state == "gameover":
-            # Semi-transparent overlay
-            for i in range(0, display.height, 2):
-                draw.line([(0, i), (display.width, i)], fill=WHITE, width=1)
-            
-            game_over = "GAME OVER"
-            game_over_width = draw.textlength(game_over, font=self.font)
-            draw.text((display.width // 2 - game_over_width // 2, display.height // 2 - 30), 
-                     game_over, font=self.font, fill=BLACK)
-            
-            final_score = f"Score: {self.score}"
-            final_score_width = draw.textlength(final_score, font=self.font)
-            draw.text((display.width // 2 - final_score_width // 2, display.height // 2), 
-                     final_score, font=self.font, fill=BLACK)
-            
-            restart = "Press R to restart"
-            restart_width = draw.textlength(restart, font=self.font)
-            draw.text((display.width // 2 - restart_width // 2, display.height // 2 + 30), 
-                     restart, font=self.font, fill=BLACK)
-
     def update_animation(self, current_time):
         """Update line clearing animation"""
         if self.state == "clearing" and self.lines_to_clear:
@@ -368,28 +223,234 @@ class Tetris:
             
             # Calculate blink state based on elapsed time
             blink_count = int(elapsed_time / self.line_blink_interval)
-            self.line_blink_state = (blink_count % 2 == 0)
+            new_blink_state = (blink_count % 2 == 0)
+            
+            if new_blink_state != self.line_blink_state:
+                self.line_blink_state = new_blink_state
+                self.field_changed = True
             
             # If animation duration has passed, clear the lines
             if elapsed_time >= self.line_clear_duration:
                 self.clear_lines()
 
 
-class InputHandler:
-    """High-performance input handler with minimal latency"""
+class OptimizedRenderer:
+    """Optimized renderer that only updates changed parts of the display"""
+    
+    def __init__(self, tetris_game):
+        self.game = tetris_game
+        self.last_image = None
+        self.last_fps = 0
+        self.last_lag = 0
+        
+        # Create base image template
+        self.base_image = Image.new("1", (display.width, display.height), BLACK)
+        self.draw_base()
+        
+    def draw_base(self):
+        """Draw static elements once"""
+        draw = ImageDraw.Draw(self.base_image)
+        
+        # Draw main game border (static)
+        border_left = self.game.x - 1
+        border_top = self.game.y - 1
+        border_right = self.game.x + self.game.width * self.game.zoom + 1
+        border_bottom = self.game.y + self.game.height * self.game.zoom + 1
+        
+        draw.rectangle(
+            (border_left, border_top, border_right, border_bottom),
+            outline=WHITE, fill=BLACK
+        )
+        
+        # Draw preview box (static)
+        preview_width = 5 * self.game.preview_zoom
+        preview_height = 5 * self.game.preview_zoom
+        box_left = self.game.preview_x - 1
+        box_top = self.game.preview_y - 1
+        box_right = self.game.preview_x + preview_width + 1
+        box_bottom = self.game.preview_y + preview_height + 1
+        
+        draw.rectangle(
+            (box_left, box_top, box_right, box_bottom),
+            outline=WHITE, fill=BLACK
+        )
+        
+        # Draw "NEXT" label (static)
+        next_text = "NEXT"
+        next_width = draw.textlength(next_text, font=self.game.small_font)
+        draw.text(
+            (self.game.preview_x + preview_width // 2 - next_width // 2, 
+             self.game.preview_y - 20),
+            next_text, font=self.game.small_font, fill=WHITE
+        )
+        
+        # Draw controls help (static)
+        controls = "←→:Move  ↑:Rotate  Space:Drop  ↓:Fast"
+        text_width = draw.textlength(controls, font=self.game.small_font)
+        draw.text((display.width // 2 - text_width // 2, display.height - 25), 
+                 controls, font=self.game.small_font, fill=WHITE)
+        
+        restart_hint = "R:Restart  Q:Quit"
+        hint_width = draw.textlength(restart_hint, font=self.game.small_font)
+        draw.text((display.width // 2 - hint_width // 2, display.height - 10), 
+                 restart_hint, font=self.game.small_font, fill=WHITE)
+    
+    def draw_dynamic(self, draw, fps=0, input_lag=0):
+        """Draw dynamic elements that change frequently"""
+        # Draw score
+        score_text = f"Score: {self.game.score}"
+        draw.rectangle((10, 10, 150, 30), fill=BLACK)  # Clear area
+        draw.text((10, 10), score_text, font=self.game.font, fill=WHITE)
+        
+        # Draw level
+        level_text = f"Level: {self.game.level}"
+        level_text_width = draw.textlength(level_text, font=self.game.font)
+        draw.rectangle((display.width - 150, 10, display.width, 30), fill=BLACK)
+        draw.text((display.width - level_text_width - 10, 10), level_text, 
+                 font=self.game.font, fill=WHITE)
+        
+        # Draw FPS and lag
+        fps_text = f"FPS: {fps:.1f}"
+        fps_width = draw.textlength(fps_text, font=self.game.small_font)
+        lag_text = f"Lag: {input_lag:.0f}ms"
+        
+        # Clear area for FPS/lag
+        draw.rectangle((display.width // 2 - 100, 10, display.width // 2 + 100, 25), fill=BLACK)
+        draw.text((display.width // 2 - fps_width - 5, 10), fps_text, 
+                 font=self.game.small_font, fill=WHITE)
+        draw.text((display.width // 2 + 5, 10), lag_text, 
+                 font=self.game.small_font, fill=WHITE)
+        
+        # Draw placed blocks (except blinking lines if in clearing state)
+        for i in range(self.game.height):
+            # Skip drawing if this line is being cleared and it's in the "off" blink state
+            if self.game.state == "clearing" and i in self.game.lines_to_clear and not self.game.line_blink_state:
+                # Clear this line
+                for j in range(self.game.width):
+                    x = self.game.x + j * self.game.zoom
+                    y = self.game.y + i * self.game.zoom
+                    draw.rectangle([x, y, x + self.game.zoom - 1, y + self.game.zoom - 1], 
+                                  outline=BLACK, fill=BLACK)
+                continue
+                
+            for j in range(self.game.width):
+                if self.game.field[i][j] > 0:
+                    x = self.game.x + j * self.game.zoom
+                    y = self.game.y + i * self.game.zoom
+                    draw.rectangle([x, y, x + self.game.zoom - 1, y + self.game.zoom - 1], 
+                                  outline=WHITE, fill=WHITE)
+                else:
+                    # Clear this block if it was previously filled
+                    x = self.game.x + j * self.game.zoom
+                    y = self.game.y + i * self.game.zoom
+                    draw.rectangle([x, y, x + self.game.zoom - 1, y + self.game.zoom - 1], 
+                                  outline=BLACK, fill=BLACK)
+        
+        # Draw current figure (if not in clearing state)
+        if self.game.figure and self.game.state != "clearing":
+            # First, clear the area where the figure was
+            if hasattr(self.game.figure, 'last_positions'):
+                for pos in self.game.figure.last_positions:
+                    x = self.game.x + (pos[1] + self.game.figure.last_x) * self.game.zoom
+                    y = self.game.y + (pos[0] + self.game.figure.last_y) * self.game.zoom
+                    draw.rectangle([x, y, x + self.game.zoom - 1, y + self.game.zoom - 1], 
+                                  outline=BLACK, fill=BLACK)
+            
+            # Store current positions for next frame
+            self.game.figure.last_positions = []
+            self.game.figure.last_x = self.game.figure.x
+            self.game.figure.last_y = self.game.figure.y
+            
+            # Draw new figure
+            for i in range(4):
+                for j in range(4):
+                    if i * 4 + j in self.game.figure.image():
+                        x = self.game.x + (j + self.game.figure.x) * self.game.zoom
+                        y = self.game.y + (i + self.game.figure.y) * self.game.zoom
+                        draw.rectangle([x, y, x + self.game.zoom - 1, y + self.game.zoom - 1], 
+                                      outline=WHITE, fill=WHITE)
+                        self.game.figure.last_positions.append((i, j))
+        
+        # Draw next piece preview
+        if self.game.next_figure:
+            # Clear preview area
+            preview_width = 5 * self.game.preview_zoom
+            preview_height = 5 * self.game.preview_zoom
+            draw.rectangle(
+                (self.game.preview_x, self.game.preview_y,
+                 self.game.preview_x + preview_width,
+                 self.game.preview_y + preview_height),
+                fill=BLACK
+            )
+            
+            # Calculate piece dimensions
+            min_x = min([j % 4 for j in self.game.next_figure.image()])
+            max_x = max([j % 4 for j in self.game.next_figure.image()])
+            min_y = min([j // 4 for j in self.game.next_figure.image()])
+            max_y = max([j // 4 for j in self.game.next_figure.image()])
+            
+            piece_width = (max_x - min_x + 1) * self.game.preview_zoom
+            piece_height = (max_y - min_y + 1) * self.game.preview_zoom
+            
+            # Center position
+            piece_x = self.game.preview_x + (preview_width - piece_width) // 2
+            piece_y = self.game.preview_y + (preview_height - piece_height) // 2
+            
+            # Draw each block of the preview piece
+            for j in self.game.next_figure.image():
+                block_x = j % 4 - min_x
+                block_y = j // 4 - min_y
+                x = piece_x + block_x * self.game.preview_zoom
+                y = piece_y + block_y * self.game.preview_zoom
+                draw.rectangle(
+                    [x, y, x + self.game.preview_zoom - 1, y + self.game.preview_zoom - 1],
+                    outline=WHITE, fill=WHITE
+                )
+        
+        # Game over screen
+        if self.game.state == "gameover":
+            # Semi-transparent overlay
+            for i in range(0, display.height, 2):
+                draw.line([(0, i), (display.width, i)], fill=WHITE, width=1)
+            
+            game_over = "GAME OVER"
+            game_over_width = draw.textlength(game_over, font=self.game.font)
+            draw.text((display.width // 2 - game_over_width // 2, display.height // 2 - 30), 
+                     game_over, font=self.game.font, fill=BLACK)
+            
+            final_score = f"Score: {self.game.score}"
+            final_score_width = draw.textlength(final_score, font=self.game.font)
+            draw.text((display.width // 2 - final_score_width // 2, display.height // 2), 
+                     final_score, font=self.game.font, fill=BLACK)
+            
+            restart = "Press R to restart"
+            restart_width = draw.textlength(restart, font=self.game.font)
+            draw.text((display.width // 2 - restart_width // 2, display.height // 2 + 30), 
+                     restart, font=self.game.font, fill=BLACK)
+    
+    def render(self, fps=0, input_lag=0):
+        """Render the current game state"""
+        # Start with base image
+        image = self.base_image.copy()
+        draw = ImageDraw.Draw(image)
+        
+        # Draw dynamic elements
+        self.draw_dynamic(draw, fps, input_lag)
+        
+        return image
+
+
+class SimpleInputHandler:
+    """Simpler, more responsive input handler without curses overhead"""
     
     def __init__(self):
-        self.key_queue = deque(maxlen=10)  # Buffer for key presses
-        self.last_key_time = {}
-        self.key_repeat_initial = 0.15  # 150ms initial delay
-        self.key_repeat_interval = 0.05  # 50ms repeat interval
-        self.running = False
+        self.key_queue = deque(maxlen=20)
+        self.running = True
         self.thread = None
         
     def start(self):
-        """Start input thread"""
-        self.running = True
-        self.thread = threading.Thread(target=self._input_loop, daemon=True)
+        """Start input thread using curses in separate thread"""
+        self.thread = threading.Thread(target=self._curses_input_loop, daemon=True)
         self.thread.start()
         
     def stop(self):
@@ -405,140 +466,135 @@ class InputHandler:
             keys.append(self.key_queue.popleft())
         return keys
         
-    def _input_loop(self):
-        """Main input loop running in separate thread"""
-        # Initialize curses in this thread
-        stdscr = curses.initscr()
-        curses.curs_set(0)
-        curses.noecho()
-        curses.cbreak()
-        stdscr.nodelay(True)  # Non-blocking
-        stdscr.keypad(True)   # Enable special keys
-        
-        # Disable timeout - we'll handle timing ourselves
-        stdscr.timeout(0)
-        
-        print("Input thread started")
-        
+    def _curses_input_loop(self):
+        """Simple curses input loop"""
         try:
+            # Initialize curses in this thread
+            stdscr = curses.initscr()
+            curses.curs_set(0)
+            curses.noecho()
+            curses.cbreak()
+            stdscr.nodelay(True)
+            stdscr.keypad(True)
+            
+            # Key state tracking for repeat
+            key_states = {}
+            last_key_time = {}
+            repeat_start = 0.2  # 200ms before repeat starts
+            repeat_interval = 0.05  # 50ms repeat rate
+            
             while self.running:
                 current_time = time.time()
+                key = stdscr.getch()
                 
-                # Read all available keys
-                while True:
-                    key = stdscr.getch()
-                    if key == -1:
-                        break  # No more keys
-                        
-                    # Handle key press
+                if key != -1:
+                    # Process key press
                     if key in [curses.KEY_UP, curses.KEY_DOWN, curses.KEY_LEFT, curses.KEY_RIGHT,
                               ord(' '), ord('r'), ord('R'), ord('q'), ord('Q')]:
                         
-                        if key in self.last_key_time:
-                            # Key is being held
-                            elapsed = current_time - self.last_key_time[key]
-                            if elapsed > self.key_repeat_initial:
-                                # In repeat mode, check interval
-                                if elapsed - self.key_repeat_initial > self.key_repeat_interval:
+                        if key in key_states:
+                            # Key is held - check for repeat
+                            elapsed = current_time - last_key_time[key]
+                            if elapsed > repeat_start:
+                                # In repeat mode
+                                repeat_elapsed = elapsed - repeat_start
+                                if repeat_elapsed > repeat_interval:
                                     self.key_queue.append(key)
-                                    self.last_key_time[key] = current_time - (self.key_repeat_initial - self.key_repeat_interval)
+                                    last_key_time[key] = current_time - (repeat_start - repeat_interval)
                             else:
-                                # Still in initial delay, process once
+                                # Still in initial delay
                                 self.key_queue.append(key)
-                                self.last_key_time[key] = current_time
+                                last_key_time[key] = current_time
                         else:
                             # New key press
+                            key_states[key] = True
+                            last_key_time[key] = current_time
                             self.key_queue.append(key)
-                            self.last_key_time[key] = current_time
-                    
-                # Clear key states for keys that are no longer pressed
-                keys_to_remove = []
-                for key, press_time in list(self.last_key_time.items()):
-                    if current_time - press_time > 0.5:  # 500ms since last press
-                        keys_to_remove.append(key)
-                for key in keys_to_remove:
-                    del self.last_key_time[key]
+                else:
+                    # No key pressed - clear states after a delay
+                    to_remove = []
+                    for key, press_time in list(last_key_time.items()):
+                        if current_time - press_time > 0.3:  # 300ms delay
+                            to_remove.append(key)
+                    for key in to_remove:
+                        if key in key_states:
+                            del key_states[key]
+                        if key in last_key_time:
+                            del last_key_time[key]
                 
-                # Very short sleep to prevent CPU hogging
-                time.sleep(0.001)  # 1ms sleep
+                # Small sleep to prevent CPU hogging
+                time.sleep(0.001)  # 1ms
                 
         except Exception as e:
             print(f"Input error: {e}")
         finally:
-            # Clean up curses
-            curses.nocbreak()
-            curses.echo()
-            curses.endwin()
-            print("Input thread stopped")
+            try:
+                curses.nocbreak()
+                curses.echo()
+                curses.endwin()
+            except:
+                pass
 
 
-def main_game_loop():
-    """Main game loop with separate input handling"""
+def main():
+    """Main game loop with optimized rendering"""
     
     print("\n" + "=" * 50)
-    print("TETRIS on Sharp Memory Display")
+    print("TETRIS - Optimized Version")
     print("Controls:")
     print("  Arrow keys: Move/Rotate/Fast drop")
     print("  Spacebar: Hard drop (instant)")
     print("  R: Restart game")
     print("  Q: Quit game")
     print("=" * 50)
-    print("Input handling in separate thread for minimal latency")
+    print("Using optimized rendering for better performance")
     print("=" * 50)
     
     # Create game
     game = Tetris(20, 10)
     game.new_figure()
     
-    # Start high-performance input handler
-    input_handler = InputHandler()
+    # Create optimized renderer
+    renderer = OptimizedRenderer(game)
+    
+    # Start simple input handler
+    input_handler = SimpleInputHandler()
     input_handler.start()
     
-    # Game loop variables
+    # Game timing
     last_drop_time = time.time()
     drop_interval = 0.5
     
-    # FPS calculation
-    frame_count = 0
+    # Performance tracking
+    frame_times = deque(maxlen=30)
     fps = 0
-    fps_last_time = time.time()
+    input_lag = 0
+    input_timestamps = deque(maxlen=30)
     
-    # Input lag measurement
-    input_timestamps = deque(maxlen=60)
-    avg_input_lag = 0
+    # Display update rate limiting
+    last_display_update = 0
+    display_update_interval = 1.0 / 30.0  # 30 FPS max for display
     
     try:
         while True:
             frame_start = time.time()
-            frame_count += 1
             
-            # Calculate FPS every second
-            current_time = time.time()
-            if current_time - fps_last_time >= 0.5:  # Update every 0.5s for smoother display
-                fps = frame_count / (current_time - fps_last_time)
-                frame_count = 0
-                fps_last_time = current_time
-            
-            # Update animation if in clearing state
-            if game.state == "clearing":
-                game.update_animation(current_time)
-            
-            # Process input IMMEDIATELY
+            # Process input immediately
             input_keys = input_handler.get_keys()
             
             if input_keys:
-                # Record input timestamp for lag measurement
                 input_timestamps.append(frame_start)
+                current_time = time.time()
                 
-                # Process all queued keys
                 for key in input_keys:
-                    if key == ord(' '):  # Spacebar for hard drop
+                    if key == ord(' '):  # Spacebar
                         if game.state == "start":
                             game.hard_drop()
                     elif key == ord('r') or key == ord('R'):
                         if game.state == "gameover" or game.state == "start":
                             game = Tetris(20, 10)
                             game.new_figure()
+                            renderer = OptimizedRenderer(game)
                     elif key == ord('q') or key == ord('Q'):
                         print("\nQuitting game...")
                         return
@@ -552,44 +608,56 @@ def main_game_loop():
                         elif key == curses.KEY_RIGHT:
                             game.go_side(1)
             
-            # Calculate average input lag (time from key press to processing)
-            if input_timestamps:
-                avg_input_lag = sum(input_timestamps) / len(input_timestamps)
-                avg_input_lag = (current_time - avg_input_lag) * 1000  # Convert to ms
+            # Update game state
+            current_time = time.time()
             
-            # Auto-drop (only if in start state)
+            # Update animation
+            if game.state == "clearing":
+                game.update_animation(current_time)
+            
+            # Auto-drop
             if game.state == "start" and current_time - last_drop_time > drop_interval:
                 game.go_down()
                 last_drop_time = current_time
-                # Speed up as score increases
-                drop_interval = max(0.1, 0.5 - (game.score / 1000) * 0.1)
+                # Speed up gradually
+                drop_interval = max(0.1, 0.5 - (game.score / 2000) * 0.1)
             
-            # Render game
-            image = Image.new("1", (display.width, display.height))
-            draw = ImageDraw.Draw(image)
-            game.draw(draw, fps, avg_input_lag)
+            # Calculate input lag
+            if input_timestamps:
+                avg_time = sum(input_timestamps) / len(input_timestamps)
+                input_lag = (current_time - avg_time) * 1000  # ms
             
-            # Update display
-            display.image(image)
-            display.show()
-            
-            # Calculate frame time and adaptive sleep
+            # Calculate FPS
             frame_end = time.time()
             frame_time = frame_end - frame_start
+            frame_times.append(frame_time)
             
-            # Target 60 FPS (16.67ms per frame)
-            target_frame_time = 1.0 / 60.0
+            if len(frame_times) > 0:
+                avg_frame_time = sum(frame_times) / len(frame_times)
+                fps = 1.0 / avg_frame_time if avg_frame_time > 0 else 0
             
-            if frame_time < target_frame_time:
-                sleep_time = target_frame_time - frame_time
-                # Use time.sleep for small sleeps, busy wait for very small sleeps
-                if sleep_time > 0.001:  # 1ms
-                    time.sleep(sleep_time)
-                elif sleep_time > 0.0001:  # 100µs
-                    # Busy wait for very short sleeps (more accurate)
-                    end_time = time.perf_counter() + sleep_time
-                    while time.perf_counter() < end_time:
-                        pass
+            # Update display at limited rate (to prevent display bottleneck)
+            if current_time - last_display_update >= display_update_interval:
+                # Render and update display
+                image = renderer.render(fps, input_lag)
+                
+                # Update display (this is the slow part)
+                try:
+                    display.image(image)
+                    display.show()
+                except Exception as e:
+                    print(f"Display error: {e}")
+                
+                last_display_update = current_time
+            
+            # Adaptive sleep to maintain ~60Hz game loop
+            target_frame_time = 1.0 / 60.0  # 16.67ms
+            elapsed = time.time() - frame_start
+            
+            if elapsed < target_frame_time:
+                sleep_time = target_frame_time - elapsed
+                if sleep_time > 0.002:  # Only sleep if we have >2ms
+                    time.sleep(min(sleep_time, 0.01))  # Max 10ms sleep
             
     except KeyboardInterrupt:
         print("\nGame interrupted")
@@ -608,55 +676,9 @@ def main_game_loop():
         print("\nGame ended")
 
 
-# Alternative: Even simpler input without curses (using keyboard polling)
-def simple_input_handler():
-    """Alternative input handler that might be faster"""
-    import select
-    import sys
-    import tty
-    import termios
-    
-    # Save terminal settings
-    old_settings = termios.tcgetattr(sys.stdin)
-    
-    try:
-        tty.setcbreak(sys.stdin.fileno())
-        
-        key_map = {
-            'A': curses.KEY_UP,
-            'B': curses.KEY_DOWN,
-            'C': curses.KEY_RIGHT,
-            'D': curses.KEY_LEFT,
-            ' ': ord(' '),
-            'r': ord('r'),
-            'R': ord('R'),
-            'q': ord('q'),
-            'Q': ord('Q'),
-        }
-        
-        while True:
-            if select.select([sys.stdin], [], [], 0.001)[0]:
-                key = sys.stdin.read(1)
-                if key == '\x1b':  # Escape sequence
-                    # Read the rest of the escape sequence
-                    if select.select([sys.stdin], [], [], 0.01)[0]:
-                        next_key = sys.stdin.read(2)
-                        if next_key[0] == '[':
-                            arrow_key = next_key[1]
-                            if arrow_key in key_map:
-                                yield key_map[arrow_key]
-                elif key in key_map:
-                    yield key_map[key]
-            else:
-                yield None
-                
-    finally:
-        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
-
-
 if __name__ == "__main__":
     try:
-        main_game_loop()
+        main()
     except KeyboardInterrupt:
         print("\nGame interrupted")
     finally:
