@@ -28,16 +28,24 @@ impl FontRenderer {
         
         let glyph = self.font.glyph(ch).scaled(self.scale);
         let advance = glyph.h_metrics().advance_width;
+        
+        // Position at baseline
         let positioned = glyph.positioned(point(0.0, 0.0));
         
         let bb = positioned.pixel_bounding_box();
         println!("  Bounding box: {:?}", bb);
         
         let bb = bb?;
+        
+        // Adjust for negative y coordinates
+        let x_offset = -bb.min.x;
+        let y_offset = -bb.min.y;
+        
         let width = bb.width() as usize;
         let height = bb.height() as usize;
         
         println!("  Character dimensions: {}x{}", width, height);
+        println!("  Offsets: x={}, y={}", x_offset, y_offset);
         
         if width == 0 || height == 0 {
             println!("  Warning: Character has zero dimensions!");
@@ -45,23 +53,30 @@ impl FontRenderer {
         }
         
         let mut bitmap = vec![vec![false; width]; height];
+        let mut pixels_drawn = 0;
         
         positioned.draw(|x, y, v| {
-            let x = x as i32 - bb.min.x;
-            let y = y as i32 - bb.min.y;
+            // Convert to bitmap coordinates
+            let bitmap_x = (x as i32 + x_offset) as usize;
+            let bitmap_y = (y as i32 + y_offset) as usize;
             
-            if x >= 0 && x < width as i32 && y >= 0 && y < height as i32 {
-                if v > 0.3 {
-                    bitmap[y as usize][x as usize] = true;
+            if bitmap_x < width && bitmap_y < height {
+                if v > 0.1 {  // Lower threshold
+                    bitmap[bitmap_y][bitmap_x] = true;
+                    pixels_drawn += 1;
                 }
             }
         });
         
-        // Count how many pixels are set
-        let pixel_count = bitmap.iter().flatten().filter(|&&p| p).count();
         println!("  Pixels set: {}/{} ({:.1}%)", 
-            pixel_count, width * height,
-            (pixel_count as f32 * 100.0) / (width * height) as f32);
+            pixels_drawn, width * height,
+            (pixels_drawn as f32 * 100.0) / (width * height) as f32);
+        
+        if pixels_drawn == 0 {
+            println!("  WARNING: No pixels were drawn!");
+            // Try a test pattern instead
+            return self.create_test_pattern(ch, width, height);
+        }
         
         Some(CharBitmap {
             width,
@@ -71,9 +86,40 @@ impl FontRenderer {
         })
     }
     
+    fn create_test_pattern(&self, ch: char, width: usize, height: usize) -> Option<CharBitmap> {
+        println!("  Creating test pattern for '{}'", ch);
+        
+        let mut bitmap = vec![vec![false; width]; height];
+        
+        // Draw a simple pattern to verify rendering works
+        for y in 0..height {
+            for x in 0..width {
+                // Draw border
+                if x == 0 || x == width - 1 || y == 0 || y == height - 1 {
+                    bitmap[y][x] = true;
+                }
+                // Draw diagonal
+                if x == y {
+                    bitmap[y][x] = true;
+                }
+            }
+        }
+        
+        Some(CharBitmap {
+            width,
+            height,
+            bitmap,
+            advance: width as f32,
+        })
+    }
+    
     pub fn line_height(&self) -> f32 {
         let v_metrics = self.font.v_metrics(self.scale);
         v_metrics.ascent - v_metrics.descent + v_metrics.line_gap
+    }
+    
+    pub fn ascent(&self) -> f32 {
+        self.font.v_metrics(self.scale).ascent
     }
 }
 
