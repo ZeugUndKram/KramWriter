@@ -12,7 +12,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut display = MemoryDisplay::new(
         Bus::Spi0,
         SlaveSelect::Ss0,
-        25,
+        6,
         WIDTH,
         HEIGHT as u8,
     )?;
@@ -115,6 +115,9 @@ fn draw_text(buffer: &mut MemoryDisplayBuffer, text: &str, cursor_x: usize, curs
 }
 
 fn draw_char(buffer: &mut MemoryDisplayBuffer, x: usize, y: usize, c: char) {
+    // Convert to uppercase for simplicity
+    let c = c.to_ascii_uppercase();
+    
     // Simple 5x7 font (smaller for visibility)
     let pattern = match c {
         'A' => [0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11],
@@ -143,7 +146,6 @@ fn draw_char(buffer: &mut MemoryDisplayBuffer, x: usize, y: usize, c: char) {
         'X' => [0x11, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11],
         'Y' => [0x11, 0x11, 0x0A, 0x04, 0x04, 0x04, 0x04],
         'Z' => [0x1F, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1F],
-        'a'..='z' => draw_char(buffer, x, y, c.to_ascii_uppercase()),
         '0' => [0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E],
         '1' => [0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E],
         '2' => [0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F],
