@@ -22,37 +22,38 @@ impl FontRenderer {
     
     /// Render a character to a bitmap (2D bool array)
     pub fn render_char(&self, ch: char) -> Option<CharBitmap> {
-        let glyph = self.font.glyph(ch).scaled(self.scale);
-        let positioned = glyph.positioned(point(0.0, 0.0));
-        
-        let bb = positioned.pixel_bounding_box()?;
-        let width = bb.width() as usize;
-        let height = bb.height() as usize;
-        
-        if width == 0 || height == 0 {
-            return None;
-        }
-        
-        let mut bitmap = vec![vec![false; width]; height];
-        
-        positioned.draw(|x, y, v| {
-            let x = x as i32 - bb.min.x;
-            let y = y as i32 - bb.min.y;
-            
-            if x >= 0 && x < width as i32 && y >= 0 && y < height as i32 {
-                if v > 0.3 {  // Threshold for visibility
-                    bitmap[y as usize][x as usize] = true;
-                }
-            }
-        });
-        
-        Some(CharBitmap {
-            width,
-            height,
-            bitmap,
-            advance: glyph.h_metrics().advance_width,
-        })
+    let glyph = self.font.glyph(ch).scaled(self.scale);
+    let advance = glyph.h_metrics().advance_width;  // Get this BEFORE moving
+    let positioned = glyph.positioned(point(0.0, 0.0));
+    
+    let bb = positioned.pixel_bounding_box()?;
+    let width = bb.width() as usize;
+    let height = bb.height() as usize;
+    
+    if width == 0 || height == 0 {
+        return None;
     }
+    
+    let mut bitmap = vec![vec![false; width]; height];
+    
+    positioned.draw(|x, y, v| {
+        let x = x as i32 - bb.min.x;
+        let y = y as i32 - bb.min.y;
+        
+        if x >= 0 && x < width as i32 && y >= 0 && y < height as i32 {
+            if v > 0.3 {  // Threshold for visibility
+                bitmap[y as usize][x as usize] = true;
+            }
+        }
+    });
+    
+    Some(CharBitmap {
+        width,
+        height,
+        bitmap,
+        advance,
+    })
+}
     
     pub fn line_height(&self) -> f32 {
         let v_metrics = self.font.v_metrics(self.scale);

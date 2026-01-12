@@ -14,31 +14,31 @@ pub struct Display {
 
 impl Display {
     pub fn new(width: usize, height: usize) -> Result<Self> {
-        println!("Initializing display {}x{}...", width, height);
-        
-        let driver = MemoryDisplay::new(
-            Bus::Spi0,
-            SlaveSelect::Ss0,
-            6,  // GPIO 6
-            width,
-            height as u8,
-        )?;
-        
-        let buffer = MemoryDisplayBuffer::new(width, height as u8);
-        
-        // Clear display immediately
-        let mut temp_buffer = buffer.clone();
-        temp_buffer.fill(Pixel::White);
-        driver.update(&temp_buffer)?;
-        
-        Ok(Self {
-            driver,
-            buffer: temp_buffer,
-            width,
-            height,
-            font_renderer: None,
-            font_size: 24.0,
-        })
+    println!("Initializing display {}x{}...", width, height);
+    
+    let mut driver = MemoryDisplay::new(  // Add 'mut' here
+        Bus::Spi0,
+        SlaveSelect::Ss0,
+        6,  // GPIO 6
+        width,
+        height as u8,
+    )?;
+    
+    let buffer = MemoryDisplayBuffer::new(width, height as u8);
+    
+    // Clear display immediately
+    let mut temp_buffer = buffer.clone();
+    temp_buffer.fill(Pixel::White);
+    driver.update(&temp_buffer)?;
+    
+    Ok(Self {
+        driver,
+        buffer: temp_buffer,
+        width,
+        height,
+        font_renderer: None,
+        font_size: 24.0,
+    })
     }
     
     pub fn load_font(&mut self, font_path: &str, size: f32) -> Result<()> {
