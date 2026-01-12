@@ -1,52 +1,70 @@
-// src/main.rs
 mod font_renderer;
 mod display;
 
-use anyhow::Result;
 use crate::display::Display;
+use anyhow::Result;
+use std::thread;
+use std::time::Duration;
 
 fn main() -> Result<()> {
-    println!("Sharp Display Font Test");
-    println!("=======================");
+    println!("=== BebasNeue Font Test ===");
     
-    // Initialize display (400x240 typical for Sharp Memory Display)
+    // 1. Initialize display
+    println!("1. Initializing display...");
     let mut display = Display::new(400, 240)?;
     
-    // Load your BebasNeue font
+    // 2. Load BebasNeue font
+    println!("2. Loading font...");
     let font_path = "/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf";
+    display.load_font(font_path, 36.0)?; // Try 36px size
     
-    println!("Loading font: {}", font_path);
-    match display.load_font(font_path, 24.0) {
-        Ok(_) => println!("Font loaded successfully!"),
-        Err(e) => {
-            eprintln!("Failed to load font: {}", e);
-            eprintln!("Using placeholder font instead");
+    // 3. Clear display
+    println!("3. Clearing display...");
+    display.clear()?;
+    thread::sleep(Duration::from_millis(500));
+    
+    // 4. Draw border to verify display works
+    println!("4. Drawing border...");
+    let buffer = display.buffer_mut();
+    for x in 0..400 {
+        buffer.set_pixel(x, 0, Pixel::Black);
+        buffer.set_pixel(x, 239, Pixel::Black);
+    }
+    for y in 0..240 {
+        buffer.set_pixel(0, y, Pixel::Black);
+        buffer.set_pixel(399, y, Pixel::Black);
+    }
+    display.update()?;
+    thread::sleep(Duration::from_secs(1));
+    
+    // 5. Clear inside border and draw text
+    println!("5. Drawing text...");
+    
+    // Clear inside area
+    for x in 1..399 {
+        for y in 1..238 {
+            buffer.set_pixel(x, y, Pixel::White);
         }
     }
     
-    // Clear display
-    display.clear()?;
+    // Draw text
+    display.draw_text(20, 50, "BEBAS NEUE")?;
+    display.draw_text(20, 100, "ABCDEFGHIJ")?;
+    display.draw_text(20, 150, "KLMNOPQRST")?;
+    display.draw_text(20, 200, "UVWXYZ 123")?;
     
-    // Draw some text
-    println!("Drawing test text...");
-    display.draw_text(10, 10, "Sharp Display Editor")?;
-    display.draw_text(10, 50, "ABCDEFGHIJKLM")?;
-    display.draw_text(10, 90, "NOPQRSTUVWXYZ")?;
-    display.draw_text(10, 130, "0123456789")?;
-    display.draw_text(10, 170, "Hello, World!")?;
-    
-    // Draw a cursor
-    display.draw_cursor(10, 210, 24)?;
-    
-    // Update the display
     display.update()?;
     
-    println!("Display updated!");
-    println!("Text should be visible on the Sharp display.");
-    println!("Press Ctrl+C to exit.");
+    println!("6. Text should be visible!");
+    println!("7. Waiting 10 seconds...");
+    thread::sleep(Duration::from_secs(10));
     
-    // Keep program running
-    loop {
-        std::thread::sleep(std::time::Duration::from_secs(1));
-    }
+    println!("8. Clearing display...");
+    display.clear()?;
+    
+    println!("Test complete!");
+    Ok(())
 }
+
+// Need to import Pixel at module level
+use rpi_memory_display::Pixel;
