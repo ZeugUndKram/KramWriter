@@ -1,8 +1,8 @@
 // src/display.rs
 use rpi_memory_display::{MemoryDisplay, MemoryDisplayBuffer, Pixel};
 use rppal::spi::{Bus, SlaveSelect};
-use crate::font_renderer::{FontRenderer, CharBitmap};
-use anyhow::{Result, anyhow};
+use crate::font_renderer::FontRenderer;
+use anyhow::Result;
 
 pub struct Display {
     driver: MemoryDisplay,
@@ -15,31 +15,50 @@ pub struct Display {
 
 impl Display {
     pub fn new(width: usize, height: usize) -> Result<Self> {
+        println!("Initializing Sharp Memory Display {}x{}...", width, height);
+        
+        // Initialize the display FIRST
         let driver = MemoryDisplay::new(
             Bus::Spi0,
             SlaveSelect::Ss0,
-            6,  // CS pin (adjust based on your wiring)
+            6,  // GPIO 6 as you instructed
             width,
             height as u8,
         )?;
         
+        println!("Display initialized. Creating buffer...");
+        
+        // Create buffer with correct size
         let buffer = MemoryDisplayBuffer::new(width, height as u8);
+        
+        // Clear the buffer immediately
+        let mut buffer_copy = buffer.clone();
+        buffer_copy.fill(Pixel::White);
+        
+        println!("Buffer created. Updating display...");
+        
+        // Update display with cleared buffer
+        driver.update(&buffer_copy)?;
+        
+        println!("Display ready!");
         
         Ok(Self {
             driver,
-            buffer,
+            buffer: buffer_copy,
             width,
             height,
             font_renderer: None,
-            font_size: 16.0,  // Default font size
+            font_size: 16.0,
         })
     }
     
     /// Load a font from a file
     pub fn load_font(&mut self, font_path: &str, size: f32) -> Result<()> {
+        println!("Loading font from: {}", font_path);
         let renderer = FontRenderer::from_file(font_path, size)?;
         self.font_renderer = Some(renderer);
         self.font_size = size;
+        println!("Font loaded successfully (size: {}px)", size);
         Ok(())
     }
     
@@ -77,8 +96,6 @@ impl Display {
                         }
                     }
                 }
-                
-                // Return the character width for cursor movement
                 return Ok(());
             }
         }
@@ -89,32 +106,34 @@ impl Display {
     }
     
     /// Draw text starting at position (x, y)
-    pub fn draw_text(&mut self, x: usize, y: usize, text: &str) -> Result<()> {
-        let mut cursor_x = x;
-        let mut cursor_y = y;
+    pub fn draw_text(&mut self, mut x: usize, mut y: usize, text: &str) -> Result<()> {
+        println!("Drawing text at ({}, {}): '{}'", x, y, text);
+        
+        let start_x = x;
         
         for ch in text.chars() {
             if ch == '\n' {
-                cursor_x = x;
-                cursor_y += self.font_size as usize + 2; // Line spacing
+                x = start_x;
+                y += self.font_size as usize + 2; // Line spacing
                 continue;
             }
             
             // Check if character would go off screen
-            if cursor_x + self.font_size as usize > self.width {
-                cursor_x = x;
-                cursor_y += self.font_size as usize + 2;
+            if x + self.font_size as usize > self.width {
+                x = start_x;
+                y += self.font_size as usize + 2;
             }
             
             // Check if we've run out of vertical space
-            if cursor_y + self.font_size as usize > self.height {
+            if y + self.font_size as usize > self.height {
+                println!("Out of vertical space!");
                 break;
             }
             
-            self.draw_char(cursor_x, cursor_y, ch)?;
+            self.draw_char(x, y, ch)?;
             
-            // Move cursor for next character
-            cursor_x += self.font_size as usize / 2 + 1; // Approximate character width
+            // Move cursor for next character (approximate based on font size)
+            x += (self.font_size * 0.6) as usize; // Rough estimate for character width
         }
         
         Ok(())
