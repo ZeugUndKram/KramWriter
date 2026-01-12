@@ -2,7 +2,6 @@
 use rpi_memory_display::{MemoryDisplay, MemoryDisplayBuffer, Pixel};
 use rppal::spi::{Bus, SlaveSelect};
 use std::io::{self, Write};
-use std::collections::VecDeque;
 
 const WIDTH: usize = 400;
 const HEIGHT: usize = 240;
@@ -16,10 +15,10 @@ struct TextEditor {
     display: MemoryDisplay,
     buffer: MemoryDisplayBuffer,
     lines: Vec<String>,
-    cursor_x: usize,    // Character position in line
-    cursor_y: usize,    // Line number
-    scroll_x: usize,    // Horizontal scroll
-    scroll_y: usize,    // Vertical scroll
+    cursor_x: usize,
+    cursor_y: usize,
+    scroll_x: usize,
+    scroll_y: usize,
     modified: bool,
 }
 
@@ -59,12 +58,15 @@ impl TextEditor {
             let line_idx = self.scroll_y + screen_y;
             if line_idx < self.lines.len() {
                 let line = &self.lines[line_idx];
-                
-                // Apply horizontal scrolling
                 let start_char = self.scroll_x;
-                let end_char = (self.scroll_x + COLS).min(line.len());
                 
-                for (char_idx, c) in line.chars().skip(start_char).take(COLS).enumerate() {
+                // Extract the characters we need to draw
+                let chars: Vec<char> = line.chars()
+                    .skip(start_char)
+                    .take(COLS)
+                    .collect();
+                
+                for (char_idx, &c) in chars.iter().enumerate() {
                     let x = char_idx * CHAR_WIDTH + MARGIN;
                     let y = screen_y * CHAR_HEIGHT + MARGIN;
                     self.draw_char(x, y, c);
@@ -95,7 +97,6 @@ impl TextEditor {
     }
     
     fn draw_char(&mut self, x: usize, y: usize, c: char) {
-        // Simple 5x7 font
         let pattern = Self::char_pattern(c);
         
         for dy in 0..7 {
@@ -184,7 +185,7 @@ impl TextEditor {
             '~' => [0x00, 0x00, 0x0A, 0x15, 0x00, 0x00, 0x00],
             '`' => [0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00],
             ' ' => [0x00; 7],
-            _ => [0x15, 0x0A, 0x15, 0x0A, 0x15, 0x0A, 0x15], // Unknown char
+            _ => [0x15, 0x0A, 0x15, 0x0A, 0x15, 0x0A, 0x15],
         }
     }
     
@@ -193,28 +194,13 @@ impl TextEditor {
             self.lines.push(String::new());
         }
         
-        let line = &mut self.lines[self.cursor_y];
-        
-        // Handle line wrapping
-        if line.len() >= COLS * 2 { // Allow some overflow before wrapping
-            // Find last space to wrap at
-            if let Some(last_space) = line.rfind(' ') {
-                if last_space > COLS {
-                    let remainder = line.split_off(last_space + 1);
-                    self.cursor_x = last_space + 1;
-                    self.insert_new_line();
-                    self.lines[self.cursor_y] = remainder;
-                    self.cursor_x = 0;
-                }
-            } else {
-                // No space found, force wrap
-                let remainder = line.split_off(COLS);
-                self.insert_new_line();
-                self.lines[self.cursor_y] = remainder;
-                self.cursor_x = 0;
-            }
+        // Check if we need to wrap
+        if self.lines[self.cursor_y].len() >= COLS * 2 {
+            self.handle_wrapping();
         }
         
+        // Now insert the character
+        let line = &mut self.lines[self.cursor_y];
         if self.cursor_x <= line.len() {
             line.insert(self.cursor_x, c);
             self.cursor_x += 1;
@@ -224,13 +210,38 @@ impl TextEditor {
         self.ensure_cursor_visible();
     }
     
+    fn handle_wrapping(&mut self) {
+        let line_len = self.lines[self.cursor_y].len();
+        
+        // Find last space to wrap at
+        if let Some(last_space) = self.lines[self.cursor_y].rfind(' ') {
+            if last_space > COLS {
+                let remainder = self.lines[self.cursor_y].split_off(last_space + 1);
+                self.cursor_x = last_space + 1;
+                self.insert_new_line();
+                self.lines[self.cursor_y] = remainder;
+                self.cursor_x = 0;
+                return;
+            }
+        }
+        
+        // No space found, force wrap at column limit
+        if line_len > COLS {
+            let remainder = self.lines[self.cursor_y].split_off(COLS);
+            self.insert_new_line();
+            self.lines[self.cursor_y] = remainder;
+            self.cursor_x = 0;
+        }
+    }
+    
     fn insert_new_line(&mut self) {
         if self.cursor_y >= self.lines.len() {
             self.lines.push(String::new());
         }
         
-        let line = &self.lines[self.cursor_y];
-        let (left, right) = line.split_at(self.cursor_x);
+        // Split the current line at cursor position
+        let current_line = self.lines[self.cursor_y].clone();
+        let (left, right) = current_line.split_at(self.cursor_x);
         
         self.lines[self.cursor_y] = left.to_string();
         self.lines.insert(self.cursor_y + 1, right.to_string());
@@ -352,7 +363,6 @@ impl TextEditor {
                     self.move_cursor(0, ROWS as isize);
                 }
                 termion::event::Key::Ctrl('s') => {
-                    // Save functionality could be added here
                     write!(stdout, "\r\n(Not implemented) Press any key...")?;
                     stdout.flush()?;
                 }
