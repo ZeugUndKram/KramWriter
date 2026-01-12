@@ -13,7 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut display = MemoryDisplay::new(
         Bus::Spi0,
         SlaveSelect::Ss0,
-        25,
+        6,
         WIDTH,
         HEIGHT as u8,
     )?;
