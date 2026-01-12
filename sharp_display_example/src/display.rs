@@ -152,4 +152,15 @@ impl Display {
         
         Ok(())
     }
+
+    pub fn draw_fallback_char(&mut self, x: usize, y: usize) -> Result<()> {
+    for dy in 0..8.min(self.height - y) {
+        for dx in 0..6.min(self.width - x) {
+            if dx == 0 || dx == 5 || dy == 0 || dy == 7 {
+                self.buffer.set_pixel(x + dx, (y + dy) as u8, Pixel::Black);
+            }
+        }
+    }
+    Ok(())
+}
 }
