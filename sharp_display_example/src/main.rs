@@ -20,11 +20,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut buffer = MemoryDisplayBuffer::new(400, 240);
     buffer.fill(Pixel::White);
     
-    // Draw a line
-    for x in 100..300 {
-        buffer.set_pixel(x, 120, Pixel::Black);
+    // Update the drawing part:
+let mut buffer = MemoryDisplayBuffer::new(400, 240);
+buffer.fill(Pixel::White);
+
+// Draw checkerboard pattern
+for y in 0..240 {
+    for x in 0..400 {
+        if (x / 20 + y / 20) % 2 == 0 {
+            buffer.set_pixel(x, y as u8, Pixel::Black);
+        }
     }
-    
+}
     display.update(&buffer)?;
     println!("Display updated!");
     
