@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-rpi_memory_display = "0.3.0"
-rppal = "0.14.0"
+rpi_memory_display = "0.1.2"
+rppal = "0.12.0"  # Compatible version with rpi_memory_display 0.1.2
