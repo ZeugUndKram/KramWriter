@@ -41,28 +41,28 @@ fn main() -> Result<()> {
     display.clear()?;
     
     let test_chars = ['A', 'B', 'C', '1', '2', '3'];
-    let mut x = 30;
-    let y = 100;
+let mut x = 30;
+let mut y = 100;  // Add 'mut' here
+
+for &ch in test_chars.iter() {  // Remove the index
+    println!("  Drawing '{}' at ({}, {})", ch, x, y);
     
-    for (i, &ch) in test_chars.iter().enumerate() {
-        println!("  Drawing '{}' at ({}, {})", ch, x, y);
-        
-        // Draw position marker
-        for dx in 0..3 {
-            for dy in 0..3 {
-                display.draw_pixel(x + dx, y + dy)?;
-            }
-        }
-        
-        // Draw the character
-        display.draw_char(x, y, ch)?;
-        
-        x += 40;
-        if x > 350 {
-            x = 30;
-            y += 50;
+    // Draw position marker
+    for dx in 0..3 {
+        for dy in 0..3 {
+            display.draw_pixel(x + dx, y + dy)?;
         }
     }
+    
+    // Draw the character
+    display.draw_char(x, y, ch)?;
+    
+    x += 40;
+    if x > 350 {
+        x = 30;
+        y += 50;
+    }
+}
     
     display.update()?;
     println!("4. Characters should be visible (with markers)");
