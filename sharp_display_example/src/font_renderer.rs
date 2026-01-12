@@ -1,5 +1,7 @@
 use rusttype::{Font, Scale, point};
 use anyhow::{Result, anyhow};
+use image::{GrayImage, Luma};
+use std::convert::TryFrom;
 
 pub struct FontRenderer {
     font: Font<'static>,
@@ -27,80 +29,155 @@ impl FontRenderer {
         println!("  Rendering character: '{}'", ch);
         
         let glyph = self.font.glyph(ch).scaled(self.scale);
-        let advance = glyph.h_metrics().advance_width;
+        let h_metrics = glyph.h_metrics();
         
-        // Position at baseline
-        let positioned = glyph.positioned(point(0.0, 0.0));
+        // Position at origin
+        let glyph = glyph.positioned(point(0.0, 0.0));
         
-        let bb = positioned.pixel_bounding_box();
-        println!("  Bounding box: {:?}", bb);
+        // Get bounding box
+        let bb = glyph.pixel_bounding_box()?;
+        let width = bb.width() as u32;
+        let height = bb.height() as u32;
         
-        let bb = bb?;
-        
-        // Adjust for negative y coordinates
-        let x_offset = -bb.min.x;
-        let y_offset = -bb.min.y;
-        
-        let width = bb.width() as usize;
-        let height = bb.height() as usize;
-        
-        println!("  Character dimensions: {}x{}", width, height);
-        println!("  Offsets: x={}, y={}", x_offset, y_offset);
+        println!("  Bounding box: {:?} -> {}x{}", bb, width, height);
         
         if width == 0 || height == 0 {
-            println!("  Warning: Character has zero dimensions!");
-            return None;
+            println!("  Zero dimensions, using fallback");
+            return self.create_fallback(ch);
         }
         
-        let mut bitmap = vec![vec![false; width]; height];
-        let mut pixels_drawn = 0;
+        // Create image buffer
+        let mut image = GrayImage::new(width, height);
         
-        positioned.draw(|x, y, v| {
-            // Convert to bitmap coordinates
-            let bitmap_x = (x as i32 + x_offset) as usize;
-            let bitmap_y = (y as i32 + y_offset) as usize;
+        // Draw glyph to image
+        glyph.draw(|x, y, v| {
+            let x = x as i32 - bb.min.x;
+            let y = y as i32 - bb.min.y;
             
-            if bitmap_x < width && bitmap_y < height {
-                if v > 0.1 {  // Lower threshold
-                    bitmap[bitmap_y][bitmap_x] = true;
-                    pixels_drawn += 1;
-                }
+            if x >= 0 && x < width as i32 && y >= 0 && y < height as i32 {
+                // Convert alpha to grayscale (0-255)
+                let value = (v * 255.0) as u8;
+                image.put_pixel(x as u32, y as u32, Luma([value]));
             }
         });
         
-        println!("  Pixels set: {}/{} ({:.1}%)", 
-            pixels_drawn, width * height,
-            (pixels_drawn as f32 * 100.0) / (width * height) as f32);
+        // Convert to boolean bitmap with threshold
+        let threshold = 128u8;
+        let mut bitmap = vec![vec![false; width as usize]; height as usize];
+        let mut pixels_set = 0;
         
-        if pixels_drawn == 0 {
-            println!("  WARNING: No pixels were drawn!");
-            // Try a test pattern instead
-            return self.create_test_pattern(ch, width, height);
+        for y in 0..height {
+            for x in 0..width {
+                let pixel_value = image.get_pixel(x, y).0[0];
+                if pixel_value > threshold {
+                    bitmap[y as usize][x as usize] = true;
+                    pixels_set += 1;
+                }
+            }
+        }
+        
+        println!("  Pixels set: {}/{} ({:.1}%)", 
+            pixels_set, width * height,
+            (pixels_set as f32 * 100.0) / (width * height) as f32);
+        
+        // If no pixels, show what we got
+        if pixels_set == 0 {
+            println!("  DEBUG: First few pixel values:");
+            for y in 0..height.min(5) {
+                for x in 0..width.min(5) {
+                    let val = image.get_pixel(x, y).0[0];
+                    print!("{:3} ", val);
+                }
+                println!();
+            }
+            return self.create_fallback(ch);
         }
         
         Some(CharBitmap {
-            width,
-            height,
+            width: width as usize,
+            height: height as usize,
             bitmap,
-            advance,
+            advance: h_metrics.advance_width,
         })
     }
     
-    fn create_test_pattern(&self, ch: char, width: usize, height: usize) -> Option<CharBitmap> {
-        println!("  Creating test pattern for '{}'", ch);
+    fn create_fallback(&self, ch: char) -> Option<CharBitmap> {
+        println!("  Using fallback for '{}'", ch);
         
+        // Create a simple 8x8 bitmap showing the character
+        let width = 8;
+        let height = 8;
         let mut bitmap = vec![vec![false; width]; height];
         
-        // Draw a simple pattern to verify rendering works
+        // Draw border
+        for x in 0..width {
+            bitmap[0][x] = true;
+            bitmap[height-1][x] = true;
+        }
         for y in 0..height {
-            for x in 0..width {
-                // Draw border
-                if x == 0 || x == width - 1 || y == 0 || y == height - 1 {
-                    bitmap[y][x] = true;
-                }
-                // Draw diagonal
-                if x == y {
-                    bitmap[y][x] = true;
+            bitmap[y][0] = true;
+            bitmap[y][width-1] = true;
+        }
+        
+        // Try to represent the character crudely
+        match ch {
+            'A' | 'a' => {
+                // Draw an A shape
+                bitmap[1][3] = true;
+                bitmap[2][2] = true; bitmap[2][4] = true;
+                bitmap[3][1] = true; bitmap[3][5] = true;
+                bitmap[4][1] = true; bitmap[4][2] = true; bitmap[4][3] = true; 
+                bitmap[4][4] = true; bitmap[4][5] = true;
+            }
+            'B' | 'b' => {
+                // Draw a B shape
+                for y in 1..7 { bitmap[y][1] = true; }
+                bitmap[1][2] = true; bitmap[1][3] = true;
+                bitmap[2][4] = true;
+                bitmap[3][2] = true; bitmap[3][3] = true;
+                bitmap[4][4] = true;
+                bitmap[5][2] = true; bitmap[5][3] = true;
+                bitmap[6][2] = true; bitmap[6][3] = true;
+            }
+            'C' | 'c' => {
+                // Draw a C shape
+                bitmap[1][2] = true; bitmap[1][3] = true; bitmap[1][4] = true;
+                bitmap[2][1] = true;
+                bitmap[3][1] = true;
+                bitmap[4][1] = true;
+                bitmap[5][1] = true;
+                bitmap[6][2] = true; bitmap[6][3] = true; bitmap[6][4] = true;
+            }
+            '1' => {
+                // Draw 1
+                for y in 1..7 { bitmap[y][3] = true; }
+                bitmap[1][2] = true; bitmap[1][3] = true; bitmap[1][4] = true;
+                bitmap[6][2] = true; bitmap[6][3] = true; bitmap[6][4] = true;
+            }
+            '2' => {
+                // Draw 2
+                bitmap[1][2] = true; bitmap[1][3] = true; bitmap[1][4] = true;
+                bitmap[2][1] = true; bitmap[2][5] = true;
+                bitmap[3][5] = true;
+                bitmap[4][4] = true;
+                bitmap[5][3] = true;
+                bitmap[6][1] = true; bitmap[6][2] = true; bitmap[6][3] = true;
+                bitmap[6][4] = true; bitmap[6][5] = true;
+            }
+            '3' => {
+                // Draw 3
+                bitmap[1][2] = true; bitmap[1][3] = true; bitmap[1][4] = true;
+                bitmap[2][1] = true; bitmap[2][5] = true;
+                bitmap[3][5] = true;
+                bitmap[4][3] = true; bitmap[4][4] = true;
+                bitmap[5][5] = true;
+                bitmap[6][1] = true; bitmap[6][2] = true; bitmap[6][3] = true;
+                bitmap[6][4] = true;
+            }
+            _ => {
+                // Just draw diagonal for unknown chars
+                for i in 0..width.min(height) {
+                    bitmap[i][i] = true;
                 }
             }
         }
@@ -109,7 +186,7 @@ impl FontRenderer {
             width,
             height,
             bitmap,
-            advance: width as f32,
+            advance: 8.0,
         })
     }
     

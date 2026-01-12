@@ -1,3 +1,4 @@
+// src/main.rs (simplified test)
 mod font_renderer;
 mod display;
 
@@ -7,84 +8,76 @@ use std::thread;
 use std::time::Duration;
 
 fn main() -> Result<()> {
-    println!("=== Font Rendering Fix Test ===");
+    println!("=== Final Font Test ===");
     
     // 1. Initialize display
     println!("1. Initializing display...");
     let mut display = Display::new(400, 240)?;
-    
-    // Clear and draw border
     display.clear()?;
-    display.draw_border()?;
-    display.update()?;
-    println!("Border visible - display works!");
-    thread::sleep(Duration::from_secs(1));
     
-    // 2. Load font with smaller size (easier to debug)
+    // 2. Load font
     println!("2. Loading font...");
     let font_path = "/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf";
     
-    // Try different sizes
-    for size in &[48.0, 36.0, 24.0, 16.0] {
+    // Try multiple sizes
+    let sizes = [48.0, 36.0, 24.0, 16.0];
+    let mut loaded = false;
+    
+    for &size in &sizes {
         println!("  Trying size: {}px", size);
-        match display.load_font(font_path, *size) {
-            Ok(_) => {
-                println!("  ✓ Font loaded at {}px", size);
-                break;
+        if display.load_font(font_path, size).is_ok() {
+            println!("  ✓ Font loaded at {}px", size);
+            loaded = true;
+            break;
+        }
+    }
+    
+    if !loaded {
+        println!("✗ Could not load font at any size");
+        println!("Drawing test pattern instead...");
+        display.draw_border()?;
+        
+        // Draw a smiley
+        for &(x, y) in &[(200, 120), (190, 110), (210, 110), (185, 130), (215, 130)] {
+            for dx in -2..=2 {
+                for dy in -2..=2 {
+                    display.draw_pixel((x as isize + dx) as usize, (y as isize + dy) as usize)?;
+                }
             }
-            Err(e) => println!("  ✗ Failed at {}px: {}", size, e),
+        }
+        
+        display.update()?;
+        thread::sleep(Duration::from_secs(5));
+        display.clear()?;
+        return Ok(());
+    }
+    
+    // 3. Test rendering
+    println!("3. Testing rendering...");
+    display.clear()?;
+    
+    // Draw text at different positions
+    let texts = [
+        (20, 40, "BEBAS"),
+        (20, 100, "NEUE"),
+        (20, 160, "12345"),
+        (20, 220, "HELLO"),
+    ];
+    
+    for &(x, y, text) in &texts {
+        if y < 240 {
+            println!("  Drawing '{}' at ({}, {})", text, x, y);
+            display.draw_text(x, y, text)?;
         }
     }
     
-    // 3. Test individual characters
-    println!("3. Testing individual characters...");
-    display.clear()?;
-    
-    let test_chars = ['A', 'B', 'C', '1', '2', '3'];
-let mut x = 30;
-let mut y = 100;  // Add 'mut' here
-
-for &ch in test_chars.iter() {  // Remove the index
-    println!("  Drawing '{}' at ({}, {})", ch, x, y);
-    
-    // Draw position marker
-    for dx in 0..3 {
-        for dy in 0..3 {
-            display.draw_pixel(x + dx, y + dy)?;
-        }
-    }
-    
-    // Draw the character
-    display.draw_char(x, y, ch)?;
-    
-    x += 40;
-    if x > 350 {
-        x = 30;
-        y += 50;
-    }
-}
-    
-    display.update()?;
-    println!("4. Characters should be visible (with markers)");
-    println!("5. Waiting 5 seconds...");
-    thread::sleep(Duration::from_secs(5));
-    
-    // 4. Try text
-    println!("6. Testing text rendering...");
-    display.clear()?;
-    
-    // Try at different positions
-    display.draw_text(20, 30, "HELLO")?;
-    display.draw_text(20, 80, "BEBAS")?;
-    display.draw_text(20, 130, "12345")?;
-    
     display.update()?;
     
-    println!("7. Text should be visible!");
-    println!("8. Waiting 5 seconds...");
-    thread::sleep(Duration::from_secs(5));
+    println!("4. Text should be visible!");
+    println!("5. Waiting 10 seconds...");
+    thread::sleep(Duration::from_secs(10));
     
-    println!("9. Clearing display...");
+    println!("6. Clearing display...");
     display.clear()?;
     
     println!("Test complete!");
