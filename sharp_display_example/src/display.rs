@@ -18,7 +18,7 @@ impl Display {
         let driver = MemoryDisplay::new(
             Bus::Spi0,
             SlaveSelect::Ss0,
-            25,  // CS pin (adjust based on your wiring)
+            6,  // CS pin (adjust based on your wiring)
             width,
             height as u8,
         )?;
