@@ -1,9 +1,11 @@
 [package]
-name = "sharp_display_example"
+name = "sharp-text-editor"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 rpi_memory_display = "0.1.2"
 rppal = "0.11.3"
-termion = "1.5"  # For keyboard input
+rusttype = "0.9.3"
+image = "0.24.7"
+anyhow = "1.0.75"
