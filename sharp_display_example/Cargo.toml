@@ -6,6 +6,5 @@ edition = "2021"
 [dependencies]
 rpi_memory_display = "0.1.2"
 rppal = "0.11.3"
-rusttype = "0.9.3"
+ab_glyph = "0.2.21"  # Replace rusttype with ab_glyph
 anyhow = "1.0.75"
-image = "0.24.7"

@@ -1,4 +1,4 @@
-// src/main.rs (simplified test)
+// src/main.rs
 mod font_renderer;
 mod display;
 
@@ -8,42 +8,31 @@ use std::thread;
 use std::time::Duration;
 
 fn main() -> Result<()> {
-    println!("=== Final Font Test ===");
+    println!("=== ab_glyph Font Test ===");
     
-    // 1. Initialize display
-    println!("1. Initializing display...");
+    // Initialize display
     let mut display = Display::new(400, 240)?;
     display.clear()?;
     
-    // 2. Load font
-    println!("2. Loading font...");
+    // Draw border to confirm display works
+    display.draw_border()?;
+    display.update()?;
+    println!("Border drawn");
+    thread::sleep(Duration::from_secs(1));
+    
+    // Try to load font
     let font_path = "/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf";
     
-    // Try multiple sizes
-    let sizes = [48.0, 36.0, 24.0, 16.0];
-    let mut loaded = false;
-    
-    for &size in &sizes {
-        println!("  Trying size: {}px", size);
-        if display.load_font(font_path, size).is_ok() {
-            println!("  ✓ Font loaded at {}px", size);
-            loaded = true;
-            break;
-        }
-    }
-    
-    if !loaded {
-        println!("✗ Could not load font at any size");
-        println!("Drawing test pattern instead...");
-        display.draw_border()?;
+    println!("Loading font with ab_glyph...");
+    if display.load_font(font_path, 32.0).is_err() {
+        println!("Failed to load font, drawing fallback pattern");
+        display.clear()?;
         
-        // Draw a smiley
-        for &(x, y) in &[(200, 120), (190, 110), (210, 110), (185, 130), (215, 130)] {
-            for dx in -2..=2 {
-                for dy in -2..=2 {
-                    display.draw_pixel((x as isize + dx) as usize, (y as isize + dy) as usize)?;
-                }
-            }
+        // Draw a test pattern
+        for i in 0..20 {
+            let x = 50 + i * 15;
+            let y = 100;
+            display.draw_fallback_char(x, y)?;
         }
         
         display.update()?;
@@ -52,34 +41,29 @@ fn main() -> Result<()> {
         return Ok(());
     }
     
-    // 3. Test rendering
-    println!("3. Testing rendering...");
+    // Clear and draw text
     display.clear()?;
     
-    // Draw text at different positions
-    let texts = [
-        (20, 40, "BEBAS"),
-        (20, 100, "NEUE"),
-        (20, 160, "12345"),
-        (20, 220, "HELLO"),
+    // Test with simple text
+    let test_strings = [
+        (30, 50, "HELLO"),
+        (30, 100, "WORLD"),
+        (30, 150, "TEST"),
     ];
     
-    for &(x, y, text) in &texts {
-        if y < 240 {
-            println!("  Drawing '{}' at ({}, {})", text, x, y);
-            display.draw_text(x, y, text)?;
-        }
+    for &(x, y, text) in &test_strings {
+        println!("Drawing: '{}'", text);
+        display.draw_text(x, y, text)?;
     }
     
     display.update()?;
     
-    println!("4. Text should be visible!");
-    println!("5. Waiting 10 seconds...");
+    println!("Text should be visible!");
+    println!("Waiting 10 seconds...");
     thread::sleep(Duration::from_secs(10));
     
-    println!("6. Clearing display...");
     display.clear()?;
+    println!("Done!");
     
-    println!("Test complete!");
     Ok(())
 }
