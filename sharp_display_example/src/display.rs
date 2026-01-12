@@ -4,7 +4,7 @@ use crate::font_renderer::FontRenderer;
 use anyhow::Result;
 
 pub struct Display {
-    driver: MemoryDisplay,
+    display: MemoryDisplay,
     buffer: MemoryDisplayBuffer,
     width: usize,
     height: usize,
@@ -14,31 +14,34 @@ pub struct Display {
 
 impl Display {
     pub fn new(width: usize, height: usize) -> Result<Self> {
-    println!("Initializing display {}x{}...", width, height);
-    
-    let mut driver = MemoryDisplay::new(  // Add 'mut' here
-        Bus::Spi0,
-        SlaveSelect::Ss0,
-        6,  // GPIO 6
-        width,
-        height as u8,
-    )?;
-    
-    let buffer = MemoryDisplayBuffer::new(width, height as u8);
-    
-    // Clear display immediately
-    let mut temp_buffer = buffer.clone();
-    temp_buffer.fill(Pixel::White);
-    driver.update(&temp_buffer)?;
-    
-    Ok(Self {
-        driver,
-        buffer: temp_buffer,
-        width,
-        height,
-        font_renderer: None,
-        font_size: 24.0,
-    })
+        println!("Initializing display {}x{}...", width, height);
+        
+        // Create display FIRST
+        let mut display = MemoryDisplay::new(
+            Bus::Spi0,
+            SlaveSelect::Ss0,
+            6,
+            width,
+            height as u8,
+        )?;
+        
+        println!("Display created. Creating buffer...");
+        
+        // Create buffer with correct size
+        let buffer = MemoryDisplayBuffer::new(width, height as u8);
+        
+        // Clear display immediately
+        println!("Clearing display...");
+        display.clear()?;
+        
+        Ok(Self {
+            display,
+            buffer,
+            width,
+            height,
+            font_renderer: None,
+            font_size: 24.0,
+        })
     }
     
     pub fn load_font(&mut self, font_path: &str, size: f32) -> Result<()> {
@@ -52,12 +55,12 @@ impl Display {
     
     pub fn clear(&mut self) -> Result<()> {
         self.buffer.fill(Pixel::White);
-        self.driver.update(&self.buffer)?;
+        self.display.update(&self.buffer)?;
         Ok(())
     }
     
     pub fn update(&mut self) -> Result<()> {
-        self.driver.update(&self.buffer)?;
+        self.display.update(&self.buffer)?;
         Ok(())
     }
     
@@ -77,17 +80,16 @@ impl Display {
                         }
                     }
                 }
-                return Ok(char_bitmap.width + 1); // Return width + spacing
+                return Ok(char_bitmap.width + 1);
             }
         }
         
-        // Fallback: draw a box for missing characters
+        // Fallback
         self.draw_fallback_char(x, y)?;
-        Ok(8) // Return fallback width
+        Ok(8)
     }
     
     fn draw_fallback_char(&mut self, x: usize, y: usize) -> Result<()> {
-        // Draw a simple 6x8 box
         for dy in 0..8.min(self.height - y) {
             for dx in 0..6.min(self.width - x) {
                 if dx == 0 || dx == 5 || dy == 0 || dy == 7 {
@@ -109,9 +111,8 @@ impl Display {
                 continue;
             }
             
-            // Check bounds
             if cursor_y >= self.height {
-                break; // No more vertical space
+                break;
             }
             
             if cursor_x >= self.width {
@@ -129,7 +130,26 @@ impl Display {
         Ok(())
     }
     
-    pub fn buffer_mut(&mut self) -> &mut MemoryDisplayBuffer {
-        &mut self.buffer
+    pub fn draw_pixel(&mut self, x: usize, y: usize) -> Result<()> {
+        if x < self.width && y < self.height {
+            self.buffer.set_pixel(x, y as u8, Pixel::Black);
+        }
+        Ok(())
+    }
+    
+    pub fn draw_border(&mut self) -> Result<()> {
+        // Top and bottom borders
+        for x in 0..self.width {
+            self.draw_pixel(x, 0)?;
+            self.draw_pixel(x, self.height - 1)?;
+        }
+        
+        // Left and right borders
+        for y in 0..self.height {
+            self.draw_pixel(0, y)?;
+            self.draw_pixel(self.width - 1, y)?;
+        }
+        
+        Ok(())
     }
 }
