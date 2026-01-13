@@ -5,8 +5,8 @@ use termion::event::Key;
 use rpi_memory_display::Pixel;
 
 const LETTER_SPACING: usize = 2;
-const LINE_SPACING: usize = 5;
-const MAX_VISIBLE_LINES: usize = 8;
+const LINE_SPACING: usize = 3;
+const MAX_VISIBLE_LINES: usize = 7;
 const MAX_LINE_WIDTH: usize = 380;
 const LEFT_MARGIN: usize = 10;
 
