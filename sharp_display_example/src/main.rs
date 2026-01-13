@@ -1,69 +1,73 @@
 // src/main.rs
-mod font_renderer;
+mod pages;
 mod display;
 
-use crate::display::Display;
 use anyhow::Result;
-use std::thread;
-use std::time::Duration;
+use pages::{Page, LogoPage, MenuPage};
+use display::SharpDisplay;
+use std::collections::HashMap;
 
-fn main() -> Result<()> {
-    println!("=== ab_glyph Font Test ===");
-    
-    // Initialize display
-    let mut display = Display::new(400, 240)?;
-    display.clear()?;
-    
-    // Draw border to confirm display works
-    display.draw_border()?;
-    display.update()?;
-    println!("Border drawn");
-    thread::sleep(Duration::from_secs(1));
-    
-    // Try to load font
-    let font_path = "/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf";
-    
-    println!("Loading font with ab_glyph...");
-    if display.load_font(font_path, 32.0).is_err() {
-        println!("Failed to load font, drawing fallback pattern");
-        display.clear()?;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum PageId {
+    Logo,
+    Menu,
+}
+
+struct App {
+    display: SharpDisplay,
+    current_page: PageId,
+    pages: HashMap<PageId, Box<dyn Page>>,
+}
+
+impl App {
+    fn new() -> Result<Self> {
+        let display = SharpDisplay::new(6)?;  // CS pin 6
         
-        // Draw a test pattern
-        for i in 0..20 {
-            let x = 50 + i * 15;
-            let y = 100;
-            display.draw_fallback_char(x, y)?;
+        let mut pages = HashMap::new();
+        pages.insert(PageId::Logo, Box::new(LogoPage::new()?));
+        pages.insert(PageId::Menu, Box::new(MenuPage::new()?));
+        
+        Ok(Self {
+            display,
+            current_page: PageId::Logo,
+            pages,
+        })
+    }
+    
+    fn run(&mut self) -> Result<()> {
+        use termion::{input::TermRead, raw::IntoRawMode};
+        let stdin = std::io::stdin();
+        let mut stdout = std::io::stdout().into_raw_mode()?;
+        
+        // Draw initial page
+        self.draw_current_page()?;
+        
+        for key in stdin.keys() {
+            match key? {
+                termion::event::Key::Char('\n') => {
+                    match self.current_page {
+                        PageId::Logo => self.current_page = PageId::Menu,
+                        PageId::Menu => self.current_page = PageId::Logo,
+                    }
+                    self.draw_current_page()?;
+                }
+                termion::event::Key::Ctrl('c') => break,
+                _ => {}
+            }
         }
         
-        display.update()?;
-        thread::sleep(Duration::from_secs(5));
-        display.clear()?;
-        return Ok(());
+        Ok(())
     }
     
-    // Clear and draw text
-    display.clear()?;
-    
-    // Test with simple text
-    let test_strings = [
-        (30, 50, "HELLO"),
-        (30, 100, "WORLD"),
-        (30, 150, "TEST"),
-    ];
-    
-    for &(x, y, text) in &test_strings {
-        println!("Drawing: '{}'", text);
-        display.draw_text(x, y, text)?;
+    fn draw_current_page(&mut self) -> Result<()> {
+        if let Some(page) = self.pages.get_mut(&self.current_page) {
+            page.draw(&mut self.display)?;
+        }
+        Ok(())
     }
-    
-    display.update()?;
-    
-    println!("Text should be visible!");
-    println!("Waiting 10 seconds...");
-    thread::sleep(Duration::from_secs(10));
-    
-    display.clear()?;
-    println!("Done!");
-    
-    Ok(())
+}
+
+fn main() -> Result<()> {
+    let mut app = App::new()?;
+    app.run()
 }

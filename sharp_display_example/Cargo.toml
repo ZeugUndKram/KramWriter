@@ -1,10 +1,10 @@
 [package]
-name = "sharp-text-editor"
+name = "sharp_ui"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 rpi_memory_display = "0.1.2"
 rppal = "0.11.3"
-ab_glyph = "0.2.21"  # Replace rusttype with ab_glyph
-anyhow = "1.0.75"
+termion = "1.5"
+anyhow = "1.0"

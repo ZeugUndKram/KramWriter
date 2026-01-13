@@ -1,157 +1,66 @@
+// src/display.rs
 use rpi_memory_display::{MemoryDisplay, MemoryDisplayBuffer, Pixel};
 use rppal::spi::{Bus, SlaveSelect};
-use crate::font_renderer::FontRenderer;
 use anyhow::Result;
 
-pub struct Display {
-    display: MemoryDisplay,
+const WIDTH: usize = 400;
+const HEIGHT: usize = 240;
+
+pub struct SharpDisplay {
+    inner: MemoryDisplay,
     buffer: MemoryDisplayBuffer,
-    width: usize,
-    height: usize,
-    font_renderer: Option<FontRenderer>,
-    font_size: f32,
 }
 
-impl Display {
-    pub fn new(width: usize, height: usize) -> Result<Self> {
-        println!("Initializing display {}x{}...", width, height);
-        
-        // Create display FIRST
-        let mut display = MemoryDisplay::new(
+impl SharpDisplay {
+    pub fn new(cs_pin: u8) -> Result<Self> {
+        let inner = MemoryDisplay::new(
             Bus::Spi0,
             SlaveSelect::Ss0,
-            6,
-            width,
-            height as u8,
+            cs_pin,
+            WIDTH,
+            HEIGHT as u8,
         )?;
         
-        println!("Display created. Creating buffer...");
+        let buffer = MemoryDisplayBuffer::new(WIDTH, HEIGHT as u8);
         
-        // Create buffer with correct size
-        let buffer = MemoryDisplayBuffer::new(width, height as u8);
-        
-        // Clear display immediately
-        println!("Clearing display...");
-        display.clear()?;
-        
-        Ok(Self {
-            display,
-            buffer,
-            width,
-            height,
-            font_renderer: None,
-            font_size: 24.0,
-        })
+        Ok(Self { inner, buffer })
     }
     
-    pub fn load_font(&mut self, font_path: &str, size: f32) -> Result<()> {
-        println!("Loading font: {}", font_path);
-        let renderer = FontRenderer::from_file(font_path, size)?;
-        self.font_renderer = Some(renderer);
-        self.font_size = size;
-        println!("Font loaded (size: {}px)", size);
-        Ok(())
-    }
-    
-    pub fn clear(&mut self) -> Result<()> {
+    pub fn clear(&mut self) {
         self.buffer.fill(Pixel::White);
-        self.display.update(&self.buffer)?;
-        Ok(())
     }
     
     pub fn update(&mut self) -> Result<()> {
-        self.display.update(&self.buffer)?;
+        self.inner.update(&self.buffer)?;
         Ok(())
     }
     
-    pub fn draw_char(&mut self, x: usize, y: usize, ch: char) -> Result<usize> {
-        if let Some(renderer) = &self.font_renderer {
-            if let Some(char_bitmap) = renderer.render_char(ch) {
-                // Draw the character
-                for (row_idx, row) in char_bitmap.bitmap.iter().enumerate() {
-                    for (col_idx, &pixel) in row.iter().enumerate() {
-                        if pixel {
-                            let px = x + col_idx;
-                            let py = y + row_idx;
-                            
-                            if px < self.width && py < self.height {
-                                self.buffer.set_pixel(px, py as u8, Pixel::Black);
-                            }
-                        }
+    pub fn draw_pixel(&mut self, x: usize, y: usize, pixel: Pixel) {
+        if x < WIDTH && y < HEIGHT {
+            self.buffer.set_pixel(x, y as u8, pixel);
+        }
+    }
+    
+    pub fn draw_text(&mut self, x: usize, y: usize, text: &str) {
+        // Simple text drawing for now
+        for (i, c) in text.chars().enumerate() {
+            if x + i * 6 < WIDTH {
+                self.draw_char(x + i * 6, y, c);
+            }
+        }
+    }
+    
+    fn draw_char(&mut self, x: usize, y: usize, c: char) {
+        // Placeholder - you'll want a proper font
+        match c {
+            'A'..='Z' | 'a'..='z' => {
+                for dy in 2..6 {
+                    for dx in 1..5 {
+                        self.draw_pixel(x + dx, y + dy, Pixel::Black);
                     }
                 }
-                return Ok(char_bitmap.width + 1);
             }
+            _ => {}
         }
-        
-        // Fallback
-        self.draw_fallback_char(x, y)?;
-        Ok(8)
     }
-    
-    pub fn draw_fallback_char(&mut self, x: usize, y: usize) -> Result<()> {
-        for dy in 0..8.min(self.height - y) {
-            for dx in 0..6.min(self.width - x) {
-                if dx == 0 || dx == 5 || dy == 0 || dy == 7 {
-                    self.buffer.set_pixel(x + dx, (y + dy) as u8, Pixel::Black);
-                }
-            }
-        }
-        Ok(())
-    }
-    
-    pub fn draw_text(&mut self, x: usize, y: usize, text: &str) -> Result<()> {
-        let mut cursor_x = x;
-        let mut cursor_y = y;
-        
-        for ch in text.chars() {
-            if ch == '\n' {
-                cursor_x = x;
-                cursor_y += self.font_size as usize + 2;
-                continue;
-            }
-            
-            if cursor_y >= self.height {
-                break;
-            }
-            
-            if cursor_x >= self.width {
-                cursor_x = x;
-                cursor_y += self.font_size as usize + 2;
-                if cursor_y >= self.height {
-                    break;
-                }
-            }
-            
-            let char_width = self.draw_char(cursor_x, cursor_y, ch)?;
-            cursor_x += char_width;
-        }
-        
-        Ok(())
-    }
-    
-    pub fn draw_pixel(&mut self, x: usize, y: usize) -> Result<()> {
-        if x < self.width && y < self.height {
-            self.buffer.set_pixel(x, y as u8, Pixel::Black);
-        }
-        Ok(())
-    }
-    
-    pub fn draw_border(&mut self) -> Result<()> {
-        // Top and bottom borders
-        for x in 0..self.width {
-            self.draw_pixel(x, 0)?;
-            self.draw_pixel(x, self.height - 1)?;
-        }
-        
-        // Left and right borders
-        for y in 0..self.height {
-            self.draw_pixel(0, y)?;
-            self.draw_pixel(self.width - 1, y)?;
-        }
-        
-        Ok(())
-    }
-
-    
 }
