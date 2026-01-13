@@ -24,7 +24,7 @@ pub struct WriteMenuPage {
 
 impl WriteMenuPage {
     pub fn new() -> Result<Self> {
-        let font_path = "/home/kramwriter/KramWriter/fonts/libsans20.bmp";
+        let font_path = "/home/kramwriter/KramWriter/fonts/libsans12.bmp";
         
         let (font_bitmap, char_widths) = match std::fs::read(font_path) {
             Ok(data) => {
