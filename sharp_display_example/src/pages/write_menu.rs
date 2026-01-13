@@ -6,7 +6,7 @@ use rpi_memory_display::Pixel;
 
 const LETTER_SPACING: usize = 2;
 const LINE_SPACING: usize = 3;
-const MAX_VISIBLE_LINES: usize = 7;
+const MAX_VISIBLE_LINES: usize = 6;  // Changed from 7 to 6
 const MAX_LINE_WIDTH: usize = 380;
 const LEFT_MARGIN: usize = 10;
 
@@ -446,6 +446,14 @@ impl Page for WriteMenuPage {
                     display.draw_pixel(5, 230 + dy, Pixel::Black);
                 }
             }
+            
+            // Draw black bar at the bottom (from y=220 to y=240)
+            for y in 220..240 {
+                for x in 0..400 {
+                    display.draw_pixel(x, y, Pixel::Black);
+                }
+            }
+            
         } else {
             display.draw_text(150, 100, "NO FONT LOADED");
         }
