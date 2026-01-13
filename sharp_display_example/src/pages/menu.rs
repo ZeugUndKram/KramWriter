@@ -12,7 +12,7 @@ const MENU_OPTIONS: [&str; 5] = [
     "Credits",
 ];
 
-const SPACING_TOP_TO_MAIN: usize = 0;      // Space between top image and main image
+const SPACING_TOP_TO_MAIN: usize = -10;      // Space between top image and main image
 const SPACING_MAIN_TO_BOTTOM: usize = 10;   // Space between main image and bottom image
 const SPACING_TOP_TO_FARTOP: usize = 20;    // Space between far top image and top image
 const SPACING_BOTTOM_TO_FARBOTTOM: usize = 40; // Space between bottom image and far bottom image
