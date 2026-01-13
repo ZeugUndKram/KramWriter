@@ -2,7 +2,7 @@
 use super::{Page, PageId};
 use crate::display::SharpDisplay;
 use anyhow::Result;
-use rpi_memory_display::Pixel;
+
 
 pub struct LogoPage {
     // Could store logo image data here

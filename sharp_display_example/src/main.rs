@@ -20,10 +20,11 @@ struct App {
 }
 
 impl App {
+    impl App {
     fn new() -> Result<Self> {
-        let display = SharpDisplay::new(6)?;  // CS pin 6
+        let display = SharpDisplay::new(6)?;
         
-        let mut pages = HashMap::new();
+        let mut pages: HashMap<PageId, Box<dyn Page>> = HashMap::new();
         pages.insert(PageId::Logo, Box::new(LogoPage::new()?));
         pages.insert(PageId::Menu, Box::new(MenuPage::new()?));
         
@@ -33,6 +34,7 @@ impl App {
             pages,
         })
     }
+}
     
     fn run(&mut self) -> Result<()> {
         use termion::{input::TermRead, raw::IntoRawMode};

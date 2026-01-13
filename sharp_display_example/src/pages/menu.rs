@@ -25,7 +25,7 @@ impl MenuPage {
     }
 }
 
-impl Page for LogoPage {
+impl Page for MenuPage {
     fn draw(&mut self, display: &mut SharpDisplay) -> Result<()> {
         display.clear();
         
