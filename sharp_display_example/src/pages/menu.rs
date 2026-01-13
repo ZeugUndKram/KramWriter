@@ -206,7 +206,13 @@ impl Page for MenuPage {
     
     fn handle_key(&mut self, key: Key) -> Result<Option<PageId>> {
         match key {
-            Key::Char('\n') => Ok(Some(PageId::Logo)),
+            Key::Char('\n') => {
+                // When Enter is pressed, go to appropriate page based on current selection
+                match self.current_index {
+                    0 => Ok(Some(PageId::WriteMenu)),  // Write option
+                    _ => Ok(Some(PageId::Logo)),       // Other options go back to logo for now
+                }
+            }
             Key::Up => {
                 if self.current_index > 0 {
                     self.current_index -= 1;

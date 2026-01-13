@@ -19,6 +19,7 @@ impl App {
         let mut pages: HashMap<PageId, Box<dyn pages::Page>> = HashMap::new();
         pages.insert(PageId::Logo, Box::new(LogoPage::new()?));
         pages.insert(PageId::Menu, Box::new(MenuPage::new()?));
+        pages.insert(PageId::WriteMenu, Box::new(WriteMenuPage::new()?));  // Add this
         
         Ok(Self {
             display,
