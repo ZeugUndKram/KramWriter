@@ -1,4 +1,3 @@
-// src/display.rs - COMPLETE FILE
 use rpi_memory_display::{MemoryDisplay, MemoryDisplayBuffer, Pixel};
 use rppal::spi::{Bus, SlaveSelect};
 use anyhow::Result;
