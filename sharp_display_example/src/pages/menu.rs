@@ -1,7 +1,7 @@
-// src/pages/menu.rs
 use super::{Page, PageId};
 use crate::display::SharpDisplay;
 use anyhow::Result;
+use termion::event::Key;
 
 pub struct MenuPage {
     items: Vec<String>,
@@ -28,7 +28,6 @@ impl MenuPage {
 impl Page for MenuPage {
     fn draw(&mut self, display: &mut SharpDisplay) -> Result<()> {
         display.clear();
-        
         display.draw_text(150, 20, "MENU");
         
         for (i, item) in self.items.iter().enumerate().take(10) {
@@ -43,16 +42,16 @@ impl Page for MenuPage {
         Ok(())
     }
     
-    fn handle_key(&mut self, key: termion::event::Key) -> Result<Option<PageId>> {
+    fn handle_key(&mut self, key: Key) -> Result<Option<PageId>> {
         match key {
-            termion::event::Key::Char('\n') => Ok(Some(PageId::Logo)),
-            termion::event::Key::Up => {
+            Key::Char('\n') => Ok(Some(PageId::Logo)),
+            Key::Up => {
                 if self.selected > 0 {
                     self.selected -= 1;
                 }
                 Ok(None)
             }
-            termion::event::Key::Down => {
+            Key::Down => {
                 if self.selected < self.items.len() - 1 {
                     self.selected += 1;
                 }

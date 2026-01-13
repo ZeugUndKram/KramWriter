@@ -1,4 +1,3 @@
-// src/display.rs
 use rpi_memory_display::{MemoryDisplay, MemoryDisplayBuffer, Pixel};
 use rppal::spi::{Bus, SlaveSelect};
 use anyhow::Result;
@@ -42,7 +41,6 @@ impl SharpDisplay {
     }
     
     pub fn draw_text(&mut self, x: usize, y: usize, text: &str) {
-        // Simple text drawing for now
         for (i, c) in text.chars().enumerate() {
             if x + i * 6 < WIDTH {
                 self.draw_char(x + i * 6, y, c);
@@ -51,9 +49,8 @@ impl SharpDisplay {
     }
     
     fn draw_char(&mut self, x: usize, y: usize, c: char) {
-        // Placeholder - you'll want a proper font
         match c {
-            'A'..='Z' | 'a'..='z' => {
+            'A'..='Z' | 'a'..='z' | '0'..='9' => {
                 for dy in 2..6 {
                     for dx in 1..5 {
                         self.draw_pixel(x + dx, y + dy, Pixel::Black);

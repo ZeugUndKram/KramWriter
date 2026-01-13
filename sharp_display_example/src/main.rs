@@ -1,30 +1,22 @@
-// src/main.rs
 mod pages;
 mod display;
 
 use anyhow::Result;
-use pages::{Page, LogoPage, MenuPage};
+use pages::{PageId, LogoPage, MenuPage};
 use display::SharpDisplay;
 use std::collections::HashMap;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum PageId {
-    Logo,
-    Menu,
-}
 
 struct App {
     display: SharpDisplay,
     current_page: PageId,
-    pages: HashMap<PageId, Box<dyn Page>>,
+    pages: HashMap<PageId, Box<dyn pages::Page>>,
 }
 
 impl App {
-    impl App {
     fn new() -> Result<Self> {
         let display = SharpDisplay::new(6)?;
         
-        let mut pages: HashMap<PageId, Box<dyn Page>> = HashMap::new();
+        let mut pages: HashMap<PageId, Box<dyn pages::Page>> = HashMap::new();
         pages.insert(PageId::Logo, Box::new(LogoPage::new()?));
         pages.insert(PageId::Menu, Box::new(MenuPage::new()?));
         
@@ -34,27 +26,33 @@ impl App {
             pages,
         })
     }
-}
     
     fn run(&mut self) -> Result<()> {
         use termion::{input::TermRead, raw::IntoRawMode};
         let stdin = std::io::stdin();
-        let mut stdout = std::io::stdout().into_raw_mode()?;
+        let _stdout = std::io::stdout().into_raw_mode()?;
         
-        // Draw initial page
         self.draw_current_page()?;
         
         for key in stdin.keys() {
             match key? {
                 termion::event::Key::Char('\n') => {
-                    match self.current_page {
-                        PageId::Logo => self.current_page = PageId::Menu,
-                        PageId::Menu => self.current_page = PageId::Logo,
+                    if let Some(page) = self.pages.get_mut(&self.current_page) {
+                        if let Some(next_page) = page.handle_key(termion::event::Key::Char('\n'))? {
+                            self.current_page = next_page;
+                            self.draw_current_page()?;
+                        }
                     }
-                    self.draw_current_page()?;
                 }
                 termion::event::Key::Ctrl('c') => break,
-                _ => {}
+                key => {
+                    if let Some(page) = self.pages.get_mut(&self.current_page) {
+                        if let Some(next_page) = page.handle_key(key)? {
+                            self.current_page = next_page;
+                            self.draw_current_page()?;
+                        }
+                    }
+                }
             }
         }
         
