@@ -16,7 +16,6 @@ const NEXT_X: usize = 300;     // X position of next piece preview
 const NEXT_Y: usize = 30;      // Y position of next piece preview
 const HOLD_X: usize = 300;     // X position of hold piece preview
 const HOLD_Y: usize = 160;     // Y position of hold piece preview
-const GHOST_ALPHA: u8 = 100;   // Alpha value for ghost piece (0-255)
 
 // SRS Wall kick data
 const WALL_KICKS: [[(i32, i32); 5]; 8] = [
@@ -60,66 +59,55 @@ const WALL_KICKS_I: [[(i32, i32); 5]; 8] = [
 
 // Fixed SRS tetromino definitions
 const TETROMINOES: [[[u8; 16]; 4]; 7] = [
-    // I piece (cyan)
+    // I piece
     [
         [0,0,0,0, 1,1,1,1, 0,0,0,0, 0,0,0,0],  // 0°
         [0,0,1,0, 0,0,1,0, 0,0,1,0, 0,0,1,0],  // 90°
         [0,0,0,0, 0,0,0,0, 1,1,1,1, 0,0,0,0],  // 180°
         [0,1,0,0, 0,1,0,0, 0,1,0,0, 0,1,0,0],  // 270°
     ],
-    // O piece (yellow) - all rotations same
+    // O piece - all rotations same
     [
         [0,0,0,0, 0,1,1,0, 0,1,1,0, 0,0,0,0],  // 0°
         [0,0,0,0, 0,1,1,0, 0,1,1,0, 0,0,0,0],  // 90°
         [0,0,0,0, 0,1,1,0, 0,1,1,0, 0,0,0,0],  // 180°
         [0,0,0,0, 0,1,1,0, 0,1,1,0, 0,0,0,0],  // 270°
     ],
-    // S piece (green)
+    // S piece
     [
         [0,0,0,0, 0,0,1,1, 0,1,1,0, 0,0,0,0],  // 0°
         [0,0,1,0, 0,0,1,1, 0,0,0,1, 0,0,0,0],  // 90°
         [0,0,0,0, 0,1,1,0, 1,1,0,0, 0,0,0,0],  // 180°
         [0,1,0,0, 0,1,1,0, 0,0,1,0, 0,0,0,0],  // 270°
     ],
-    // Z piece (red)
+    // Z piece
     [
         [0,0,0,0, 1,1,0,0, 0,1,1,0, 0,0,0,0],  // 0°
         [0,0,0,1, 0,0,1,1, 0,0,1,0, 0,0,0,0],  // 90°
         [0,0,0,0, 0,1,1,0, 0,0,1,1, 0,0,0,0],  // 180°
         [0,0,1,0, 0,1,1,0, 0,1,0,0, 0,0,0,0],  // 270°
     ],
-    // T piece (purple)
+    // T piece
     [
         [0,0,0,0, 0,1,0,0, 1,1,1,0, 0,0,0,0],  // 0°
         [0,0,1,0, 0,1,1,0, 0,0,1,0, 0,0,0,0],  // 90°
         [0,0,0,0, 1,1,1,0, 0,1,0,0, 0,0,0,0],  // 180°
         [0,0,1,0, 0,0,1,1, 0,0,1,0, 0,0,0,0],  // 270°
     ],
-    // L piece (orange)
+    // L piece
     [
         [0,0,0,0, 0,0,0,1, 0,1,1,1, 0,0,0,0],  // 0°
         [0,0,1,0, 0,0,1,0, 0,0,1,1, 0,0,0,0],  // 90°
         [0,0,0,0, 0,1,1,1, 0,1,0,0, 0,0,0,0],  // 180°
         [0,1,1,0, 0,0,1,0, 0,0,1,0, 0,0,0,0],  // 270°
     ],
-    // J piece (blue)
+    // J piece
     [
         [0,0,0,0, 0,1,0,0, 0,1,1,1, 0,0,0,0],  // 0°
         [0,0,1,1, 0,0,1,0, 0,0,1,0, 0,0,0,0],  // 90°
         [0,0,0,0, 0,1,1,1, 0,0,0,1, 0,0,0,0],  // 180°
         [0,0,1,0, 0,0,1,0, 0,1,1,0, 0,0,0,0],  // 270°
     ],
-];
-
-// Piece colors (R, G, B) - using grayscale for monochrome display
-const PIECE_COLORS: [(u8, u8, u8); 7] = [
-    (100, 100, 100),  // I - light gray
-    (80, 80, 80),     // O - gray
-    (60, 60, 60),     // S - dark gray
-    (40, 40, 40),     // Z - darker gray
-    (120, 120, 120),  // T - very light gray
-    (140, 140, 140),  // L - white
-    (20, 20, 20),     // J - very dark gray
 ];
 
 pub struct ZeugtrisPage {
@@ -385,7 +373,6 @@ impl ZeugtrisPage {
     }
     
     fn draw_block(&self, display: &mut SharpDisplay, x: usize, y: usize, piece_type: usize, is_ghost: bool) {
-        let color = PIECE_COLORS[piece_type];
         let block_x = ARENA_X + x * BLOCK_SIZE;
         let block_y = ARENA_Y + y * BLOCK_SIZE;
         
@@ -395,7 +382,7 @@ impl ZeugtrisPage {
                 for bx in 0..BLOCK_SIZE {
                     if (bx + by) % 3 == 0 {  // Create dotted pattern
                         if block_x + bx < 400 && block_y + by < 240 {
-                            display.draw_pixel(block_x + bx, block_y + by, Pixel::Grayscale(color.0));
+                            display.draw_pixel(block_x + bx, block_y + by, Pixel::Black);
                         }
                     }
                 }
@@ -405,7 +392,7 @@ impl ZeugtrisPage {
             for by in 1..BLOCK_SIZE - 1 {
                 for bx in 1..BLOCK_SIZE - 1 {
                     if block_x + bx < 400 && block_y + by < 240 {
-                        display.draw_pixel(block_x + bx, block_y + by, Pixel::Grayscale(color.0));
+                        display.draw_pixel(block_x + bx, block_y + by, Pixel::Black);
                     }
                 }
             }
@@ -413,14 +400,16 @@ impl ZeugtrisPage {
             // Draw outline
             for bx in 0..BLOCK_SIZE {
                 if block_x + bx < 400 {
-                    display.draw_pixel(block_x + bx, block_y, Pixel::Grayscale(color.0 / 2));
-                    display.draw_pixel(block_x + bx, block_y + BLOCK_SIZE - 1, Pixel::Grayscale(color.0 / 2));
+                    // Top and bottom borders
+                    display.draw_pixel(block_x + bx, block_y, Pixel::Black);
+                    display.draw_pixel(block_x + bx, block_y + BLOCK_SIZE - 1, Pixel::Black);
                 }
             }
             for by in 0..BLOCK_SIZE {
                 if block_y + by < 240 {
-                    display.draw_pixel(block_x, block_y + by, Pixel::Grayscale(color.0 / 2));
-                    display.draw_pixel(block_x + BLOCK_SIZE - 1, block_y + by, Pixel::Grayscale(color.0 / 2));
+                    // Left and right borders
+                    display.draw_pixel(block_x, block_y + by, Pixel::Black);
+                    display.draw_pixel(block_x + BLOCK_SIZE - 1, block_y + by, Pixel::Black);
                 }
             }
         }
@@ -466,7 +455,8 @@ impl ZeugtrisPage {
         for y in 0..ARENA_HEIGHT {
             for x in 0..ARENA_WIDTH {
                 if self.arena[y][x] != 0 {
-                    self.draw_block(display, x, y, (self.arena[y][x] - 1) as usize, false);
+                    let piece_type = (self.arena[y][x] - 1) as usize;
+                    self.draw_block(display, x, y, piece_type, false);
                 }
             }
         }
@@ -499,11 +489,10 @@ impl ZeugtrisPage {
                 let screen_x = x + px * (preview_size + 1);
                 let screen_y = y + py * (preview_size + 1);
                 
-                let color = PIECE_COLORS[piece];
                 for by in 0..preview_size {
                     for bx in 0..preview_size {
                         if screen_x + bx < 400 && screen_y + by < 240 {
-                            display.draw_pixel(screen_x + bx, screen_y + by, Pixel::Grayscale(color.0));
+                            display.draw_pixel(screen_x + bx, screen_y + by, Pixel::Black);
                         }
                     }
                 }
@@ -513,34 +502,73 @@ impl ZeugtrisPage {
     
     fn draw_simple_text(&self, display: &mut SharpDisplay, x: usize, y: usize, text: &str) {
         // Simple 5x7 font drawing
-        // This is a very basic implementation - you might want to replace this
-        // with a proper font rendering system
+        let font_width = 5;
+        let font_height = 7;
+        let char_spacing = 1;
         
         for (i, ch) in text.chars().enumerate() {
-            let char_x = x + i * 6;
-            match ch {
-                'A'..='Z' | '0'..='9' | ':' => {
-                    // Draw simple character
-                    for cy in 0..7 {
-                        for cx in 0..5 {
-                            let pixel_on = match ch {
-                                'S' if i == 0 => cy == 0 || cy == 3 || cy == 6,
-                                'C' if i == 0 => cy == 0 || cy == 6,
-                                'O' if i == 0 => cy == 0 || cy == 6,
-                                'R' if i == 0 => cy == 0 || cy == 3,
-                                'E' if i == 0 => cy == 0 || cy == 3 || cy == 6,
-                                ':' => cy == 2 || cy == 4,
-                                _ => (cy == 0 || cy == 6 || cx == 0 || cx == 4),
-                            };
-                            
-                            if pixel_on && char_x + cx < 400 && y + cy < 240 {
-                                display.draw_pixel(char_x + cx, y + cy, Pixel::Black);
-                            }
-                        }
+            let char_x = x + i * (font_width + char_spacing);
+            
+            // Draw character pixels
+            for cy in 0..font_height {
+                for cx in 0..font_width {
+                    let pixel_on = self.get_font_pixel(ch, cx, cy);
+                    
+                    if pixel_on && char_x + cx < 400 && y + cy < 240 {
+                        display.draw_pixel(char_x + cx, y + cy, Pixel::Black);
                     }
                 }
-                _ => {}
             }
+        }
+    }
+    
+    fn get_font_pixel(&self, ch: char, x: usize, y: usize) -> bool {
+        // Very basic 5x7 font
+        match ch {
+            // Numbers
+            '0' => y == 0 || y == 6 || x == 0 || x == 4 || (y == 3 && x == 2),
+            '1' => x == 2 || (y == 6 && (x == 1 || x == 2 || x == 3)) || (y == 1 && x == 1),
+            '2' => y == 0 || y == 3 || y == 6 || (y < 3 && x == 4) || (y > 3 && x == 0),
+            '3' => y == 0 || y == 3 || y == 6 || x == 4,
+            '4' => x == 0 && y < 4 || x == 4 || y == 3,
+            '5' => y == 0 || y == 3 || y == 6 || (y < 3 && x == 0) || (y > 3 && x == 4),
+            '6' => y == 0 || y == 3 || y == 6 || x == 0 || (y > 3 && x == 4),
+            '7' => y == 0 || (x == 4 && y > 0),
+            '8' => y == 0 || y == 3 || y == 6 || x == 0 || x == 4,
+            '9' => y == 0 || y == 3 || x == 4 || (y < 3 && x == 0),
+            
+            // Uppercase letters
+            'A' => y == 0 || x == 0 || x == 4 || y == 3,
+            'B' => y == 0 || y == 3 || y == 6 || x == 0 || (x == 4 && (y < 3 || y > 3)),
+            'C' => y == 0 || y == 6 || x == 0,
+            'D' => y == 0 || y == 6 || x == 0 || (x == 4 && y > 0 && y < 6),
+            'E' => y == 0 || y == 3 || y == 6 || x == 0,
+            'F' => y == 0 || y == 3 || x == 0,
+            'G' => y == 0 || y == 6 || x == 0 || (x == 4 && y > 3) || (y == 3 && x > 1),
+            'H' => x == 0 || x == 4 || y == 3,
+            'I' => y == 0 || y == 6 || x == 2,
+            'J' => y == 0 || x == 2 || (y == 6 && x < 3) || (x == 0 && y > 4),
+            'K' => x == 0 || (x + y == 5) || (y == x + 1),
+            'L' => x == 0 || y == 6,
+            'M' => x == 0 || x == 4 || (y == 1 && (x == 1 || x == 3)) || (y == 2 && x == 2),
+            'N' => x == 0 || x == 4 || (x == y),
+            'O' => y == 0 || y == 6 || x == 0 || x == 4,
+            'P' => y == 0 || y == 3 || x == 0 || (x == 4 && y < 3),
+            'Q' => y == 0 || y == 6 || x == 0 || x == 4 || (x == 3 && y == 5) || (x == 2 && y == 4),
+            'R' => y == 0 || y == 3 || x == 0 || (x == 4 && y < 3) || (x == y - 2 && y > 3),
+            'S' => y == 0 || y == 3 || y == 6 || (y < 3 && x == 0) || (y > 3 && x == 4),
+            'T' => y == 0 || x == 2,
+            'U' => x == 0 || x == 4 || y == 6,
+            'V' => (x == 0 && y < 6) || (x == 4 && y < 6) || (x == 2 && y == 6),
+            'W' => x == 0 || x == 4 || (y == 5 && x == 2) || (y == 4 && x == 1) || (y == 4 && x == 3),
+            'X' => (x == 0 && y == 0) || (x == 4 && y == 0) || (x == 0 && y == 6) || (x == 4 && y == 6) || (x == y) || (x + y == 4),
+            'Y' => (x == 0 && y < 3) || (x == 4 && y < 3) || (x == 2 && y >= 3),
+            'Z' => y == 0 || y == 6 || (x + y == 4),
+            
+            // Punctuation
+            ':' => (y == 2 || y == 4) && x == 2,
+            ' ' => false,
+            _ => false,
         }
     }
     
@@ -566,19 +594,19 @@ impl ZeugtrisPage {
         score_y += 20;
         self.draw_simple_text(display, score_x, score_y, "CONTROLS:");
         score_y += 15;
-        self.draw_simple_text(display, score_x, score_y, "←→↓ Move");
+        self.draw_simple_text(display, score_x, score_y, "Z X ROTATE");
         score_y += 15;
-        self.draw_simple_text(display, score_x, score_y, "Z/X Rotate");
+        self.draw_simple_text(display, score_x, score_y, "ARROWS MOVE");
         score_y += 15;
-        self.draw_simple_text(display, score_x, score_y, "Space Hard drop");
+        self.draw_simple_text(display, score_x, score_y, "SPACE DROP");
         score_y += 15;
-        self.draw_simple_text(display, score_x, score_y, "C Hold");
+        self.draw_simple_text(display, score_x, score_y, "C HOLD");
         score_y += 15;
-        self.draw_simple_text(display, score_x, score_y, "P Pause");
+        self.draw_simple_text(display, score_x, score_y, "P PAUSE");
         score_y += 15;
-        self.draw_simple_text(display, score_x, score_y, "ESC Menu");
+        self.draw_simple_text(display, score_x, score_y, "ESC MENU");
         score_y += 15;
-        self.draw_simple_text(display, score_x, score_y, "R Restart");
+        self.draw_simple_text(display, score_x, score_y, "R RESTART");
     }
 }
 
@@ -674,7 +702,6 @@ impl Page for ZeugtrisPage {
                     }
                 }
             }
-            // Rotate counter-clockwise (not implemented, but you could use another key)
             
             Key::Left => {
                 if self.valid_position(self.current_piece, self.current_rotation, self.current_x - 1, self.current_y) {
