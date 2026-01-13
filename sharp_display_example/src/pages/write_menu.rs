@@ -4,15 +4,21 @@ use anyhow::Result;
 use termion::event::Key;
 use rpi_memory_display::Pixel;
 
-const LETTER_SPACING: usize = 2;  // Adjust this: 0 = no space, 1-3 = small space
+const LETTER_SPACING: usize = 2;
+const LINE_SPACING: usize = 5;  // Space between lines
+const MAX_LINES: usize = 8;     // Maximum number of lines visible
+const CHARS_PER_LINE: usize = 20; // Approximate characters per line
 
 pub struct WriteMenuPage {
     font_bitmap: Option<(Vec<Pixel>, usize, usize)>,
     font_char_width: usize,
     font_char_height: usize,
     chars_per_row: usize,
-    char_widths: Vec<usize>,  // Actual width of each character
-    current_text: String,
+    char_widths: Vec<usize>,
+    lines: Vec<String>,
+    cursor_line: usize,
+    cursor_pos: usize,
+    scroll_offset: usize,  // Which line is at the top
 }
 
 impl WriteMenuPage {
@@ -44,7 +50,10 @@ impl WriteMenuPage {
             font_char_height: 30,
             chars_per_row: 19,
             char_widths,
-            current_text: String::from("TEST"),
+            lines: vec![String::new()],
+            cursor_line: 0,
+            cursor_pos: 0,
+            scroll_offset: 0,
         })
     }
     
@@ -164,7 +173,7 @@ impl WriteMenuPage {
             let actual_width = if rightmost >= leftmost { 
                 (rightmost - leftmost + 1).min(char_width) 
             } else { 
-                8  // Space character
+                8
             };
             
             widths.push(actual_width);
@@ -231,7 +240,7 @@ impl WriteMenuPage {
         }
     }
     
-    fn draw_text(&self, display: &mut SharpDisplay, x: usize, y: usize, text: &str) {
+    fn draw_text_line(&self, display: &mut SharpDisplay, x: usize, y: usize, text: &str) {
         let mut current_x = x;
         for c in text.chars() {
             let char_index = Self::get_char_index(c);
@@ -242,11 +251,11 @@ impl WriteMenuPage {
             };
             
             self.draw_char_cropped(display, current_x, y, c);
-            current_x += char_width + LETTER_SPACING; // Added spacing
+            current_x += char_width + LETTER_SPACING;
         }
     }
     
-    fn calculate_text_width(&self, text: &str) -> usize {
+    fn calculate_line_width(&self, text: &str) -> usize {
         let mut width = 0;
         for c in text.chars() {
             let char_index = Self::get_char_index(c);
@@ -255,10 +264,59 @@ impl WriteMenuPage {
             } else { 
                 8
             };
-            width += char_width + LETTER_SPACING; // Added spacing
+            width += char_width + LETTER_SPACING;
         }
-        // Remove last spacing
         if width > 0 { width - LETTER_SPACING } else { 0 }
+    }
+    
+    fn word_wrap(&self, text: &str, max_width: usize) -> Vec<String> {
+        let mut lines = Vec::new();
+        let mut current_line = String::new();
+        let mut current_width = 0;
+        
+        for word in text.split_whitespace() {
+            let mut word_width = 0;
+            for c in word.chars() {
+                let char_index = Self::get_char_index(c);
+                let char_width = if char_index < self.char_widths.len() { 
+                    self.char_widths[char_index] 
+                } else { 
+                    8
+                };
+                word_width += char_width + LETTER_SPACING;
+            }
+            if word_width > 0 {
+                word_width -= LETTER_SPACING; // Remove last spacing
+            }
+            
+            // Add space width if not first word
+            let space_width = if !current_line.is_empty() { 
+                self.char_widths[0] + LETTER_SPACING 
+            } else { 
+                0 
+            };
+            
+            if current_width + space_width + word_width <= max_width {
+                if !current_line.is_empty() {
+                    current_line.push(' ');
+                    current_width += space_width;
+                }
+                current_line.push_str(word);
+                current_width += word_width;
+            } else {
+                if !current_line.is_empty() {
+                    lines.push(current_line);
+                }
+                current_line = word.to_string();
+                current_width = word_width;
+            }
+        }
+        
+        if !current_line.is_empty() {
+            lines.push(current_line);
+        }
+        
+        lines
     }
 }
 
@@ -267,22 +325,48 @@ impl Page for WriteMenuPage {
         display.clear()?;
         
         if self.font_bitmap.is_some() && !self.char_widths.is_empty() {
-            let text_width = self.calculate_text_width(&self.current_text);
-            let x = (400 - text_width) / 2;
-            let y = (240 - self.font_char_height) / 2;
+            // Draw visible lines
+            let start_y = 20;
+            let max_line_width = 380;
             
-            self.draw_text(display, x, y, &self.current_text);
+            for i in 0..MAX_LINES {
+                let line_idx = i + self.scroll_offset;
+                if line_idx < self.lines.len() {
+                    let line = &self.lines[line_idx];
+                    let wrapped_lines = self.word_wrap(line, max_line_width);
+                    
+                    for (wrap_idx, wrapped_line) in wrapped_lines.iter().enumerate() {
+                        let line_y = start_y + (i + wrap_idx) * (self.font_char_height + LINE_SPACING);
+                        if line_y + self.font_char_height >= 240 { break; }
+                        
+                        let line_width = self.calculate_line_width(wrapped_line);
+                        let x = (400 - line_width) / 2;
+                        self.draw_text_line(display, x, line_y, wrapped_line);
+                        
+                        // Draw cursor if on this line
+                        if line_idx == self.cursor_line && wrap_idx == 0 {
+                            // Calculate cursor position
+                            let before_cursor = &line[..self.cursor_pos.min(line.len())];
+                            let cursor_x = x + self.calculate_line_width(before_cursor);
+                            for dy in 0..self.font_char_height {
+                                display.draw_pixel(cursor_x, line_y + dy, Pixel::Black);
+                            }
+                        }
+                    }
+                }
+            }
             
-            let instruction = "Press ESC to return";
+            // Draw instruction
+            let instruction = "ESC: Menu  Ctrl+S: Save  Ctrl+X: Exit";
             let instr_width = instruction.len() * 6;
             let instr_x = (400 - instr_width) / 2;
             
             for (i, c) in instruction.chars().enumerate() {
                 match c {
-                    'A'..='Z' | 'a'..='z' | ' ' | 'E' | 'S' | 'C' | 't' | 'o' | 'r' | 'u' | 'n' => {
+                    'A'..='Z' | 'a'..='z' | ' ' | 'E' | 'S' | 'C' | 't' | 'r' | 'l' | 'x' | 'i' | 'u' | 'v' | ':' => {
                         for dy in 2..6 {
                             for dx in 1..5 {
-                                display.draw_pixel(instr_x + i * 6 + dx, 200 + dy, Pixel::Black);
+                                display.draw_pixel(instr_x + i * 6 + dx, 220 + dy, Pixel::Black);
                             }
                         }
                     }
@@ -299,16 +383,124 @@ impl Page for WriteMenuPage {
     
     fn handle_key(&mut self, key: Key) -> Result<Option<PageId>> {
         match key {
-            Key::Char('\n') => Ok(None),
+            Key::Char('\n') => {
+                // Insert new line
+                let current_line = self.lines.remove(self.cursor_line);
+                let (left, right) = current_line.split_at(self.cursor_pos.min(current_line.len()));
+                
+                self.lines.insert(self.cursor_line, left.to_string());
+                self.lines.insert(self.cursor_line + 1, right.to_string());
+                self.cursor_line += 1;
+                self.cursor_pos = 0;
+                
+                // Adjust scroll
+                if self.cursor_line >= self.scroll_offset + MAX_LINES {
+                    self.scroll_offset = self.cursor_line - MAX_LINES + 1;
+                }
+                Ok(None)
+            }
             Key::Char(c) => {
-                self.current_text.push(c);
+                if self.cursor_line >= self.lines.len() {
+                    self.lines.push(String::new());
+                }
+                let line = &mut self.lines[self.cursor_line];
+                if self.cursor_pos <= line.len() {
+                    line.insert(self.cursor_pos, c);
+                    self.cursor_pos += 1;
+                }
                 Ok(None)
             }
             Key::Backspace => {
-                self.current_text.pop();
+                if self.cursor_pos > 0 {
+                    let line = &mut self.lines[self.cursor_line];
+                    line.remove(self.cursor_pos - 1);
+                    self.cursor_pos -= 1;
+                } else if self.cursor_line > 0 {
+                    // Merge with previous line
+                    let current_line = self.lines.remove(self.cursor_line);
+                    self.cursor_line -= 1;
+                    let prev_line = &mut self.lines[self.cursor_line];
+                    self.cursor_pos = prev_line.len();
+                    prev_line.push_str(&current_line);
+                    
+                    // Adjust scroll
+                    if self.scroll_offset > 0 {
+                        self.scroll_offset -= 1;
+                    }
+                }
+                Ok(None)
+            }
+            Key::Delete => {
+                let line = &mut self.lines[self.cursor_line];
+                if self.cursor_pos < line.len() {
+                    line.remove(self.cursor_pos);
+                } else if self.cursor_line < self.lines.len() - 1 {
+                    // Merge with next line
+                    let next_line = self.lines.remove(self.cursor_line + 1);
+                    line.push_str(&next_line);
+                }
+                Ok(None)
+            }
+            Key::Left => {
+                if self.cursor_pos > 0 {
+                    self.cursor_pos -= 1;
+                } else if self.cursor_line > 0 {
+                    self.cursor_line -= 1;
+                    self.cursor_pos = self.lines[self.cursor_line].len();
+                    
+                    // Adjust scroll
+                    if self.cursor_line < self.scroll_offset {
+                        self.scroll_offset = self.cursor_line;
+                    }
+                }
+                Ok(None)
+            }
+            Key::Right => {
+                let line = &self.lines[self.cursor_line];
+                if self.cursor_pos < line.len() {
+                    self.cursor_pos += 1;
+                } else if self.cursor_line < self.lines.len() - 1 {
+                    self.cursor_line += 1;
+                    self.cursor_pos = 0;
+                    
+                    // Adjust scroll
+                    if self.cursor_line >= self.scroll_offset + MAX_LINES {
+                        self.scroll_offset = self.cursor_line - MAX_LINES + 1;
+                    }
+                }
+                Ok(None)
+            }
+            Key::Up => {
+                if self.cursor_line > 0 {
+                    self.cursor_line -= 1;
+                    self.cursor_pos = self.cursor_pos.min(self.lines[self.cursor_line].len());
+                    
+                    // Adjust scroll
+                    if self.cursor_line < self.scroll_offset {
+                        self.scroll_offset = self.cursor_line;
+                    }
+                }
+                Ok(None)
+            }
+            Key::Down => {
+                if self.cursor_line < self.lines.len() - 1 {
+                    self.cursor_line += 1;
+                    self.cursor_pos = self.cursor_pos.min(self.lines[self.cursor_line].len());
+                    
+                    // Adjust scroll
+                    if self.cursor_line >= self.scroll_offset + MAX_LINES {
+                        self.scroll_offset = self.cursor_line - MAX_LINES + 1;
+                    }
+                }
                 Ok(None)
             }
             Key::Esc => Ok(Some(PageId::Menu)),
+            Key::Ctrl('s') => {
+                // Save functionality
+                println!("Save not implemented yet");
+                Ok(None)
+            }
+            Key::Ctrl('x') => Ok(Some(PageId::Menu)),
             _ => Ok(None),
         }
     }
