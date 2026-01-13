@@ -205,65 +205,119 @@ impl WriteMenuPage {
     }
     
     fn draw_char_cropped(&self, display: &mut SharpDisplay, x: usize, y: usize, c: char, use_small_font: bool) {
-        let (font_bitmap, char_widths, char_width, char_height, chars_per_row) = if use_small_font {
-            if let Some((pixels, font_width, _)) = &self.small_font_bitmap {
-                (pixels, &self.small_char_widths, self.small_font_char_width, self.small_font_char_height, self.small_chars_per_row)
-            } else {
-                return;
-            }
-        } else {
-            if let Some((pixels, font_width, _)) = &self.font_bitmap {
-                (pixels, &self.char_widths, self.font_char_width, self.font_char_height, self.chars_per_row)
-            } else {
-                return;
-            }
-        };
-        
-        let char_index = Self::get_char_index(c);
-        let char_width_actual = if char_index < char_widths.len() { 
-            char_widths[char_index] 
-        } else { 
-            if use_small_font { 6 } else { 8 }
-        };
-        
-        let grid_x = char_index % chars_per_row;
-        let grid_y = char_index / chars_per_row;
-        
-        let src_x = grid_x * char_width;
-        let src_y = grid_y * char_height;
-        
-        let mut leftmost = char_width;
-        let mut rightmost = 0;
-        
-        for dx in 0..char_width {
-            for dy in 0..char_height {
-                let src_pixel_x = src_x + dx;
-                let src_pixel_y = src_y + dy;
-                let pixel_index = src_pixel_y * font_width + src_pixel_x;
+        if use_small_font {
+            if let Some((font_bitmap, font_width, _)) = &self.small_font_bitmap {
+                let char_index = Self::get_char_index(c);
+                let char_widths = &self.small_char_widths;
+                let char_width = self.small_font_char_width;
+                let char_height = self.small_font_char_height;
+                let chars_per_row = self.small_chars_per_row;
                 
-                if pixel_index < font_bitmap.len() && font_bitmap[pixel_index] == Pixel::Black {
-                    if dx < leftmost { leftmost = dx; }
-                    if dx > rightmost { rightmost = dx; }
+                let char_width_actual = if char_index < char_widths.len() { 
+                    char_widths[char_index] 
+                } else { 
+                    6 
+                };
+                
+                let grid_x = char_index % chars_per_row;
+                let grid_y = char_index / chars_per_row;
+                
+                let src_x = grid_x * char_width;
+                let src_y = grid_y * char_height;
+                
+                let mut leftmost = char_width;
+                let mut rightmost = 0;
+                
+                for dx in 0..char_width {
+                    for dy in 0..char_height {
+                        let src_pixel_x = src_x + dx;
+                        let src_pixel_y = src_y + dy;
+                        let pixel_index = src_pixel_y * font_width + src_pixel_x;
+                        
+                        if pixel_index < font_bitmap.len() && font_bitmap[pixel_index] == Pixel::Black {
+                            if dx < leftmost { leftmost = dx; }
+                            if dx > rightmost { rightmost = dx; }
+                        }
+                    }
+                }
+                
+                if rightmost >= leftmost {
+                    let actual_rightmost = leftmost + char_width_actual - 1;
+                    for dy in 0..char_height {
+                        for dx in leftmost..=actual_rightmost.min(rightmost) {
+                            let src_pixel_x = src_x + dx;
+                            let src_pixel_y = src_y + dy;
+                            let pixel_index = src_pixel_y * font_width + src_pixel_x;
+                            
+                            if pixel_index < font_bitmap.len() {
+                                let pixel = font_bitmap[pixel_index];
+                                if pixel == Pixel::Black {
+                                    let screen_x = x + dx - leftmost;
+                                    let screen_y = y + dy;
+                                    
+                                    if screen_x < 400 && screen_y < 240 {
+                                        display.draw_pixel(screen_x, screen_y, Pixel::White);
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
-        }
-        
-        if rightmost >= leftmost {
-            let actual_rightmost = leftmost + char_width_actual - 1;
-            for dy in 0..char_height {
-                for dx in leftmost..=actual_rightmost.min(rightmost) {
-                    let src_pixel_x = src_x + dx;
-                    let src_pixel_y = src_y + dy;
-                    let pixel_index = src_pixel_y * font_width + src_pixel_x;
-                    
-                    if pixel_index < font_bitmap.len() {
-                        let pixel = font_bitmap[pixel_index];
-                        if pixel == Pixel::Black {
-                            let screen_x = x + dx - leftmost;
-                            let screen_y = y + dy;
+        } else {
+            if let Some((font_bitmap, font_width, _)) = &self.font_bitmap {
+                let char_index = Self::get_char_index(c);
+                let char_widths = &self.char_widths;
+                let char_width = self.font_char_width;
+                let char_height = self.font_char_height;
+                let chars_per_row = self.chars_per_row;
+                
+                let char_width_actual = if char_index < char_widths.len() { 
+                    char_widths[char_index] 
+                } else { 
+                    8 
+                };
+                
+                let grid_x = char_index % chars_per_row;
+                let grid_y = char_index / chars_per_row;
+                
+                let src_x = grid_x * char_width;
+                let src_y = grid_y * char_height;
+                
+                let mut leftmost = char_width;
+                let mut rightmost = 0;
+                
+                for dx in 0..char_width {
+                    for dy in 0..char_height {
+                        let src_pixel_x = src_x + dx;
+                        let src_pixel_y = src_y + dy;
+                        let pixel_index = src_pixel_y * font_width + src_pixel_x;
+                        
+                        if pixel_index < font_bitmap.len() && font_bitmap[pixel_index] == Pixel::Black {
+                            if dx < leftmost { leftmost = dx; }
+                            if dx > rightmost { rightmost = dx; }
+                        }
+                    }
+                }
+                
+                if rightmost >= leftmost {
+                    let actual_rightmost = leftmost + char_width_actual - 1;
+                    for dy in 0..char_height {
+                        for dx in leftmost..=actual_rightmost.min(rightmost) {
+                            let src_pixel_x = src_x + dx;
+                            let src_pixel_y = src_y + dy;
+                            let pixel_index = src_pixel_y * font_width + src_pixel_x;
                             
-                            if screen_x < 400 && screen_y < 240 {
-                                display.draw_pixel(screen_x, screen_y, if use_small_font { Pixel::White } else { pixel });
+                            if pixel_index < font_bitmap.len() {
+                                let pixel = font_bitmap[pixel_index];
+                                if pixel == Pixel::Black {
+                                    let screen_x = x + dx - leftmost;
+                                    let screen_y = y + dy;
+                                    
+                                    if screen_x < 400 && screen_y < 240 {
+                                        display.draw_pixel(screen_x, screen_y, pixel);
+                                    }
+                                }
                             }
                         }
                     }
@@ -337,7 +391,6 @@ impl WriteMenuPage {
         let mut current_line = String::new();
         let mut current_width = 0;
         let mut last_whitespace_idx = 0;
-        let mut last_whitespace_width = 0;
         
         let mut chars = line.chars().peekable();
         while let Some(c) = chars.next() {
@@ -374,7 +427,6 @@ impl WriteMenuPage {
                 }
                 
                 last_whitespace_idx = 0;
-                last_whitespace_width = 0;
             } else {
                 current_line.push(c);
                 current_width += char_width;
@@ -382,7 +434,6 @@ impl WriteMenuPage {
                 // Track last whitespace position for word wrapping
                 if c.is_whitespace() {
                     last_whitespace_idx = current_line.len();
-                    last_whitespace_width = current_width;
                 }
             }
         }
@@ -412,7 +463,6 @@ impl WriteMenuPage {
     
     fn find_wrapped_line_for_cursor(&self) -> usize {
         let wrapped_lines = self.get_all_wrapped_lines();
-        let mut total_chars = 0;
         
         for (i, (wrapped_line, line_idx, char_pos_in_original)) in wrapped_lines.iter().enumerate() {
             if *line_idx == self.cursor_line {
