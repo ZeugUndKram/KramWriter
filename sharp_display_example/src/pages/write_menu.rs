@@ -292,18 +292,22 @@ impl WriteMenuPage {
         let (wrapped_cursor_line, _) = self.cursor_to_wrapped_position();
         let total_wrapped = self.total_wrapped_lines();
         
+        // SCROLL EARLIER: When cursor is at 6th line (0-indexed 5), start scrolling
+        // This gives 2 lines of buffer at the bottom
+        const SCROLL_THRESHOLD: usize = 5; // Start scrolling when cursor hits 6th line
+        
         // If cursor is above visible area
         if wrapped_cursor_line < self.scroll_offset {
             self.scroll_offset = wrapped_cursor_line;
         }
-        // If cursor is below visible area
-        else if wrapped_cursor_line >= self.scroll_offset + MAX_VISIBLE_LINES {
-            self.scroll_offset = wrapped_cursor_line - MAX_VISIBLE_LINES + 1;
+        // If cursor is at or beyond the scroll threshold
+        else if wrapped_cursor_line >= self.scroll_offset + SCROLL_THRESHOLD {
+            self.scroll_offset = wrapped_cursor_line - SCROLL_THRESHOLD + 1;
         }
         
         // Ensure scroll offset is valid
         if total_wrapped > MAX_VISIBLE_LINES {
-            let max_scroll = total_wrapped - MAX_VISIBLE_LINES;
+            let max_scroll = total_wrapped.saturating_sub(MAX_VISIBLE_LINES);
             self.scroll_offset = self.scroll_offset.min(max_scroll);
         } else {
             self.scroll_offset = 0;
@@ -411,13 +415,15 @@ impl Page for WriteMenuPage {
                 
                 // Insert at character position (not byte position)
                 let mut new_line = String::new();
+                let mut inserted = false;
                 for (i, ch) in line.chars().enumerate() {
-                    if i == self.cursor_pos {
+                    if i == self.cursor_pos && !inserted {
                         new_line.push(c);
+                        inserted = true;
                     }
                     new_line.push(ch);
                 }
-                if self.cursor_pos >= line.chars().count() {
+                if !inserted || self.cursor_pos >= line.chars().count() {
                     new_line.push(c);
                 }
                 *line = new_line;
@@ -506,23 +512,8 @@ impl Page for WriteMenuPage {
             Key::PageUp => {
                 if self.scroll_offset > 0 {
                     self.scroll_offset = self.scroll_offset.saturating_sub(MAX_VISIBLE_LINES);
-                    // Move cursor to first visible line
-                    let all_wrapped: Vec<String> = self.lines.iter()
-                        .flat_map(|l| self.wrap_line(l))
-                        .collect();
-                    if self.scroll_offset < all_wrapped.len() {
-                        // Find which original line this wrapped line belongs to
-                        let mut wrapped_count = 0;
-                        for (line_idx, line) in self.lines.iter().enumerate() {
-                            let wrapped = self.wrap_line(line).len();
-                            if wrapped_count + wrapped > self.scroll_offset {
-                                self.cursor_line = line_idx;
-                                self.cursor_pos = 0;
-                                break;
-                            }
-                            wrapped_count += wrapped;
-                        }
-                    }
+                    // Keep cursor visible
+                    self.ensure_cursor_visible();
                 }
                 Ok(None)
             }
@@ -530,24 +521,8 @@ impl Page for WriteMenuPage {
                 let total_wrapped = self.total_wrapped_lines();
                 if self.scroll_offset + MAX_VISIBLE_LINES < total_wrapped {
                     self.scroll_offset = (self.scroll_offset + MAX_VISIBLE_LINES).min(total_wrapped - 1);
-                    // Move cursor to last visible line
-                    let all_wrapped: Vec<String> = self.lines.iter()
-                        .flat_map(|l| self.wrap_line(l))
-                        .collect();
-                    let target_idx = (self.scroll_offset + MAX_VISIBLE_LINES - 1).min(all_wrapped.len() - 1);
-                    if target_idx < all_wrapped.len() {
-                        // Find which original line this wrapped line belongs to
-                        let mut wrapped_count = 0;
-                        for (line_idx, line) in self.lines.iter().enumerate() {
-                            let wrapped = self.wrap_line(line).len();
-                            if wrapped_count + wrapped > target_idx {
-                                self.cursor_line = line_idx;
-                                self.cursor_pos = line.chars().count(); // End of line
-                                break;
-                            }
-                            wrapped_count += wrapped;
-                        }
-                    }
+                    // Keep cursor visible
+                    self.ensure_cursor_visible();
                 }
                 Ok(None)
             }
