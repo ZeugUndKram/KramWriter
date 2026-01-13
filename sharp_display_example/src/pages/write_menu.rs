@@ -53,7 +53,6 @@ impl WriteMenuPage {
     }
     
     fn parse_font_bmp(data: &[u8]) -> Option<(Vec<Pixel>, usize, usize)> {
-        // ... (keep same as before)
         if data.len() < 54 { return None; }
         if data[0] != 0x42 || data[1] != 0x4D { return None; }
         
@@ -104,7 +103,6 @@ impl WriteMenuPage {
     
     fn measure_char_widths(pixels: &[Pixel], font_width: usize, 
                           char_width: usize, char_height: usize, chars_per_row: usize) -> Vec<usize> {
-        // ... (keep same as before)
         let printable_chars = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
         let mut widths = Vec::new();
         
@@ -149,7 +147,6 @@ impl WriteMenuPage {
     }
     
     fn draw_char_cropped(&self, display: &mut SharpDisplay, x: usize, y: usize, c: char) {
-        // ... (keep same as before)
         if let Some((pixels, font_width, _)) = &self.font_bitmap {
             let char_index = Self::get_char_index(c);
             let chars_per_row = self.chars_per_row;
@@ -272,7 +269,7 @@ impl WriteMenuPage {
             let wrapped = self.wrap_line(line);
             let mut char_pos = 0;
             for wrapped_line in wrapped {
-                result.push((wrapped_line, line_idx, char_pos));
+                result.push((wrapped_line.clone(), line_idx, char_pos));
                 char_pos += wrapped_line.len();
             }
         }
@@ -328,7 +325,7 @@ impl WriteMenuPage {
                 char_count = i + 1;
             }
             
-            return (original_line_idx.clone(), char_pos_in_original + char_count);
+            return (*original_line_idx, *char_pos_in_original + char_count);
         }
         
         // Fallback
