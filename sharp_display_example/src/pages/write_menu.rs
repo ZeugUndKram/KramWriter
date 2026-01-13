@@ -139,6 +139,7 @@ impl WriteMenuPage {
     }
     
     fn draw_text_line(&self, display: &mut SharpDisplay, x: usize, y: usize, text: &str) {
+        let font = self.current_font(); // FIXED: Added this line
         let mut current_x = x;
         for c in text.chars() {
             let char_index = Self::get_char_index(c);
@@ -433,7 +434,7 @@ impl FontSize {
                 println!("Parsing 8-bit BMP (palette)");
                 // For 8-bit BMPs, we need to read the color palette
                 let palette_start = 54;
-                let palette_size = 256 * 4; // 256 colors * 4 bytes each
+                let _palette_size = 256 * 4; // 256 colors * 4 bytes each (prefix with underscore to avoid warning)
                 
                 let row_bytes = ((width + 3) / 4) * 4; // Padded to 4 bytes
                 
