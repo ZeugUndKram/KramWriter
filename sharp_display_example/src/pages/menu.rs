@@ -12,10 +12,10 @@ const MENU_OPTIONS: [&str; 5] = [
     "Credits",
 ];
 
-const SPACING_TOP_TO_MAIN: usize = -10;      // Space between top image and main image
-const SPACING_MAIN_TO_BOTTOM: usize = 10;   // Space between main image and bottom image
-const SPACING_TOP_TO_FARTOP: usize = 20;    // Space between far top image and top image
-const SPACING_BOTTOM_TO_FARBOTTOM: usize = 40; // Space between bottom image and far bottom image
+const SPACING_TOP_TO_MAIN: i32 = 0;           // Space between top image and main image (can be negative)
+const SPACING_MAIN_TO_BOTTOM: i32 = 0;        // Space between main image and bottom image (can be negative)
+const SPACING_TOP_TO_FARTOP: i32 = 40;        // Space between far top image and top image (can be negative)
+const SPACING_BOTTOM_TO_FARBOTTOM: i32 = 40;  // Space between bottom image and far bottom image (can be negative)
 
 pub struct MenuPage {
     current_index: usize,
@@ -135,19 +135,19 @@ impl MenuPage {
         Some((pixels, width, height))
     }
     
-    fn draw_image_at(&self, display: &mut SharpDisplay, image_data: Option<&(Vec<Pixel>, usize, usize)>, y_pos: usize) {
+    fn draw_image_at(&self, display: &mut SharpDisplay, image_data: Option<&(Vec<Pixel>, usize, usize)>, y_pos: i32) {
         if let Some((pixels, width, height)) = image_data {
             let start_x = (400 - width) / 2;
             
             for y in 0..*height {
-                let screen_y = y_pos + y;
-                if screen_y >= 240 { break; }
+                let screen_y = y_pos + y as i32;
+                if screen_y >= 240 || screen_y < 0 { continue; }
                 
                 for x in 0..*width {
                     let screen_x = start_x + x;
                     if screen_x < 400 {
                         let pixel = pixels[y * width + x];
-                        display.draw_pixel(screen_x, screen_y, pixel);
+                        display.draw_pixel(screen_x, screen_y as usize, pixel);
                     }
                 }
             }
@@ -168,39 +168,31 @@ impl Page for MenuPage {
             if self.current_index >= 2 {
                 // Second previous option (2 above) with suffix 2
                 let second_prev_image = self.images_cache[self.current_index - 2].get(2).and_then(|x| x.as_ref());
-                let second_prev_y = center_y.saturating_sub(height + SPACING_TOP_TO_MAIN + SPACING_TOP_TO_FARTOP);
-                if second_prev_y < 240 {
-                    self.draw_image_at(display, second_prev_image, second_prev_y);
-                }
+                let second_prev_y = center_y as i32 - height as i32 - SPACING_TOP_TO_MAIN - SPACING_TOP_TO_FARTOP;
+                self.draw_image_at(display, second_prev_image, second_prev_y);
             }
             
             if self.current_index >= 1 {
                 // Previous option (1 above) with suffix 1
                 let prev_image = self.images_cache[self.current_index - 1].get(1).and_then(|x| x.as_ref());
-                let prev_y = center_y.saturating_sub(height + SPACING_TOP_TO_MAIN);
-                if prev_y < 240 {
-                    self.draw_image_at(display, prev_image, prev_y);
-                }
+                let prev_y = center_y as i32 - height as i32 - SPACING_TOP_TO_MAIN;
+                self.draw_image_at(display, prev_image, prev_y);
             }
             
             // Draw main image
-            self.draw_image_at(display, main_image_data, center_y);
+            self.draw_image_at(display, main_image_data, center_y as i32);
             
             // Draw images below the main one (if any)
             if self.current_index + 1 < MENU_OPTIONS.len() {
                 let next_image = self.images_cache[self.current_index + 1].get(1).and_then(|x| x.as_ref());
-                let next_y = center_y + height + SPACING_MAIN_TO_BOTTOM;
-                if next_y < 240 {
-                    self.draw_image_at(display, next_image, next_y);
-                }
+                let next_y = center_y as i32 + height as i32 + SPACING_MAIN_TO_BOTTOM;
+                self.draw_image_at(display, next_image, next_y);
             }
             
             if self.current_index + 2 < MENU_OPTIONS.len() {
                 let second_next_image = self.images_cache[self.current_index + 2].get(2).and_then(|x| x.as_ref());
-                let second_next_y = center_y + height + SPACING_MAIN_TO_BOTTOM + SPACING_BOTTOM_TO_FARBOTTOM;
-                if second_next_y < 240 {
-                    self.draw_image_at(display, second_next_image, second_next_y);
-                }
+                let second_next_y = center_y as i32 + height as i32 + SPACING_MAIN_TO_BOTTOM + SPACING_BOTTOM_TO_FARBOTTOM;
+                self.draw_image_at(display, second_next_image, second_next_y);
             }
         } else {
             display.draw_text(150, 100, "NO IMAGE");
