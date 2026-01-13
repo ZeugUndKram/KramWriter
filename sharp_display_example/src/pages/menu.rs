@@ -27,7 +27,7 @@ impl MenuPage {
 
 impl Page for MenuPage {
     fn draw(&mut self, display: &mut SharpDisplay) -> Result<()> {
-        display.clear();
+        display.clear()?;  // CHANGED THIS LINE - added ?
         display.draw_text(150, 20, "MENU");
         
         for (i, item) in self.items.iter().enumerate().take(10) {
