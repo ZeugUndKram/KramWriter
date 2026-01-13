@@ -5,9 +5,9 @@ use termion::event::Key;
 use rpi_memory_display::Pixel;
 
 const LETTER_SPACING: usize = 2;
-const LINE_SPACING: usize = 5;  // Space between lines
-const MAX_LINES: usize = 8;     // Maximum number of lines visible
-const CHARS_PER_LINE: usize = 20; // Approximate characters per line
+const LINE_SPACING: usize = 5;
+const MAX_LINES: usize = 8;
+const CHARS_PER_LINE: usize = 20;
 
 pub struct WriteMenuPage {
     font_bitmap: Option<(Vec<Pixel>, usize, usize)>,
@@ -18,7 +18,7 @@ pub struct WriteMenuPage {
     lines: Vec<String>,
     cursor_line: usize,
     cursor_pos: usize,
-    scroll_offset: usize,  // Which line is at the top
+    scroll_offset: usize,
 }
 
 impl WriteMenuPage {
@@ -32,7 +32,7 @@ impl WriteMenuPage {
                 match Self::parse_font_bmp(&data) {
                     Some((bitmap, width, height)) => {
                         println!("Font dimensions: {}x{}", width, height);
-                        let widths = Self::measure_char_widths(&bitmap, width, height, 30, 30, 19);
+                        let widths = Self::measure_char_widths(&bitmap, width, 30, 30, 19);
                         (Some((bitmap, width, height)), widths)
                     }
                     None => (None, Vec::new()),
@@ -142,7 +142,7 @@ impl WriteMenuPage {
         Some((pixels, width, height))
     }
     
-    fn measure_char_widths(pixels: &[Pixel], font_width: usize, font_height: usize, 
+    fn measure_char_widths(pixels: &[Pixel], font_width: usize, 
                           char_width: usize, char_height: usize, chars_per_row: usize) -> Vec<usize> {
         let printable_chars = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
         let mut widths = Vec::new();
@@ -188,7 +188,7 @@ impl WriteMenuPage {
     }
     
     fn draw_char_cropped(&self, display: &mut SharpDisplay, x: usize, y: usize, c: char) {
-        if let Some((pixels, font_width, font_height)) = &self.font_bitmap {
+        if let Some((pixels, font_width, _)) = &self.font_bitmap {
             let char_index = Self::get_char_index(c);
             let chars_per_row = self.chars_per_row;
             let char_width = self.font_char_width;
@@ -286,10 +286,9 @@ impl WriteMenuPage {
                 word_width += char_width + LETTER_SPACING;
             }
             if word_width > 0 {
-                word_width -= LETTER_SPACING; // Remove last spacing
+                word_width -= LETTER_SPACING;
             }
             
-            // Add space width if not first word
             let space_width = if !current_line.is_empty() { 
                 self.char_widths[0] + LETTER_SPACING 
             } else { 
@@ -325,7 +324,6 @@ impl Page for WriteMenuPage {
         display.clear()?;
         
         if self.font_bitmap.is_some() && !self.char_widths.is_empty() {
-            // Draw visible lines
             let start_y = 20;
             let max_line_width = 380;
             
@@ -343,9 +341,7 @@ impl Page for WriteMenuPage {
                         let x = (400 - line_width) / 2;
                         self.draw_text_line(display, x, line_y, wrapped_line);
                         
-                        // Draw cursor if on this line
                         if line_idx == self.cursor_line && wrap_idx == 0 {
-                            // Calculate cursor position
                             let before_cursor = &line[..self.cursor_pos.min(line.len())];
                             let cursor_x = x + self.calculate_line_width(before_cursor);
                             for dy in 0..self.font_char_height {
@@ -356,21 +352,15 @@ impl Page for WriteMenuPage {
                 }
             }
             
-            // Draw instruction
             let instruction = "ESC: Menu  Ctrl+S: Save  Ctrl+X: Exit";
             let instr_width = instruction.len() * 6;
             let instr_x = (400 - instr_width) / 2;
             
-            for (i, c) in instruction.chars().enumerate() {
-                match c {
-                    'A'..='Z' | 'a'..='z' | ' ' | 'E' | 'S' | 'C' | 't' | 'r' | 'l' | 'x' | 'i' | 'u' | 'v' | ':' => {
-                        for dy in 2..6 {
-                            for dx in 1..5 {
-                                display.draw_pixel(instr_x + i * 6 + dx, 220 + dy, Pixel::Black);
-                            }
-                        }
+            for (i, _) in instruction.chars().enumerate() {
+                for dy in 2..6 {
+                    for dx in 1..5 {
+                        display.draw_pixel(instr_x + i * 6 + dx, 220 + dy, Pixel::Black);
                     }
-                    _ => {}
                 }
             }
         } else {
@@ -384,7 +374,6 @@ impl Page for WriteMenuPage {
     fn handle_key(&mut self, key: Key) -> Result<Option<PageId>> {
         match key {
             Key::Char('\n') => {
-                // Insert new line
                 let current_line = self.lines.remove(self.cursor_line);
                 let (left, right) = current_line.split_at(self.cursor_pos.min(current_line.len()));
                 
@@ -393,7 +382,6 @@ impl Page for WriteMenuPage {
                 self.cursor_line += 1;
                 self.cursor_pos = 0;
                 
-                // Adjust scroll
                 if self.cursor_line >= self.scroll_offset + MAX_LINES {
                     self.scroll_offset = self.cursor_line - MAX_LINES + 1;
                 }
@@ -416,14 +404,12 @@ impl Page for WriteMenuPage {
                     line.remove(self.cursor_pos - 1);
                     self.cursor_pos -= 1;
                 } else if self.cursor_line > 0 {
-                    // Merge with previous line
                     let current_line = self.lines.remove(self.cursor_line);
                     self.cursor_line -= 1;
                     let prev_line = &mut self.lines[self.cursor_line];
                     self.cursor_pos = prev_line.len();
                     prev_line.push_str(&current_line);
                     
-                    // Adjust scroll
                     if self.scroll_offset > 0 {
                         self.scroll_offset -= 1;
                     }
@@ -431,13 +417,12 @@ impl Page for WriteMenuPage {
                 Ok(None)
             }
             Key::Delete => {
-                let line = &mut self.lines[self.cursor_line];
-                if self.cursor_pos < line.len() {
-                    line.remove(self.cursor_pos);
+                let line_len = self.lines[self.cursor_line].len();
+                if self.cursor_pos < line_len {
+                    self.lines[self.cursor_line].remove(self.cursor_pos);
                 } else if self.cursor_line < self.lines.len() - 1 {
-                    // Merge with next line
                     let next_line = self.lines.remove(self.cursor_line + 1);
-                    line.push_str(&next_line);
+                    self.lines[self.cursor_line].push_str(&next_line);
                 }
                 Ok(None)
             }
@@ -448,7 +433,6 @@ impl Page for WriteMenuPage {
                     self.cursor_line -= 1;
                     self.cursor_pos = self.lines[self.cursor_line].len();
                     
-                    // Adjust scroll
                     if self.cursor_line < self.scroll_offset {
                         self.scroll_offset = self.cursor_line;
                     }
@@ -456,14 +440,13 @@ impl Page for WriteMenuPage {
                 Ok(None)
             }
             Key::Right => {
-                let line = &self.lines[self.cursor_line];
-                if self.cursor_pos < line.len() {
+                let line_len = self.lines[self.cursor_line].len();
+                if self.cursor_pos < line_len {
                     self.cursor_pos += 1;
                 } else if self.cursor_line < self.lines.len() - 1 {
                     self.cursor_line += 1;
                     self.cursor_pos = 0;
                     
-                    // Adjust scroll
                     if self.cursor_line >= self.scroll_offset + MAX_LINES {
                         self.scroll_offset = self.cursor_line - MAX_LINES + 1;
                     }
@@ -473,9 +456,9 @@ impl Page for WriteMenuPage {
             Key::Up => {
                 if self.cursor_line > 0 {
                     self.cursor_line -= 1;
-                    self.cursor_pos = self.cursor_pos.min(self.lines[self.cursor_line].len());
+                    let line_len = self.lines[self.cursor_line].len();
+                    self.cursor_pos = self.cursor_pos.min(line_len);
                     
-                    // Adjust scroll
                     if self.cursor_line < self.scroll_offset {
                         self.scroll_offset = self.cursor_line;
                     }
@@ -485,9 +468,9 @@ impl Page for WriteMenuPage {
             Key::Down => {
                 if self.cursor_line < self.lines.len() - 1 {
                     self.cursor_line += 1;
-                    self.cursor_pos = self.cursor_pos.min(self.lines[self.cursor_line].len());
+                    let line_len = self.lines[self.cursor_line].len();
+                    self.cursor_pos = self.cursor_pos.min(line_len);
                     
-                    // Adjust scroll
                     if self.cursor_line >= self.scroll_offset + MAX_LINES {
                         self.scroll_offset = self.cursor_line - MAX_LINES + 1;
                     }
@@ -496,7 +479,6 @@ impl Page for WriteMenuPage {
             }
             Key::Esc => Ok(Some(PageId::Menu)),
             Key::Ctrl('s') => {
-                // Save functionality
                 println!("Save not implemented yet");
                 Ok(None)
             }
