@@ -21,7 +21,6 @@ impl MenuPage {
     pub fn new() -> Result<Self> {
         let mut images_cache = Vec::new();
         
-        // Preload all images (0, 1, 2 for each option)
         for option in MENU_OPTIONS.iter() {
             let mut option_images = Vec::new();
             
@@ -131,19 +130,19 @@ impl MenuPage {
         Some((pixels, width, height))
     }
     
-    fn draw_image(&self, display: &mut SharpDisplay, image_data: Option<&(Vec<Pixel>, usize, usize)>, x_offset: i32, y_offset: i32) {
+    fn draw_image_at(&self, display: &mut SharpDisplay, image_data: Option<&(Vec<Pixel>, usize, usize)>, y_pos: usize) {
         if let Some((pixels, width, height)) = image_data {
-            let start_x = ((400 - width) / 2) as i32 + x_offset;
-            let start_y = ((240 - height) / 2) as i32 + y_offset;
+            let start_x = (400 - width) / 2;
             
             for y in 0..*height {
+                let screen_y = y_pos + y;
+                if screen_y >= 240 { break; }
+                
                 for x in 0..*width {
-                    let screen_x = start_x + x as i32;
-                    let screen_y = start_y + y as i32;
-                    
-                    if screen_x >= 0 && screen_x < 400 && screen_y >= 0 && screen_y < 240 {
+                    let screen_x = start_x + x;
+                    if screen_x < 400 {
                         let pixel = pixels[y * width + x];
-                        display.draw_pixel(screen_x as usize, screen_y as usize, pixel);
+                        display.draw_pixel(screen_x, screen_y, pixel);
                     }
                 }
             }
@@ -155,20 +154,20 @@ impl Page for MenuPage {
     fn draw(&mut self, display: &mut SharpDisplay) -> Result<()> {
         display.clear()?;
         
-        // Draw centered image (current_index, suffix 0)
+        // Current option (suffix 0) at top
         let center_image = self.images_cache[self.current_index].get(0).and_then(|x| x.as_ref());
-        self.draw_image(display, center_image, 0, 0);
+        self.draw_image_at(display, center_image, 40);
         
-        // Draw next image below (current_index + 1, suffix 1) if exists
+        // Next option (suffix 1) in middle
         if self.current_index + 1 < MENU_OPTIONS.len() {
             let next_image = self.images_cache[self.current_index + 1].get(1).and_then(|x| x.as_ref());
-            self.draw_image(display, next_image, 0, 120);
+            self.draw_image_at(display, next_image, 120);
         }
         
-        // Draw second next image below (current_index + 2, suffix 2) if exists
+        // Second next option (suffix 2) at bottom
         if self.current_index + 2 < MENU_OPTIONS.len() {
             let second_next_image = self.images_cache[self.current_index + 2].get(2).and_then(|x| x.as_ref());
-            self.draw_image(display, second_next_image, 0, 180);
+            self.draw_image_at(display, second_next_image, 200);
         }
         
         display.update()?;
