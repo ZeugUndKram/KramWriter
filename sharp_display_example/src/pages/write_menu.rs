@@ -15,9 +15,21 @@ pub struct WriteMenuPage {
 impl WriteMenuPage {
     pub fn new() -> Result<Self> {
         let font_path = "/home/kramwriter/KramWriter/fonts/bebas24.bmp";
+        println!("Loading font from: {}", font_path);
+        
         let font_bitmap = match std::fs::read(font_path) {
-            Ok(data) => Self::parse_font_bmp(&data),
-            Err(_) => None,
+            Ok(data) => {
+                println!("Font loaded: {} bytes", data.len());
+                let result = Self::parse_font_bmp(&data);
+                if let Some((_, width, height)) = &result {
+                    println!("Font dimensions: {}x{}", width, height);
+                }
+                result
+            }
+            Err(e) => {
+                println!("Failed to load font: {}", e);
+                None
+            }
         };
         
         Ok(Self {
@@ -25,7 +37,7 @@ impl WriteMenuPage {
             font_char_width: 30,
             font_char_height: 30,
             chars_per_row: 19,
-            current_text: String::from("Hello World!"),
+            current_text: String::from("TEST"),
         })
     }
     
@@ -37,6 +49,8 @@ impl WriteMenuPage {
         let height = u32::from_le_bytes([data[22], data[23], data[24], data[25]]) as usize;
         let bits_per_pixel = u16::from_le_bytes([data[28], data[29]]) as usize;
         let data_offset = u32::from_le_bytes([data[10], data[11], data[12], data[13]]) as usize;
+        
+        println!("BMP font: {}x{}, {} bpp, offset: {}", width, height, bits_per_pixel, data_offset);
         
         if data_offset >= data.len() { return None; }
         
@@ -111,16 +125,23 @@ impl WriteMenuPage {
             _ => return None,
         }
         
+        println!("Parsed {} pixels", pixels.len());
         Some((pixels, width, height))
     }
     
     fn get_char_index(c: char) -> usize {
         let printable_chars = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
-        printable_chars.find(c).unwrap_or(0)
+        match printable_chars.find(c) {
+            Some(idx) => idx,
+            None => {
+                println!("Character '{}' not found in font, using space", c);
+                0
+            }
+        }
     }
     
     fn draw_char(&self, display: &mut SharpDisplay, x: usize, y: usize, c: char) {
-        if let Some((pixels, font_width, _)) = &self.font_bitmap {
+        if let Some((pixels, font_width, font_height)) = &self.font_bitmap {
             let char_index = Self::get_char_index(c);
             let chars_per_row = self.chars_per_row;
             let char_width = self.font_char_width;
@@ -132,15 +153,34 @@ impl WriteMenuPage {
             let src_x = grid_x * char_width;
             let src_y = grid_y * char_height;
             
+            // Safety check
+            if src_y + char_height > *font_height || src_x + char_width > *font_width {
+                println!("Character '{}' at position ({}, {}) out of bounds", c, grid_x, grid_y);
+                return;
+            }
+            
             for dy in 0..char_height {
                 for dx in 0..char_width {
                     let src_pixel_x = src_x + dx;
                     let src_pixel_y = src_y + dy;
+                    let pixel_index = src_pixel_y * font_width + src_pixel_x;
                     
-                    if src_pixel_x < *font_width && src_pixel_y * font_width + src_pixel_x < pixels.len() {
-                        let pixel = pixels[src_pixel_y * font_width + src_pixel_x];
-                        display.draw_pixel(x + dx, y + dy, pixel);
+                    if pixel_index < pixels.len() {
+                        let pixel = pixels[pixel_index];
+                        let screen_x = x + dx;
+                        let screen_y = y + dy;
+                        
+                        if screen_x < 400 && screen_y < 240 {
+                            display.draw_pixel(screen_x, screen_y, pixel);
+                        }
                     }
+                }
+            }
+        } else {
+            // Fallback: draw simple rectangle
+            for dy in 2..6 {
+                for dx in 1..5 {
+                    display.draw_pixel(x + dx, y + dy, Pixel::Black);
                 }
             }
         }
@@ -159,18 +199,36 @@ impl Page for WriteMenuPage {
     fn draw(&mut self, display: &mut SharpDisplay) -> Result<()> {
         display.clear()?;
         
+        println!("Drawing write menu, text: '{}'", self.current_text);
+        
         if self.font_bitmap.is_some() {
             let text_width = self.current_text.len() * self.font_char_width;
             let x = (400 - text_width) / 2;
             let y = (240 - self.font_char_height) / 2;
             
+            println!("Drawing text at ({}, {})", x, y);
             self.draw_text(display, x, y, &self.current_text);
             
+            // Draw instruction with simple font
             let instruction = "Press ESC to return";
             let instr_width = instruction.len() * 6;
             let instr_x = (400 - instr_width) / 2;
-            display.draw_text(instr_x, 200, instruction);
+            
+            // Simple text drawing
+            for (i, c) in instruction.chars().enumerate() {
+                match c {
+                    'A'..='Z' | 'a'..='z' => {
+                        for dy in 2..6 {
+                            for dx in 1..5 {
+                                display.draw_pixel(instr_x + i * 6 + dx, 200 + dy, Pixel::Black);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
         } else {
+            println!("No font loaded, drawing fallback");
             display.draw_text(150, 100, "NO FONT LOADED");
         }
         
@@ -182,6 +240,7 @@ impl Page for WriteMenuPage {
         match key {
             Key::Char('\n') => Ok(None),
             Key::Char(c) => {
+                println!("Adding char: '{}'", c);
                 self.current_text.push(c);
                 Ok(None)
             }
