@@ -482,7 +482,7 @@ impl ZeugtrisPage {
         }
     }
     
-    fn draw_game_info(&self, display: &mut SharpDisplay) {
+        fn draw_game_info(&self, display: &mut SharpDisplay) {
         // Draw next piece preview with label box
         let next_box_x = NEXT_X - 5;
         let next_box_y = NEXT_Y - 15;
@@ -538,7 +538,7 @@ impl ZeugtrisPage {
                     display.draw_pixel(center_x + i, center_y, Pixel::Black);
                     display.draw_pixel(center_x, center_y + i, Pixel::Black);
                 }
-                if center_x - i < 400 && center_y < 240 && center_x >= i as usize {
+                if center_x >= i && center_y < 240 {
                     display.draw_pixel(center_x - i, center_y, Pixel::Black);
                 }
                 if center_x < 400 && center_y + i < 240 {
@@ -567,10 +567,14 @@ impl ZeugtrisPage {
             for i in 0..30 {
                 if center_x + i < 400 && center_y + i < 240 {
                     display.draw_pixel(center_x + i, center_y + i, Pixel::Black);
+                }
+                if center_x + i < 400 && center_y >= i && center_y - i < 240 {
                     display.draw_pixel(center_x + i, center_y - i, Pixel::Black);
                 }
                 if center_x >= i && center_y + i < 240 {
                     display.draw_pixel(center_x - i, center_y + i, Pixel::Black);
+                }
+                if center_x >= i && center_y >= i {
                     display.draw_pixel(center_x - i, center_y - i, Pixel::Black);
                 }
             }
@@ -582,23 +586,33 @@ impl ZeugtrisPage {
             let center_y = ARENA_Y + (ARENA_HEIGHT * BLOCK_SIZE) / 2;
             
             // Draw pause symbol (two vertical bars)
-            for y in -15..15 {
-                if center_y + y < 240 {
-                    for x in -3..0 {
-                        if center_x + x < 400 && center_x + x >= 0 {
-                            display.draw_pixel((center_x as i32 + x) as usize, (center_y as i32 + y) as usize, Pixel::Black);
+            // Left bar
+            for y in 0..30 {
+                let draw_y = center_y as i32 - 15 + y as i32;
+                if draw_y >= 0 && draw_y < 240 {
+                    for x in 0..3 {
+                        let draw_x = center_x as i32 - 6 + x as i32;
+                        if draw_x >= 0 && draw_x < 400 {
+                            display.draw_pixel(draw_x as usize, draw_y as usize, Pixel::Black);
                         }
                     }
-                    for x in 1..4 {
-                        if center_x + x < 400 {
-                            display.draw_pixel(center_x + x as usize, (center_y as i32 + y) as usize, Pixel::Black);
+                }
+            }
+            
+            // Right bar
+            for y in 0..30 {
+                let draw_y = center_y as i32 - 15 + y as i32;
+                if draw_y >= 0 && draw_y < 240 {
+                    for x in 0..3 {
+                        let draw_x = center_x as i32 + 4 + x as i32;
+                        if draw_x >= 0 && draw_x < 400 {
+                            display.draw_pixel(draw_x as usize, draw_y as usize, Pixel::Black);
                         }
                     }
                 }
             }
         }
     }
-}
 
 impl Page for ZeugtrisPage {
     fn draw(&mut self, display: &mut SharpDisplay) -> Result<()> {
