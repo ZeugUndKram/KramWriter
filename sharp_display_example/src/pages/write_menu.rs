@@ -292,20 +292,15 @@ impl WriteMenuPage {
         let (wrapped_cursor_line, _) = self.cursor_to_wrapped_position();
         let total_wrapped = self.total_wrapped_lines();
         
-        // SCROLL EARLIER: When cursor is at 6th line (0-indexed 5), start scrolling
-        // This gives 2 lines of buffer at the bottom
-        const SCROLL_THRESHOLD: usize = 5; // Start scrolling when cursor hits 6th line
+        // Start scrolling when cursor reaches 5th visible line (0-indexed 4)
+        const SCROLL_THRESHOLD: usize = 4;
         
-        // If cursor is above visible area
         if wrapped_cursor_line < self.scroll_offset {
             self.scroll_offset = wrapped_cursor_line;
-        }
-        // If cursor is at or beyond the scroll threshold
-        else if wrapped_cursor_line >= self.scroll_offset + SCROLL_THRESHOLD {
+        } else if wrapped_cursor_line >= self.scroll_offset + SCROLL_THRESHOLD {
             self.scroll_offset = wrapped_cursor_line - SCROLL_THRESHOLD + 1;
         }
         
-        // Ensure scroll offset is valid
         if total_wrapped > MAX_VISIBLE_LINES {
             let max_scroll = total_wrapped.saturating_sub(MAX_VISIBLE_LINES);
             self.scroll_offset = self.scroll_offset.min(max_scroll);
@@ -322,10 +317,20 @@ impl Page for WriteMenuPage {
         if self.font_bitmap.is_some() && !self.char_widths.is_empty() {
             let start_y = 10;
             
-            // Calculate all wrapped lines
+            // Calculate all wrapped lines and track which original line they belong to
             let mut all_wrapped_lines = Vec::new();
-            for line in &self.lines {
-                all_wrapped_lines.extend(self.wrap_line(line));
+            let mut wrapped_to_original = Vec::new();
+            let mut wrapped_line_positions = Vec::new(); // Char position in original line
+            
+            for (line_idx, line) in self.lines.iter().enumerate() {
+                let wrapped = self.wrap_line(line);
+                let mut char_pos = 0;
+                for wrapped_line in wrapped {
+                    all_wrapped_lines.push(wrapped_line.clone());
+                    wrapped_to_original.push(line_idx);
+                    wrapped_line_positions.push(char_pos);
+                    char_pos += wrapped_line.len();
+                }
             }
             
             // Draw visible wrapped lines
@@ -337,19 +342,26 @@ impl Page for WriteMenuPage {
                     self.draw_text_line(display, LEFT_MARGIN, line_y, text);
                     
                     // Draw cursor if this wrapped line contains cursor
-                    let (cursor_wrapped_line, cursor_in_wrapped) = self.cursor_to_wrapped_position();
-                    if wrapped_idx == cursor_wrapped_line && cursor_in_wrapped <= text.len() {
-                        // Get characters up to cursor position
-                        let mut before_cursor = String::new();
-                        let mut count = 0;
-                        for c in text.chars() {
-                            if count >= cursor_in_wrapped { break; }
-                            before_cursor.push(c);
-                            count += 1;
-                        }
-                        let cursor_x = LEFT_MARGIN + self.calculate_text_width(&before_cursor);
-                        for dy in 0..self.font_char_height {
-                            display.draw_pixel(cursor_x, line_y + dy, Pixel::Black);
+                    let original_line = wrapped_to_original[wrapped_idx];
+                    let start_pos = wrapped_line_positions[wrapped_idx];
+                    
+                    if original_line == self.cursor_line {
+                        let cursor_in_original = self.cursor_pos;
+                        let cursor_in_wrapped = cursor_in_original.saturating_sub(start_pos);
+                        
+                        if cursor_in_wrapped <= text.len() {
+                            // Get characters up to cursor position
+                            let mut before_cursor = String::new();
+                            let mut count = 0;
+                            for c in text.chars() {
+                                if count >= cursor_in_wrapped { break; }
+                                before_cursor.push(c);
+                                count += 1;
+                            }
+                            let cursor_x = LEFT_MARGIN + self.calculate_text_width(&before_cursor);
+                            for dy in 0..self.font_char_height {
+                                display.draw_pixel(cursor_x, line_y + dy, Pixel::Black);
+                            }
                         }
                     }
                 }
@@ -394,16 +406,27 @@ impl Page for WriteMenuPage {
     fn handle_key(&mut self, key: Key) -> Result<Option<PageId>> {
         match key {
             Key::Char('\n') => {
-                // SAFE string split at character boundary
-                let current_line = self.lines.remove(self.cursor_line);
-                let mut chars = current_line.chars();
-                let left: String = chars.by_ref().take(self.cursor_pos).collect();
-                let right: String = chars.collect();
+                // When pressing Enter at the END of a line, create new empty line
+                // When pressing Enter in MIDDLE of line, split the line
+                let line = &self.lines[self.cursor_line];
+                let at_end = self.cursor_pos >= line.chars().count();
                 
-                self.lines.insert(self.cursor_line, left);
-                self.lines.insert(self.cursor_line + 1, right);
-                self.cursor_line += 1;
-                self.cursor_pos = 0;
+                if at_end {
+                    // Insert new empty line after current line
+                    self.lines.insert(self.cursor_line + 1, String::new());
+                    self.cursor_line += 1;
+                    self.cursor_pos = 0;
+                } else {
+                    // Split current line at cursor
+                    let mut chars = line.chars();
+                    let left: String = chars.by_ref().take(self.cursor_pos).collect();
+                    let right: String = chars.collect();
+                    
+                    self.lines[self.cursor_line] = left;
+                    self.lines.insert(self.cursor_line + 1, right);
+                    self.cursor_line += 1;
+                    self.cursor_pos = 0;
+                }
                 self.ensure_cursor_visible();
                 Ok(None)
             }
@@ -413,7 +436,7 @@ impl Page for WriteMenuPage {
                 }
                 let line = &mut self.lines[self.cursor_line];
                 
-                // Insert at character position (not byte position)
+                // Insert at character position
                 let mut new_line = String::new();
                 let mut inserted = false;
                 for (i, ch) in line.chars().enumerate() {
@@ -423,7 +446,7 @@ impl Page for WriteMenuPage {
                     }
                     new_line.push(ch);
                 }
-                if !inserted || self.cursor_pos >= line.chars().count() {
+                if !inserted {
                     new_line.push(c);
                 }
                 *line = new_line;
