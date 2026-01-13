@@ -1,6 +1,6 @@
 pub mod logo;
 pub mod menu;
-pub mod write_menu;  // Add this
+pub mod write_menu;
 
 use crate::display::SharpDisplay;
 use anyhow::Result;
@@ -10,7 +10,7 @@ use termion::event::Key;
 pub enum PageId {
     Logo,
     Menu,
-    WriteMenu,  // Add this
+    WriteMenu,
 }
 
 pub trait Page {
@@ -20,4 +20,4 @@ pub trait Page {
 
 pub use logo::LogoPage;
 pub use menu::MenuPage;
-pub use write_menu::WriteMenuPage;  // Add this
+pub use write_menu::WriteMenuPage;

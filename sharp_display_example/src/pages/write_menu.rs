@@ -160,14 +160,12 @@ impl Page for WriteMenuPage {
         display.clear()?;
         
         if self.font_bitmap.is_some() {
-            // Draw test text in the center
             let text_width = self.current_text.len() * self.font_char_width;
             let x = (400 - text_width) / 2;
             let y = (240 - self.font_char_height) / 2;
             
             self.draw_text(display, x, y, &self.current_text);
             
-            // Draw instruction
             let instruction = "Press ESC to return";
             let instr_width = instruction.len() * 6;
             let instr_x = (400 - instr_width) / 2;
@@ -182,17 +180,12 @@ impl Page for WriteMenuPage {
     
     fn handle_key(&mut self, key: Key) -> Result<Option<PageId>> {
         match key {
-            Key::Char('\n') => {
-                // Add newline or do something
-                Ok(None)
-            }
+            Key::Char('\n') => Ok(None),
             Key::Char(c) => {
-                // Add character to text
                 self.current_text.push(c);
                 Ok(None)
             }
             Key::Backspace => {
-                // Remove last character
                 self.current_text.pop();
                 Ok(None)
             }

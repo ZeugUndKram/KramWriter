@@ -2,7 +2,7 @@ mod pages;
 mod display;
 
 use anyhow::Result;
-use pages::{PageId, LogoPage, MenuPage};
+use pages::{PageId, LogoPage, MenuPage, WriteMenuPage};
 use display::SharpDisplay;
 use std::collections::HashMap;
 
@@ -19,7 +19,7 @@ impl App {
         let mut pages: HashMap<PageId, Box<dyn pages::Page>> = HashMap::new();
         pages.insert(PageId::Logo, Box::new(LogoPage::new()?));
         pages.insert(PageId::Menu, Box::new(MenuPage::new()?));
-        pages.insert(PageId::WriteMenu, Box::new(WriteMenuPage::new()?));  // Add this
+        pages.insert(PageId::WriteMenu, Box::new(WriteMenuPage::new()?));
         
         Ok(Self {
             display,

@@ -161,7 +161,7 @@ impl Page for MenuPage {
         
         let main_image_data = self.images_cache[self.current_index].get(0).and_then(|x| x.as_ref());
         
-        if let Some((_, width, height)) = main_image_data {
+        if let Some((_, _, height)) = main_image_data {
             let center_y = (240 - height) / 2;
             let h = *height as i32;
             let cy = center_y as i32;
@@ -207,10 +207,9 @@ impl Page for MenuPage {
     fn handle_key(&mut self, key: Key) -> Result<Option<PageId>> {
         match key {
             Key::Char('\n') => {
-                // When Enter is pressed, go to appropriate page based on current selection
                 match self.current_index {
-                    0 => Ok(Some(PageId::WriteMenu)),  // Write option
-                    _ => Ok(Some(PageId::Logo)),       // Other options go back to logo for now
+                    0 => Ok(Some(PageId::WriteMenu)),
+                    _ => Ok(Some(PageId::Logo)),
                 }
             }
             Key::Up => {
