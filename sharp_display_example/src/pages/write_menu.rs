@@ -75,12 +75,14 @@ impl WriteMenuPage {
                         let luminance = (r * 299 + g * 587 + b * 114) / 1000;
                         let alpha = a;
                         
+                        // INVERTED: Black text on white background in BMP -> White text on black screen
+                        // So we need to invert: white in BMP becomes black on screen
                         let pixel = if alpha < 128 {
-                            Pixel::White
+                            Pixel::White  // Transparent = white background
                         } else if luminance > 128 {
-                            Pixel::White
+                            Pixel::Black  // White in BMP = black on screen (text)
                         } else {
-                            Pixel::Black
+                            Pixel::White  // Black in BMP = white on screen (background)
                         };
                         pixels.push(pixel);
                     }
@@ -101,7 +103,13 @@ impl WriteMenuPage {
                         let r = data[pixel_start + 2] as u32;
                         
                         let luminance = (r * 299 + g * 587 + b * 114) / 1000;
-                        let pixel = if luminance > 128 { Pixel::White } else { Pixel::Black };
+                        
+                        // INVERTED for 24-bit
+                        let pixel = if luminance > 128 {
+                            Pixel::Black  // White in BMP = black on screen
+                        } else {
+                            Pixel::White  // Black in BMP = white on screen
+                        };
                         pixels.push(pixel);
                     }
                 }
@@ -117,7 +125,14 @@ impl WriteMenuPage {
                         }
                         let byte = data[row_start + (x / 8)];
                         let bit = 7 - (x % 8);
-                        let pixel = if (byte >> bit) & 1 == 1 { Pixel::Black } else { Pixel::White };
+                        // INVERTED for 1-bit: 1=black in BMP should be black on screen
+                        // Actually 1-bit BMP: 1 = foreground (text), 0 = background
+                        // We want text to be black on white screen
+                        let pixel = if (byte >> bit) & 1 == 1 { 
+                            Pixel::Black  // Text in BMP = black on screen
+                        } else { 
+                            Pixel::White  // Background in BMP = white on screen
+                        };
                         pixels.push(pixel);
                     }
                 }
@@ -153,9 +168,7 @@ impl WriteMenuPage {
             let src_x = grid_x * char_width;
             let src_y = grid_y * char_height;
             
-            // Safety check
             if src_y + char_height > *font_height || src_x + char_width > *font_width {
-                println!("Character '{}' at position ({}, {}) out of bounds", c, grid_x, grid_y);
                 return;
             }
             
@@ -176,13 +189,6 @@ impl WriteMenuPage {
                     }
                 }
             }
-        } else {
-            // Fallback: draw simple rectangle
-            for dy in 2..6 {
-                for dx in 1..5 {
-                    display.draw_pixel(x + dx, y + dy, Pixel::Black);
-                }
-            }
         }
     }
     
@@ -199,14 +205,11 @@ impl Page for WriteMenuPage {
     fn draw(&mut self, display: &mut SharpDisplay) -> Result<()> {
         display.clear()?;
         
-        println!("Drawing write menu, text: '{}'", self.current_text);
-        
         if self.font_bitmap.is_some() {
             let text_width = self.current_text.len() * self.font_char_width;
             let x = (400 - text_width) / 2;
             let y = (240 - self.font_char_height) / 2;
             
-            println!("Drawing text at ({}, {})", x, y);
             self.draw_text(display, x, y, &self.current_text);
             
             // Draw instruction with simple font
@@ -217,7 +220,7 @@ impl Page for WriteMenuPage {
             // Simple text drawing
             for (i, c) in instruction.chars().enumerate() {
                 match c {
-                    'A'..='Z' | 'a'..='z' => {
+                    'A'..='Z' | 'a'..='z' | ' ' | 'E' | 'S' | 'C' | 't' | 'o' | 'r' | 'u' | 'n' => {
                         for dy in 2..6 {
                             for dx in 1..5 {
                                 display.draw_pixel(instr_x + i * 6 + dx, 200 + dy, Pixel::Black);
@@ -228,7 +231,6 @@ impl Page for WriteMenuPage {
                 }
             }
         } else {
-            println!("No font loaded, drawing fallback");
             display.draw_text(150, 100, "NO FONT LOADED");
         }
         
@@ -240,7 +242,6 @@ impl Page for WriteMenuPage {
         match key {
             Key::Char('\n') => Ok(None),
             Key::Char(c) => {
-                println!("Adding char: '{}'", c);
                 self.current_text.push(c);
                 Ok(None)
             }
