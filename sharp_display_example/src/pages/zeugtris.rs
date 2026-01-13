@@ -165,33 +165,30 @@ impl ZeugtrisPage {
     
     fn check_lines(&mut self) {
         let mut lines_cleared = 0;
-        let mut dest_row = ARENA_HEIGHT - 1;
+        let mut new_arena = [[0u8; ARENA_WIDTH]; ARENA_HEIGHT];
+        let mut new_row = ARENA_HEIGHT - 1;
         
         // Scan from bottom to top
-        for src_row in (0..ARENA_HEIGHT).rev() {
+        for row in (0..ARENA_HEIGHT).rev() {
             let mut line_full = true;
             for x in 0..ARENA_WIDTH {
-                if self.arena[src_row][x] == 0 {
+                if self.arena[row][x] == 0 {
                     line_full = false;
                     break;
                 }
             }
             
-            if line_full {
-                lines_cleared += 1;
+            if !line_full {
+                // Copy non-full lines to new arena
+                new_arena[new_row].copy_from_slice(&self.arena[row]);
+                new_row = new_row.saturating_sub(1);
             } else {
-                // Move this row down to dest_row position
-                if dest_row != src_row {
-                    self.arena[dest_row].copy_from_slice(&self.arena[src_row]);
-                }
-                dest_row = dest_row.saturating_sub(1);
+                lines_cleared += 1;
             }
         }
         
-        // Clear remaining rows at the top
-        for row in 0..=dest_row {
-            self.arena[row] = [0; ARENA_WIDTH];
-        }
+        // Replace old arena with new one
+        self.arena = new_arena;
         
         if lines_cleared > 0 {
             // Update score (more points for multiple lines)
