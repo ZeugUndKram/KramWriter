@@ -9,7 +9,7 @@ const LINE_SPACING: usize = 3;
 const MAX_VISIBLE_LINES: usize = 6;
 const MAX_LINE_WIDTH: usize = 380;
 const LEFT_MARGIN: usize = 10;
-const WORD_COUNT_TOP_PADDING: isize = -10; // Changed to isize to allow negative values
+const WORD_COUNT_TOP_PADDING: isize = -5; // Changed to isize to allow negative values
 
 pub struct WriteMenuPage {
     font_bitmap: Option<(Vec<Pixel>, usize, usize)>,
