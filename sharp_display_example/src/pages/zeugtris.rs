@@ -372,7 +372,7 @@ impl ZeugtrisPage {
         }
     }
     
-    fn draw_block(&self, display: &mut SharpDisplay, x: usize, y: usize, piece_type: usize, is_ghost: bool) {
+    fn draw_block(&self, display: &mut SharpDisplay, x: usize, y: usize, is_ghost: bool) {
         let block_x = ARENA_X + x * BLOCK_SIZE;
         let block_y = ARENA_Y + y * BLOCK_SIZE;
         
@@ -427,7 +427,7 @@ impl ZeugtrisPage {
                 let block_y = (y + py as i32) as usize;
                 
                 if block_x < ARENA_WIDTH && block_y < ARENA_HEIGHT {
-                    self.draw_block(display, block_x, block_y, piece, is_ghost);
+                    self.draw_block(display, block_x, block_y, is_ghost);
                 }
             }
         }
@@ -455,8 +455,7 @@ impl ZeugtrisPage {
         for y in 0..ARENA_HEIGHT {
             for x in 0..ARENA_WIDTH {
                 if self.arena[y][x] != 0 {
-                    let piece_type = (self.arena[y][x] - 1) as usize;
-                    self.draw_block(display, x, y, piece_type, false);
+                    self.draw_block(display, x, y, false);
                 }
             }
         }
@@ -568,7 +567,7 @@ impl ZeugtrisPage {
             // Punctuation
             ':' => (y == 2 || y == 4) && x == 2,
             ' ' => false,
-            _ => false,
+            _ => cy == 0 || cy == 6 || cx == 0 || cx == 4,
         }
     }
     
