@@ -393,7 +393,7 @@ impl WriteMenuPage {
         let mut last_whitespace_idx = 0;
         
         let mut chars = line.chars().peekable();
-        while let Some(c) = chars.next() {
+        while let Some(c) in chars.next() {
             let char_index = Self::get_char_index(c);
             let char_width = if char_index < self.char_widths.len() { 
                 self.char_widths[char_index] + LETTER_SPACING
@@ -605,7 +605,8 @@ impl Page for WriteMenuPage {
             // Draw word count on the black bar in white text
             let word_text = format!("words: {}", self.word_count);
             let text_x = LEFT_MARGIN;
-            let text_y = 224; // Center in the black bar (bar is from 220-240, font is 12px tall)
+            // Try y=222 for better positioning (2px top padding, 6px bottom padding)
+            let text_y = 222;
             
             self.draw_text_line(display, text_x, text_y, &word_text, true);
             
