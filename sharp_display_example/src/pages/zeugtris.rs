@@ -165,12 +165,13 @@ impl ZeugtrisPage {
     
     fn check_lines(&mut self) {
         let mut lines_cleared = 0;
+        let mut dest_row = ARENA_HEIGHT - 1;
         
-        let mut y = ARENA_HEIGHT as i32 - 1;
-        while y >= 0 {
+        // Scan from bottom to top
+        for src_row in (0..ARENA_HEIGHT).rev() {
             let mut line_full = true;
             for x in 0..ARENA_WIDTH {
-                if self.arena[y as usize][x] == 0 {
+                if self.arena[src_row][x] == 0 {
                     line_full = false;
                     break;
                 }
@@ -178,20 +179,18 @@ impl ZeugtrisPage {
             
             if line_full {
                 lines_cleared += 1;
-                
-                // Move all lines above down
-                for yy in (1..=y as usize).rev() {
-                    self.arena[yy].copy_from_slice(&self.arena[yy - 1]);
+            } else {
+                // Move this row down to dest_row position
+                if dest_row != src_row {
+                    self.arena[dest_row].copy_from_slice(&self.arena[src_row]);
                 }
-                
-                // Clear top line
-                self.arena[0] = [0; ARENA_WIDTH];
-                
-                // Check same line again (since we moved everything down)
-                continue;
+                dest_row = dest_row.saturating_sub(1);
             }
-            
-            y -= 1;
+        }
+        
+        // Clear remaining rows at the top
+        for row in 0..=dest_row {
+            self.arena[row] = [0; ARENA_WIDTH];
         }
         
         if lines_cleared > 0 {
