@@ -1,3 +1,4 @@
+// src/display.rs - COMPLETE FILE
 use rpi_memory_display::{MemoryDisplay, MemoryDisplayBuffer, Pixel};
 use rppal::spi::{Bus, SlaveSelect};
 use anyhow::Result;
@@ -12,7 +13,7 @@ pub struct SharpDisplay {
 
 impl SharpDisplay {
     pub fn new(cs_pin: u8) -> Result<Self> {
-        let inner = MemoryDisplay::new(
+        let mut inner = MemoryDisplay::new(
             Bus::Spi0,
             SlaveSelect::Ss0,
             cs_pin,
@@ -20,13 +21,17 @@ impl SharpDisplay {
             HEIGHT as u8,
         )?;
         
+        inner.clear()?;
+        
         let buffer = MemoryDisplayBuffer::new(WIDTH, HEIGHT as u8);
         
         Ok(Self { inner, buffer })
     }
     
-    pub fn clear(&mut self) {
+    pub fn clear(&mut self) -> Result<()> {
         self.buffer.fill(Pixel::White);
+        self.inner.clear()?;
+        Ok(())
     }
     
     pub fn update(&mut self) -> Result<()> {
@@ -50,7 +55,7 @@ impl SharpDisplay {
     
     fn draw_char(&mut self, x: usize, y: usize, c: char) {
         match c {
-            'A'..='Z' | 'a'..='z' | '0'..='9' => {
+            'A'..='Z' | 'a'..='z' | '0'..='9' | ' ' | ':' | '.' | '-' => {
                 for dy in 2..6 {
                     for dx in 1..5 {
                         self.draw_pixel(x + dx, y + dy, Pixel::Black);
