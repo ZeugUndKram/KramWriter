@@ -163,35 +163,37 @@ impl Page for MenuPage {
         
         if let Some((_, width, height)) = main_image_data {
             let center_y = (240 - height) / 2;
+            let h = *height as i32;
+            let cy = center_y as i32;
             
             // Draw images above the main one (if any)
             if self.current_index >= 2 {
                 // Second previous option (2 above) with suffix 2
                 let second_prev_image = self.images_cache[self.current_index - 2].get(2).and_then(|x| x.as_ref());
-                let second_prev_y = center_y as i32 - height as i32 - SPACING_TOP_TO_MAIN - SPACING_TOP_TO_FARTOP;
+                let second_prev_y = cy - h - SPACING_TOP_TO_MAIN - SPACING_TOP_TO_FARTOP;
                 self.draw_image_at(display, second_prev_image, second_prev_y);
             }
             
             if self.current_index >= 1 {
                 // Previous option (1 above) with suffix 1
                 let prev_image = self.images_cache[self.current_index - 1].get(1).and_then(|x| x.as_ref());
-                let prev_y = center_y as i32 - height as i32 - SPACING_TOP_TO_MAIN;
+                let prev_y = cy - h - SPACING_TOP_TO_MAIN;
                 self.draw_image_at(display, prev_image, prev_y);
             }
             
             // Draw main image
-            self.draw_image_at(display, main_image_data, center_y as i32);
+            self.draw_image_at(display, main_image_data, cy);
             
             // Draw images below the main one (if any)
             if self.current_index + 1 < MENU_OPTIONS.len() {
                 let next_image = self.images_cache[self.current_index + 1].get(1).and_then(|x| x.as_ref());
-                let next_y = center_y as i32 + height as i32 + SPACING_MAIN_TO_BOTTOM;
+                let next_y = cy + h + SPACING_MAIN_TO_BOTTOM;
                 self.draw_image_at(display, next_image, next_y);
             }
             
             if self.current_index + 2 < MENU_OPTIONS.len() {
                 let second_next_image = self.images_cache[self.current_index + 2].get(2).and_then(|x| x.as_ref());
-                let second_next_y = center_y as i32 + height as i32 + SPACING_MAIN_TO_BOTTOM + SPACING_BOTTOM_TO_FARBOTTOM;
+                let second_next_y = cy + h + SPACING_MAIN_TO_BOTTOM + SPACING_BOTTOM_TO_FARBOTTOM;
                 self.draw_image_at(display, second_next_image, second_next_y);
             }
         } else {
