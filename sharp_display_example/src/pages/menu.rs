@@ -12,6 +12,9 @@ const MENU_OPTIONS: [&str; 5] = [
     "Credits",
 ];
 
+const SPACING_MAIN_TO_SECOND: usize = 10;  // Space between main and second image
+const SPACING_SECOND_TO_THIRD: usize = 40; // Space between second and third image
+
 pub struct MenuPage {
     current_index: usize,
     images_cache: Vec<Vec<Option<(Vec<Pixel>, usize, usize)>>>,
@@ -162,7 +165,7 @@ impl Page for MenuPage {
             
             if self.current_index + 1 < MENU_OPTIONS.len() {
                 let next_image = self.images_cache[self.current_index + 1].get(1).and_then(|x| x.as_ref());
-                let next_y = center_y + height + 20;
+                let next_y = center_y + height + SPACING_MAIN_TO_SECOND;
                 if next_y < 240 {
                     self.draw_image_at(display, next_image, next_y);
                 }
@@ -170,7 +173,7 @@ impl Page for MenuPage {
             
             if self.current_index + 2 < MENU_OPTIONS.len() {
                 let second_next_image = self.images_cache[self.current_index + 2].get(2).and_then(|x| x.as_ref());
-                let second_next_y = center_y + height + 50;
+                let second_next_y = center_y + height + SPACING_MAIN_TO_SECOND + SPACING_SECOND_TO_THIRD;
                 if second_next_y < 240 {
                     self.draw_image_at(display, second_next_image, second_next_y);
                 }
