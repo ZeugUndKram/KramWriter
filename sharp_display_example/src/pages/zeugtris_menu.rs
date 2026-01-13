@@ -106,8 +106,11 @@ impl ZeugtrisMenuPage {
             let start_x = (400usize.saturating_sub(*width)) / 2;
             let start_y = y;
             
-            for py in 0..height.min(240 - y) {
-                for px in 0..width.min(400) {
+            let max_y = 240usize.saturating_sub(start_y);
+            let max_x = 400usize.saturating_sub(start_x);
+            
+            for py in 0..*height.min(&max_y) {
+                for px in 0..*width.min(&max_x) {
                     let pixel = pixels[py * width + px];
                     if pixel == Pixel::Black {
                         display.draw_pixel(start_x + px, start_y + py, pixel);

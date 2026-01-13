@@ -13,8 +13,8 @@ pub enum PageId {
     Logo,
     Menu,
     WriteMenu,
-    ZeugtrisMenu,  // Add this
-    Zeugtris,      // Add this
+    ZeugtrisMenu,
+    Zeugtris,
 }
 
 pub trait Page {

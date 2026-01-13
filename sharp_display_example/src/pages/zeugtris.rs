@@ -143,10 +143,11 @@ impl ZeugtrisPage {
     fn check_lines(&mut self) {
         let mut lines_cleared = 0;
         
-        for y in (0..ARENA_HEIGHT).rev() {
+        let mut y = ARENA_HEIGHT as i32 - 1;
+        while y >= 0 {
             let mut line_full = true;
             for x in 0..ARENA_WIDTH {
-                if self.arena[y][x] == 0 {
+                if self.arena[y as usize][x] == 0 {
                     line_full = false;
                     break;
                 }
@@ -156,7 +157,7 @@ impl ZeugtrisPage {
                 lines_cleared += 1;
                 
                 // Move all lines above down
-                for yy in (1..=y).rev() {
+                for yy in (1..=y as usize).rev() {
                     for x in 0..ARENA_WIDTH {
                         self.arena[yy][x] = self.arena[yy - 1][x];
                     }
@@ -168,8 +169,10 @@ impl ZeugtrisPage {
                 }
                 
                 // Check same line again (since we moved everything down)
-                y += 1;
+                continue;
             }
+            
+            y -= 1;
         }
         
         if lines_cleared > 0 {
@@ -197,13 +200,19 @@ impl ZeugtrisPage {
         
         // Draw border lines
         for x in border_left..=border_right {
-            display.draw_pixel(x, border_top, Pixel::Black);
-            display.draw_pixel(x, border_bottom, Pixel::Black);
+            if x < 400 {
+                display.draw_pixel(x, border_top, Pixel::Black);
+                display.draw_pixel(x, border_bottom, Pixel::Black);
+            }
         }
         
         for y in border_top..=border_bottom {
-            display.draw_pixel(border_left, y, Pixel::Black);
-            display.draw_pixel(border_right, y, Pixel::Black);
+            if y < 240 {
+                display.draw_pixel(border_left, y, Pixel::Black);
+                if border_right < 400 {
+                    display.draw_pixel(border_right, y, Pixel::Black);
+                }
+            }
         }
         
         // Draw placed blocks
@@ -216,16 +225,22 @@ impl ZeugtrisPage {
                     // Draw filled block
                     for by in 0..BLOCK_SIZE - 1 {
                         for bx in 0..BLOCK_SIZE - 1 {
-                            display.draw_pixel(block_x + bx, block_y + by, Pixel::Black);
+                            if block_x + bx < 400 && block_y + by < 240 {
+                                display.draw_pixel(block_x + bx, block_y + by, Pixel::Black);
+                            }
                         }
                     }
                     
                     // Draw highlight (top and left edges)
                     for bx in 0..BLOCK_SIZE - 1 {
-                        display.draw_pixel(block_x + bx, block_y, Pixel::White);
+                        if block_x + bx < 400 && block_y < 240 {
+                            display.draw_pixel(block_x + bx, block_y, Pixel::White);
+                        }
                     }
                     for by in 0..BLOCK_SIZE - 1 {
-                        display.draw_pixel(block_x, block_y + by, Pixel::White);
+                        if block_x < 400 && block_y + by < 240 {
+                            display.draw_pixel(block_x, block_y + by, Pixel::White);
+                        }
                     }
                 }
             }
@@ -274,7 +289,9 @@ impl ZeugtrisPage {
                 
                 for by in 0..(BLOCK_SIZE - 5) {
                     for bx in 0..(BLOCK_SIZE - 5) {
-                        display.draw_pixel(screen_x + bx, screen_y + by, Pixel::Black);
+                        if screen_x + bx < 400 && screen_y + by < 240 {
+                            display.draw_pixel(screen_x + bx, screen_y + by, Pixel::Black);
+                        }
                     }
                 }
             }
@@ -321,6 +338,11 @@ impl Page for ZeugtrisPage {
         if self.game_over {
             match key {
                 Key::Esc => return Ok(Some(PageId::Menu)),
+                Key::Ctrl('r') => {
+                    // Restart game
+                    *self = ZeugtrisPage::new()?;
+                    return Ok(None);
+                }
                 _ => return Ok(None),
             }
         }

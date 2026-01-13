@@ -2,7 +2,7 @@ mod pages;
 mod display;
 
 use anyhow::Result;
-use pages::{PageId, LogoPage, MenuPage, WriteMenuPage};
+use pages::{PageId, LogoPage, MenuPage, WriteMenuPage, ZeugtrisMenuPage, ZeugtrisPage};
 use display::SharpDisplay;
 use std::collections::HashMap;
 
@@ -13,23 +13,22 @@ struct App {
 }
 
 impl App {
-    // Update App::new() to include new pages
-fn new() -> Result<Self> {
-    let display = SharpDisplay::new(6)?;
-    
-    let mut pages: HashMap<PageId, Box<dyn pages::Page>> = HashMap::new();
-    pages.insert(PageId::Logo, Box::new(LogoPage::new()?));
-    pages.insert(PageId::Menu, Box::new(MenuPage::new()?));
-    pages.insert(PageId::WriteMenu, Box::new(WriteMenuPage::new()?));
-    pages.insert(PageId::ZeugtrisMenu, Box::new(ZeugtrisMenuPage::new()?));  // Add this
-    pages.insert(PageId::Zeugtris, Box::new(ZeugtrisPage::new()?));        // Add this
-    
-    Ok(Self {
-        display,
-        current_page: PageId::Logo,
-        pages,
-    })
-}
+    fn new() -> Result<Self> {
+        let display = SharpDisplay::new(6)?;
+        
+        let mut pages: HashMap<PageId, Box<dyn pages::Page>> = HashMap::new();
+        pages.insert(PageId::Logo, Box::new(LogoPage::new()?));
+        pages.insert(PageId::Menu, Box::new(MenuPage::new()?));
+        pages.insert(PageId::WriteMenu, Box::new(WriteMenuPage::new()?));
+        pages.insert(PageId::ZeugtrisMenu, Box::new(ZeugtrisMenuPage::new()?));
+        pages.insert(PageId::Zeugtris, Box::new(ZeugtrisPage::new()?));
+        
+        Ok(Self {
+            display,
+            current_page: PageId::Logo,
+            pages,
+        })
+    }
     
     fn run(&mut self) -> Result<()> {
         use termion::{input::TermRead, raw::IntoRawMode};
