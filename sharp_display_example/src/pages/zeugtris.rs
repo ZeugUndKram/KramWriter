@@ -482,7 +482,7 @@ impl ZeugtrisPage {
         }
     }
     
-        fn draw_game_info(&self, display: &mut SharpDisplay) {
+    fn draw_game_info(&self, display: &mut SharpDisplay) {
         // Draw next piece preview with label box
         let next_box_x = NEXT_X - 5;
         let next_box_y = NEXT_Y - 15;
@@ -613,6 +613,7 @@ impl ZeugtrisPage {
             }
         }
     }
+}
 
 impl Page for ZeugtrisPage {
     fn draw(&mut self, display: &mut SharpDisplay) -> Result<()> {
