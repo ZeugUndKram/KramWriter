@@ -4,6 +4,8 @@ use anyhow::Result;
 use termion::event::Key;
 use rpi_memory_display::Pixel;
 
+const LETTER_SPACING: usize = 2;  // Adjust this: 0 = no space, 1-3 = small space
+
 pub struct WriteMenuPage {
     font_bitmap: Option<(Vec<Pixel>, usize, usize)>,
     font_char_width: usize,
@@ -162,7 +164,7 @@ impl WriteMenuPage {
             let actual_width = if rightmost >= leftmost { 
                 (rightmost - leftmost + 1).min(char_width) 
             } else { 
-                8  // Space character - narrower
+                8  // Space character
             };
             
             widths.push(actual_width);
@@ -189,7 +191,6 @@ impl WriteMenuPage {
             let src_x = grid_x * char_width;
             let src_y = grid_y * char_height;
             
-            // Get character bounds
             let mut leftmost = char_width;
             let mut rightmost = 0;
             
@@ -206,7 +207,6 @@ impl WriteMenuPage {
                 }
             }
             
-            // Only draw the actual character pixels, not the full 30px box
             if rightmost >= leftmost {
                 for dy in 0..char_height {
                     for dx in leftmost..=rightmost {
@@ -238,11 +238,11 @@ impl WriteMenuPage {
             let char_width = if char_index < self.char_widths.len() { 
                 self.char_widths[char_index] 
             } else { 
-                8  // Default narrow width
+                8
             };
             
             self.draw_char_cropped(display, current_x, y, c);
-            current_x += char_width; // Move by actual character width
+            current_x += char_width + LETTER_SPACING; // Added spacing
         }
     }
     
@@ -255,9 +255,10 @@ impl WriteMenuPage {
             } else { 
                 8
             };
-            width += char_width;
+            width += char_width + LETTER_SPACING; // Added spacing
         }
-        width
+        // Remove last spacing
+        if width > 0 { width - LETTER_SPACING } else { 0 }
     }
 }
 
@@ -272,7 +273,6 @@ impl Page for WriteMenuPage {
             
             self.draw_text(display, x, y, &self.current_text);
             
-            // Draw instruction with simple font
             let instruction = "Press ESC to return";
             let instr_width = instruction.len() * 6;
             let instr_x = (400 - instr_width) / 2;
