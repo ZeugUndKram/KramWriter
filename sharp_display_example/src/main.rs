@@ -35,24 +35,18 @@ impl App {
         self.draw_current_page()?;
         
         for key in stdin.keys() {
-            match key? {
-                termion::event::Key::Char('\n') => {
-                    if let Some(page) = self.pages.get_mut(&self.current_page) {
-                        if let Some(next_page) = page.handle_key(termion::event::Key::Char('\n'))? {
-                            self.current_page = next_page;
-                            self.draw_current_page()?;
-                        }
-                    }
+            let key = key?;
+            
+            if let Some(page) = self.pages.get_mut(&self.current_page) {
+                if let Some(next_page) = page.handle_key(key)? {
+                    self.current_page = next_page;
                 }
-                termion::event::Key::Ctrl('c') => break,
-                key => {
-                    if let Some(page) = self.pages.get_mut(&self.current_page) {
-                        if let Some(next_page) = page.handle_key(key)? {
-                            self.current_page = next_page;
-                            self.draw_current_page()?;
-                        }
-                    }
-                }
+            }
+            
+            self.draw_current_page()?;
+            
+            if key == termion::event::Key::Ctrl('c') {
+                break;
             }
         }
         
