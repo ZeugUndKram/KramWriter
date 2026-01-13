@@ -115,6 +115,7 @@ pub struct ZeugtrisPage {
     needs_redraw: bool,
     last_frame_time: Instant,
     frame_count: u32,
+    initialized: bool,  // NEW: Track if game has been initialized
 }
 
 impl ZeugtrisPage {
@@ -127,9 +128,9 @@ impl ZeugtrisPage {
             level: 1,
             game_over: false,
             paused: false,
-            current_piece: rng.gen_range(0..7),
+            current_piece: 0,  // Will be set by new_piece()
             current_rotation: 0,
-            current_x: ARENA_WIDTH as i32 / 2 - 2,
+            current_x: 0,
             current_y: 0,
             last_update: Instant::now(),
             drop_interval: Duration::from_millis(1000),
@@ -139,9 +140,11 @@ impl ZeugtrisPage {
             needs_redraw: true,
             last_frame_time: Instant::now(),
             frame_count: 0,
+            initialized: false,  // Game not yet initialized
         };
         
-        game.next_piece = rng.gen_range(0..7);
+        // Generate first piece
+        game.new_piece();
         
         Ok(game)
     }
@@ -156,11 +159,16 @@ impl ZeugtrisPage {
         self.current_y = 0;
         self.can_hold = true;
         
+        // Reset drop timer when new piece appears
+        self.last_update = Instant::now();
+        
+        // Check if game over (new piece can't be placed)
         if !self.valid_position(self.current_piece, self.current_rotation, self.current_x, self.current_y) {
             self.game_over = true;
         }
         
         self.needs_redraw = true;
+        self.initialized = true;  // Mark as initialized
     }
     
     fn valid_position(&self, piece: usize, rotation: usize, x: i32, y: i32) -> bool {
@@ -231,7 +239,6 @@ impl ZeugtrisPage {
         
         self.check_lines();
         self.new_piece();
-        self.needs_redraw = true;
     }
     
     fn check_lines(&mut self) {
@@ -316,6 +323,9 @@ impl ZeugtrisPage {
         
         self.can_hold = false;
         
+        // Reset drop timer when holding
+        self.last_update = Instant::now();
+        
         if !self.valid_position(self.current_piece, self.current_rotation, self.current_x, self.current_y) {
             self.game_over = true;
         }
@@ -324,12 +334,13 @@ impl ZeugtrisPage {
     }
     
     fn update_game(&mut self) {
-        if self.game_over || self.paused {
+        if self.game_over || self.paused || !self.initialized {
             return;
         }
         
         let now = Instant::now();
         
+        // Auto-drop piece based on time
         if now.duration_since(self.last_update) >= self.drop_interval {
             if self.valid_position(self.current_piece, self.current_rotation, self.current_x, self.current_y + 1) {
                 self.current_y += 1;
@@ -471,13 +482,13 @@ impl ZeugtrisPage {
         }
         
         // Draw ghost piece
-        if !self.game_over && !self.paused {
+        if !self.game_over && !self.paused && self.initialized {
             let ghost_y = self.ghost_y();
             self.draw_piece(display, self.current_x, ghost_y, self.current_piece, self.current_rotation, true);
         }
         
         // Draw current piece
-        if !self.game_over && !self.paused {
+        if !self.game_over && !self.paused && self.initialized {
             self.draw_piece(display, self.current_x, self.current_y, self.current_piece, self.current_rotation, false);
         }
     }
@@ -704,13 +715,14 @@ impl Page for ZeugtrisPage {
             Key::Down => {
                 if self.valid_position(self.current_piece, self.current_rotation, self.current_x, self.current_y + 1) {
                     self.current_y += 1;
-                    self.last_update = Instant::now();
+                    self.last_update = Instant::now(); // Reset drop timer
                     self.needs_redraw = true;
                 } else {
                     self.lock_piece();
                 }
             }
             Key::Up | Key::Char(' ') => {
+                // Hard drop
                 while self.valid_position(self.current_piece, self.current_rotation, self.current_x, self.current_y + 1) {
                     self.current_y += 1;
                 }
