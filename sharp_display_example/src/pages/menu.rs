@@ -4,48 +4,39 @@ use anyhow::Result;
 use termion::event::Key;
 use rpi_memory_display::Pixel;
 
+const MENU_OPTIONS: [&str; 5] = [
+    "Write_0.bmp",
+    "Learn_0.bmp", 
+    "Zeugtris_0.bmp",
+    "Settings_0.bmp",
+    "Credits_0.bmp",
+];
+
 pub struct MenuPage {
-    image_data: Option<Vec<Pixel>>,
-    image_width: usize,
-    image_height: usize,
+    current_index: usize,
+    images: Vec<Option<(Vec<Pixel>, usize, usize)>>,
 }
 
 impl MenuPage {
     pub fn new() -> Result<Self> {
-        let path = "/home/kramwriter/KramWriter/assets/Write_0.bmp";
-        println!("Loading menu image from: {}", path);
+        let mut images = Vec::new();
         
-        match std::fs::read(path) {
-            Ok(data) => {
-                println!("Loaded {} bytes", data.len());
-                match Self::parse_bmp(&data) {
-                    Some((pixels, width, height)) => {
-                        println!("Parsed BMP: {}x{}, {} pixels", width, height, pixels.len());
-                        Ok(Self {
-                            image_data: Some(pixels),
-                            image_width: width,
-                            image_height: height,
-                        })
-                    }
-                    None => {
-                        println!("Failed to parse BMP");
-                        Ok(Self {
-                            image_data: None,
-                            image_width: 0,
-                            image_height: 0,
-                        })
-                    }
+        for option in MENU_OPTIONS.iter() {
+            let path = format!("/home/kramwriter/KramWriter/assets/{}", option);
+            match std::fs::read(&path) {
+                Ok(data) => {
+                    images.push(Self::parse_bmp(&data));
+                }
+                Err(_) => {
+                    images.push(None);
                 }
             }
-            Err(e) => {
-                println!("Failed to read menu image: {}", e);
-                Ok(Self {
-                    image_data: None,
-                    image_width: 0,
-                    image_height: 0,
-                })
-            }
         }
+        
+        Ok(Self {
+            current_index: 0,
+            images,
+        })
     }
     
     fn parse_bmp(data: &[u8]) -> Option<(Vec<Pixel>, usize, usize)> {
@@ -138,13 +129,14 @@ impl Page for MenuPage {
     fn draw(&mut self, display: &mut SharpDisplay) -> Result<()> {
         display.clear()?;
         
-        if let Some(image_pixels) = &self.image_data {
-            let start_x = (400usize.saturating_sub(self.image_width)) / 2;
-            let start_y = (240usize.saturating_sub(self.image_height)) / 2;
+        if let Some(image_data) = &self.images[self.current_index] {
+            let (pixels, width, height) = image_data;
+            let start_x = (400usize.saturating_sub(*width)) / 2;
+            let start_y = (240usize.saturating_sub(*height)) / 2;
             
-            for y in 0..self.image_height.min(240) {
-                for x in 0..self.image_width.min(400) {
-                    let pixel = image_pixels[y * self.image_width + x];
+            for y in 0..height.min(&240) {
+                for x in 0..width.min(&400) {
+                    let pixel = pixels[y * width + x];
                     display.draw_pixel(start_x + x, start_y + y, pixel);
                 }
             }
@@ -159,6 +151,18 @@ impl Page for MenuPage {
     fn handle_key(&mut self, key: Key) -> Result<Option<PageId>> {
         match key {
             Key::Char('\n') => Ok(Some(PageId::Logo)),
+            Key::Up => {
+                if self.current_index > 0 {
+                    self.current_index -= 1;
+                }
+                Ok(None)
+            }
+            Key::Down => {
+                if self.current_index < MENU_OPTIONS.len() - 1 {
+                    self.current_index += 1;
+                }
+                Ok(None)
+            }
             _ => Ok(None),
         }
     }
