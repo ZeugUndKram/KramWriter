@@ -25,24 +25,18 @@ pub struct WriteMenuPage {
 impl WriteMenuPage {
     pub fn new() -> Result<Self> {
         let font_path = "/home/kramwriter/KramWriter/fonts/bebas24.bmp";
-        println!("Loading font from: {}", font_path);
         
         let (font_bitmap, char_widths) = match std::fs::read(font_path) {
             Ok(data) => {
-                println!("Font loaded: {} bytes", data.len());
                 match Self::parse_font_bmp(&data) {
                     Some((bitmap, width, height)) => {
-                        println!("Font dimensions: {}x{}", width, height);
                         let widths = Self::measure_char_widths(&bitmap, width, 30, 30, 19);
                         (Some((bitmap, width, height)), widths)
                     }
                     None => (None, Vec::new()),
                 }
             }
-            Err(e) => {
-                println!("Failed to load font: {}", e);
-                (None, Vec::new())
-            }
+            Err(_) => (None, Vec::new()),
         };
         
         Ok(Self {
@@ -97,42 +91,6 @@ impl WriteMenuPage {
                         } else {
                             Pixel::White
                         };
-                        pixels.push(pixel);
-                    }
-                }
-            }
-            24 => {
-                let row_bytes = ((width * 3 + 3) / 4) * 4;
-                for y in 0..height {
-                    let row_start = data_offset + (height - 1 - y) * row_bytes;
-                    for x in 0..width {
-                        let pixel_start = row_start + x * 3;
-                        if pixel_start + 2 >= data.len() {
-                            pixels.push(Pixel::White);
-                            continue;
-                        }
-                        let b = data[pixel_start] as u32;
-                        let g = data[pixel_start + 1] as u32;
-                        let r = data[pixel_start + 2] as u32;
-                        
-                        let luminance = (r * 299 + g * 587 + b * 114) / 1000;
-                        let pixel = if luminance > 128 { Pixel::Black } else { Pixel::White };
-                        pixels.push(pixel);
-                    }
-                }
-            }
-            1 => {
-                let row_bytes = ((width + 31) / 32) * 4;
-                for y in 0..height {
-                    let row_start = data_offset + (height - 1 - y) * row_bytes;
-                    for x in 0..width {
-                        if row_start + (x / 8) >= data.len() {
-                            pixels.push(Pixel::White);
-                            continue;
-                        }
-                        let byte = data[row_start + (x / 8)];
-                        let bit = 7 - (x % 8);
-                        let pixel = if (byte >> bit) & 1 == 1 { Pixel::Black } else { Pixel::White };
                         pixels.push(pixel);
                     }
                 }
@@ -332,6 +290,7 @@ impl WriteMenuPage {
     
     fn ensure_cursor_visible(&mut self) {
         let (wrapped_cursor_line, _) = self.cursor_to_wrapped_position();
+        let total_wrapped = self.total_wrapped_lines();
         
         // If cursor is above visible area
         if wrapped_cursor_line < self.scroll_offset {
@@ -340,6 +299,14 @@ impl WriteMenuPage {
         // If cursor is below visible area
         else if wrapped_cursor_line >= self.scroll_offset + MAX_VISIBLE_LINES {
             self.scroll_offset = wrapped_cursor_line - MAX_VISIBLE_LINES + 1;
+        }
+        
+        // Ensure scroll offset is valid
+        if total_wrapped > MAX_VISIBLE_LINES {
+            let max_scroll = total_wrapped - MAX_VISIBLE_LINES;
+            self.scroll_offset = self.scroll_offset.min(max_scroll);
+        } else {
+            self.scroll_offset = 0;
         }
     }
 }
@@ -353,13 +320,8 @@ impl Page for WriteMenuPage {
             
             // Calculate all wrapped lines
             let mut all_wrapped_lines = Vec::new();
-            let mut line_to_original = Vec::new(); // Maps wrapped line to original line index
-            for (line_idx, line) in self.lines.iter().enumerate() {
-                let wrapped = self.wrap_line(line);
-                for _ in &wrapped {
-                    line_to_original.push(line_idx);
-                }
-                all_wrapped_lines.extend(wrapped);
+            for line in &self.lines {
+                all_wrapped_lines.extend(self.wrap_line(line));
             }
             
             // Draw visible wrapped lines
@@ -372,9 +334,16 @@ impl Page for WriteMenuPage {
                     
                     // Draw cursor if this wrapped line contains cursor
                     let (cursor_wrapped_line, cursor_in_wrapped) = self.cursor_to_wrapped_position();
-                    if wrapped_idx == cursor_wrapped_line {
-                        let before_cursor = &text[..cursor_in_wrapped.min(text.len())];
-                        let cursor_x = LEFT_MARGIN + self.calculate_text_width(before_cursor);
+                    if wrapped_idx == cursor_wrapped_line && cursor_in_wrapped <= text.len() {
+                        // Get characters up to cursor position
+                        let mut before_cursor = String::new();
+                        let mut count = 0;
+                        for c in text.chars() {
+                            if count >= cursor_in_wrapped { break; }
+                            before_cursor.push(c);
+                            count += 1;
+                        }
+                        let cursor_x = LEFT_MARGIN + self.calculate_text_width(&before_cursor);
                         for dy in 0..self.font_char_height {
                             display.draw_pixel(cursor_x, line_y + dy, Pixel::Black);
                         }
@@ -393,21 +362,6 @@ impl Page for WriteMenuPage {
             if total_wrapped > self.scroll_offset + MAX_VISIBLE_LINES {
                 for dy in 0..6 {
                     display.draw_pixel(5, 230 + dy, Pixel::Black);
-                }
-            }
-            
-            // Draw status line
-            let status = format!("Line {} of {}", self.cursor_line + 1, self.lines.len());
-            for (i, c) in status.chars().enumerate() {
-                match c {
-                    '0'..='9' => {
-                        for dy in 2..6 {
-                            for dx in 1..5 {
-                                display.draw_pixel(300 + i * 6 + dx, 220 + dy, Pixel::Black);
-                            }
-                        }
-                    }
-                    _ => {}
                 }
             }
             
@@ -436,11 +390,14 @@ impl Page for WriteMenuPage {
     fn handle_key(&mut self, key: Key) -> Result<Option<PageId>> {
         match key {
             Key::Char('\n') => {
+                // SAFE string split at character boundary
                 let current_line = self.lines.remove(self.cursor_line);
-                let (left, right) = current_line.split_at(self.cursor_pos.min(current_line.len()));
+                let mut chars = current_line.chars();
+                let left: String = chars.by_ref().take(self.cursor_pos).collect();
+                let right: String = chars.collect();
                 
-                self.lines.insert(self.cursor_line, left.to_string());
-                self.lines.insert(self.cursor_line + 1, right.to_string());
+                self.lines.insert(self.cursor_line, left);
+                self.lines.insert(self.cursor_line + 1, right);
                 self.cursor_line += 1;
                 self.cursor_pos = 0;
                 self.ensure_cursor_visible();
@@ -451,32 +408,55 @@ impl Page for WriteMenuPage {
                     self.lines.push(String::new());
                 }
                 let line = &mut self.lines[self.cursor_line];
-                if self.cursor_pos <= line.len() {
-                    line.insert(self.cursor_pos, c);
-                    self.cursor_pos += 1;
+                
+                // Insert at character position (not byte position)
+                let mut new_line = String::new();
+                for (i, ch) in line.chars().enumerate() {
+                    if i == self.cursor_pos {
+                        new_line.push(c);
+                    }
+                    new_line.push(ch);
                 }
+                if self.cursor_pos >= line.chars().count() {
+                    new_line.push(c);
+                }
+                *line = new_line;
+                self.cursor_pos += 1;
                 self.ensure_cursor_visible();
                 Ok(None)
             }
             Key::Backspace => {
                 if self.cursor_pos > 0 {
                     let line = &mut self.lines[self.cursor_line];
-                    line.remove(self.cursor_pos - 1);
+                    let mut new_line = String::new();
+                    for (i, ch) in line.chars().enumerate() {
+                        if i != self.cursor_pos - 1 {
+                            new_line.push(ch);
+                        }
+                    }
+                    *line = new_line;
                     self.cursor_pos -= 1;
                 } else if self.cursor_line > 0 {
                     let current_line = self.lines.remove(self.cursor_line);
                     self.cursor_line -= 1;
                     let prev_line = &mut self.lines[self.cursor_line];
-                    self.cursor_pos = prev_line.len();
+                    self.cursor_pos = prev_line.chars().count();
                     prev_line.push_str(&current_line);
                 }
                 self.ensure_cursor_visible();
                 Ok(None)
             }
             Key::Delete => {
-                let line_len = self.lines[self.cursor_line].len();
-                if self.cursor_pos < line_len {
-                    self.lines[self.cursor_line].remove(self.cursor_pos);
+                let line = &mut self.lines[self.cursor_line];
+                let char_count = line.chars().count();
+                if self.cursor_pos < char_count {
+                    let mut new_line = String::new();
+                    for (i, ch) in line.chars().enumerate() {
+                        if i != self.cursor_pos {
+                            new_line.push(ch);
+                        }
+                    }
+                    *line = new_line;
                 } else if self.cursor_line < self.lines.len() - 1 {
                     let next_line = self.lines.remove(self.cursor_line + 1);
                     self.lines[self.cursor_line].push_str(&next_line);
@@ -489,14 +469,14 @@ impl Page for WriteMenuPage {
                     self.cursor_pos -= 1;
                 } else if self.cursor_line > 0 {
                     self.cursor_line -= 1;
-                    self.cursor_pos = self.lines[self.cursor_line].len();
+                    self.cursor_pos = self.lines[self.cursor_line].chars().count();
                 }
                 self.ensure_cursor_visible();
                 Ok(None)
             }
             Key::Right => {
-                let line_len = self.lines[self.cursor_line].len();
-                if self.cursor_pos < line_len {
+                let char_count = self.lines[self.cursor_line].chars().count();
+                if self.cursor_pos < char_count {
                     self.cursor_pos += 1;
                 } else if self.cursor_line < self.lines.len() - 1 {
                     self.cursor_line += 1;
@@ -508,8 +488,8 @@ impl Page for WriteMenuPage {
             Key::Up => {
                 if self.cursor_line > 0 {
                     self.cursor_line -= 1;
-                    let line_len = self.lines[self.cursor_line].len();
-                    self.cursor_pos = self.cursor_pos.min(line_len);
+                    let char_count = self.lines[self.cursor_line].chars().count();
+                    self.cursor_pos = self.cursor_pos.min(char_count);
                 }
                 self.ensure_cursor_visible();
                 Ok(None)
@@ -517,8 +497,8 @@ impl Page for WriteMenuPage {
             Key::Down => {
                 if self.cursor_line < self.lines.len() - 1 {
                     self.cursor_line += 1;
-                    let line_len = self.lines[self.cursor_line].len();
-                    self.cursor_pos = self.cursor_pos.min(line_len);
+                    let char_count = self.lines[self.cursor_line].chars().count();
+                    self.cursor_pos = self.cursor_pos.min(char_count);
                 }
                 self.ensure_cursor_visible();
                 Ok(None)
@@ -526,13 +506,22 @@ impl Page for WriteMenuPage {
             Key::PageUp => {
                 if self.scroll_offset > 0 {
                     self.scroll_offset = self.scroll_offset.saturating_sub(MAX_VISIBLE_LINES);
-                    // Adjust cursor to stay visible
-                    let (cursor_wrapped, _) = self.cursor_to_wrapped_position();
-                    if cursor_wrapped < self.scroll_offset {
-                        // Need to move cursor up
-                        // Simplified: just move to top visible line
-                        self.cursor_line = self.scroll_offset.min(self.lines.len() - 1);
-                        self.cursor_pos = 0;
+                    // Move cursor to first visible line
+                    let all_wrapped: Vec<String> = self.lines.iter()
+                        .flat_map(|l| self.wrap_line(l))
+                        .collect();
+                    if self.scroll_offset < all_wrapped.len() {
+                        // Find which original line this wrapped line belongs to
+                        let mut wrapped_count = 0;
+                        for (line_idx, line) in self.lines.iter().enumerate() {
+                            let wrapped = self.wrap_line(line).len();
+                            if wrapped_count + wrapped > self.scroll_offset {
+                                self.cursor_line = line_idx;
+                                self.cursor_pos = 0;
+                                break;
+                            }
+                            wrapped_count += wrapped;
+                        }
                     }
                 }
                 Ok(None)
@@ -541,12 +530,23 @@ impl Page for WriteMenuPage {
                 let total_wrapped = self.total_wrapped_lines();
                 if self.scroll_offset + MAX_VISIBLE_LINES < total_wrapped {
                     self.scroll_offset = (self.scroll_offset + MAX_VISIBLE_LINES).min(total_wrapped - 1);
-                    // Adjust cursor to stay visible
-                    let (cursor_wrapped, _) = self.cursor_to_wrapped_position();
-                    if cursor_wrapped >= self.scroll_offset + MAX_VISIBLE_LINES {
-                        // Need to move cursor down
-                        self.cursor_line = (self.scroll_offset + MAX_VISIBLE_LINES - 1).min(self.lines.len() - 1);
-                        self.cursor_pos = 0;
+                    // Move cursor to last visible line
+                    let all_wrapped: Vec<String> = self.lines.iter()
+                        .flat_map(|l| self.wrap_line(l))
+                        .collect();
+                    let target_idx = (self.scroll_offset + MAX_VISIBLE_LINES - 1).min(all_wrapped.len() - 1);
+                    if target_idx < all_wrapped.len() {
+                        // Find which original line this wrapped line belongs to
+                        let mut wrapped_count = 0;
+                        for (line_idx, line) in self.lines.iter().enumerate() {
+                            let wrapped = self.wrap_line(line).len();
+                            if wrapped_count + wrapped > target_idx {
+                                self.cursor_line = line_idx;
+                                self.cursor_pos = line.chars().count(); // End of line
+                                break;
+                            }
+                            wrapped_count += wrapped;
+                        }
                     }
                 }
                 Ok(None)
