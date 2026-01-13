@@ -1,6 +1,8 @@
 pub mod logo;
 pub mod menu;
 pub mod write_menu;
+pub mod zeugtris_menu;
+pub mod zeugtris;
 
 use crate::display::SharpDisplay;
 use anyhow::Result;
@@ -11,6 +13,8 @@ pub enum PageId {
     Logo,
     Menu,
     WriteMenu,
+    ZeugtrisMenu,  // Add this
+    Zeugtris,      // Add this
 }
 
 pub trait Page {
@@ -21,3 +25,5 @@ pub trait Page {
 pub use logo::LogoPage;
 pub use menu::MenuPage;
 pub use write_menu::WriteMenuPage;
+pub use zeugtris_menu::ZeugtrisMenuPage;
+pub use zeugtris::ZeugtrisPage;

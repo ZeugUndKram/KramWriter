@@ -13,20 +13,23 @@ struct App {
 }
 
 impl App {
-    fn new() -> Result<Self> {
-        let display = SharpDisplay::new(6)?;
-        
-        let mut pages: HashMap<PageId, Box<dyn pages::Page>> = HashMap::new();
-        pages.insert(PageId::Logo, Box::new(LogoPage::new()?));
-        pages.insert(PageId::Menu, Box::new(MenuPage::new()?));
-        pages.insert(PageId::WriteMenu, Box::new(WriteMenuPage::new()?));
-        
-        Ok(Self {
-            display,
-            current_page: PageId::Logo,
-            pages,
-        })
-    }
+    // Update App::new() to include new pages
+fn new() -> Result<Self> {
+    let display = SharpDisplay::new(6)?;
+    
+    let mut pages: HashMap<PageId, Box<dyn pages::Page>> = HashMap::new();
+    pages.insert(PageId::Logo, Box::new(LogoPage::new()?));
+    pages.insert(PageId::Menu, Box::new(MenuPage::new()?));
+    pages.insert(PageId::WriteMenu, Box::new(WriteMenuPage::new()?));
+    pages.insert(PageId::ZeugtrisMenu, Box::new(ZeugtrisMenuPage::new()?));  // Add this
+    pages.insert(PageId::Zeugtris, Box::new(ZeugtrisPage::new()?));        // Add this
+    
+    Ok(Self {
+        display,
+        current_page: PageId::Logo,
+        pages,
+    })
+}
     
     fn run(&mut self) -> Result<()> {
         use termion::{input::TermRead, raw::IntoRawMode};
