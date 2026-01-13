@@ -6,37 +6,29 @@ use rpi_memory_display::Pixel;
 
 const LETTER_SPACING: usize = 2;
 const LINE_SPACING: usize = 3;
-const MAX_VISIBLE_LINES: usize = 6;
+const MAX_VISIBLE_LINES: usize = 7;
 const MAX_LINE_WIDTH: usize = 380;
 const LEFT_MARGIN: usize = 10;
-const WORD_COUNT_TOP_PADDING: isize = -5; // Changed to isize to allow negative values
 
 pub struct WriteMenuPage {
     font_bitmap: Option<(Vec<Pixel>, usize, usize)>,
-    small_font_bitmap: Option<(Vec<Pixel>, usize, usize)>,
     font_char_width: usize,
     font_char_height: usize,
-    small_font_char_width: usize,
-    small_font_char_height: usize,
     chars_per_row: usize,
-    small_chars_per_row: usize,
     char_widths: Vec<usize>,
-    small_char_widths: Vec<usize>,
     lines: Vec<String>,
     cursor_line: usize,
     cursor_pos: usize,
     scroll_offset: usize,
-    word_count: usize,
 }
 
 impl WriteMenuPage {
     pub fn new() -> Result<Self> {
-        let font_path = "/home/kramwriter/KramWriter/fonts/bebas24.bmp";
-        let small_font_path = "/home/kramwriter/KramWriter/fonts/libsans12.bmp";
+        let font_path = "/home/kramwriter/KramWriter/fonts/libsans20.bmp";
         
         let (font_bitmap, char_widths) = match std::fs::read(font_path) {
             Ok(data) => {
-                match Self::parse_font_bmp(&data, false) {
+                match Self::parse_font_bmp(&data) {
                     Some((bitmap, width, height)) => {
                         let widths = Self::measure_char_widths(&bitmap, width, 30, 30, 19);
                         (Some((bitmap, width, height)), widths)
@@ -47,44 +39,20 @@ impl WriteMenuPage {
             Err(_) => (None, Vec::new()),
         };
         
-        let (small_font_bitmap, small_char_widths) = match std::fs::read(small_font_path) {
-            Ok(data) => {
-                match Self::parse_font_bmp(&data, true) {
-                    Some((bitmap, width, height)) => {
-                        let widths = Self::measure_char_widths(&bitmap, width, 12, 12, 32);
-                        (Some((bitmap, width, height)), widths)
-                    }
-                    None => (None, Vec::new()),
-                }
-            }
-            Err(_) => (None, Vec::new()),
-        };
-        
-        let mut page = Self {
+        Ok(Self {
             font_bitmap,
-            small_font_bitmap,
             font_char_width: 30,
             font_char_height: 30,
-            small_font_char_width: 12,
-            small_font_char_height: 12,
             chars_per_row: 19,
-            small_chars_per_row: 32,
             char_widths,
-            small_char_widths,
             lines: vec![String::new()],
             cursor_line: 0,
             cursor_pos: 0,
             scroll_offset: 0,
-            word_count: 0,
-        };
-        
-        // Calculate initial word count
-        page.update_word_count();
-        
-        Ok(page)
+        })
     }
     
-    fn parse_font_bmp(data: &[u8], is_small_font: bool) -> Option<(Vec<Pixel>, usize, usize)> {
+    fn parse_font_bmp(data: &[u8]) -> Option<(Vec<Pixel>, usize, usize)> {
         if data.len() < 54 { return None; }
         if data[0] != 0x42 || data[1] != 0x4D { return None; }
         
@@ -119,33 +87,6 @@ impl WriteMenuPage {
                         let pixel = if alpha < 128 {
                             Pixel::White
                         } else if luminance > 128 {
-                            Pixel::Black
-                        } else {
-                            Pixel::White
-                        };
-                        pixels.push(pixel);
-                    }
-                }
-            }
-            24 => {
-                let row_bytes = ((width * 3 + 3) / 4) * 4; // BMP rows are padded to 4 bytes
-                for y in 0..height {
-                    let row_start = data_offset + (height - 1 - y) * row_bytes;
-                    for x in 0..width {
-                        let pixel_start = row_start + x * 3;
-                        if pixel_start + 2 >= data.len() {
-                            pixels.push(Pixel::White);
-                            continue;
-                        }
-                        let b = data[pixel_start] as u32;
-                        let g = data[pixel_start + 1] as u32;
-                        let r = data[pixel_start + 2] as u32;
-                        
-                        let luminance = (r * 299 + g * 587 + b * 114) / 1000;
-                        
-                        // For 24-bit BMPs, we need to decide threshold based on font
-                        let threshold = if is_small_font { 128 } else { 128 };
-                        let pixel = if luminance > threshold {
                             Pixel::Black
                         } else {
                             Pixel::White
@@ -191,7 +132,7 @@ impl WriteMenuPage {
             let actual_width = if rightmost >= leftmost { 
                 (rightmost - leftmost + 1).min(char_width) 
             } else { 
-                if char_width == 12 { 6 } else { 8 } // Different default for small font
+                8
             };
             
             widths.push(actual_width);
@@ -205,119 +146,50 @@ impl WriteMenuPage {
         printable_chars.find(c).unwrap_or(0)
     }
     
-    fn draw_char_cropped(&self, display: &mut SharpDisplay, x: usize, y: usize, c: char, use_small_font: bool) {
-        if use_small_font {
-            if let Some((font_bitmap, font_width, _)) = &self.small_font_bitmap {
-                let char_index = Self::get_char_index(c);
-                let char_widths = &self.small_char_widths;
-                let char_width = self.small_font_char_width;
-                let char_height = self.small_font_char_height;
-                let chars_per_row = self.small_chars_per_row;
-                
-                let char_width_actual = if char_index < char_widths.len() { 
-                    char_widths[char_index] 
-                } else { 
-                    6 
-                };
-                
-                let grid_x = char_index % chars_per_row;
-                let grid_y = char_index / chars_per_row;
-                
-                let src_x = grid_x * char_width;
-                let src_y = grid_y * char_height;
-                
-                let mut leftmost = char_width;
-                let mut rightmost = 0;
-                
-                for dx in 0..char_width {
-                    for dy in 0..char_height {
-                        let src_pixel_x = src_x + dx;
-                        let src_pixel_y = src_y + dy;
-                        let pixel_index = src_pixel_y * font_width + src_pixel_x;
-                        
-                        if pixel_index < font_bitmap.len() && font_bitmap[pixel_index] == Pixel::Black {
-                            if dx < leftmost { leftmost = dx; }
-                            if dx > rightmost { rightmost = dx; }
-                        }
-                    }
-                }
-                
-                if rightmost >= leftmost {
-                    let actual_rightmost = leftmost + char_width_actual - 1;
-                    for dy in 0..char_height {
-                        for dx in leftmost..=actual_rightmost.min(rightmost) {
-                            let src_pixel_x = src_x + dx;
-                            let src_pixel_y = src_y + dy;
-                            let pixel_index = src_pixel_y * font_width + src_pixel_x;
-                            
-                            if pixel_index < font_bitmap.len() {
-                                let pixel = font_bitmap[pixel_index];
-                                if pixel == Pixel::Black {
-                                    let screen_x = x + dx - leftmost;
-                                    let screen_y = y + dy;
-                                    
-                                    if screen_x < 400 && screen_y < 240 {
-                                        display.draw_pixel(screen_x, screen_y, Pixel::White);
-                                    }
-                                }
-                            }
-                        }
+    fn draw_char_cropped(&self, display: &mut SharpDisplay, x: usize, y: usize, c: char) {
+        if let Some((pixels, font_width, _)) = &self.font_bitmap {
+            let char_index = Self::get_char_index(c);
+            let chars_per_row = self.chars_per_row;
+            let char_width = self.font_char_width;
+            let char_height = self.font_char_height;
+            
+            let grid_x = char_index % chars_per_row;
+            let grid_y = char_index / chars_per_row;
+            
+            let src_x = grid_x * char_width;
+            let src_y = grid_y * char_height;
+            
+            let mut leftmost = char_width;
+            let mut rightmost = 0;
+            
+            for dx in 0..char_width {
+                for dy in 0..char_height {
+                    let src_pixel_x = src_x + dx;
+                    let src_pixel_y = src_y + dy;
+                    let pixel_index = src_pixel_y * font_width + src_pixel_x;
+                    
+                    if pixel_index < pixels.len() && pixels[pixel_index] == Pixel::Black {
+                        if dx < leftmost { leftmost = dx; }
+                        if dx > rightmost { rightmost = dx; }
                     }
                 }
             }
-        } else {
-            if let Some((font_bitmap, font_width, _)) = &self.font_bitmap {
-                let char_index = Self::get_char_index(c);
-                let char_widths = &self.char_widths;
-                let char_width = self.font_char_width;
-                let char_height = self.font_char_height;
-                let chars_per_row = self.chars_per_row;
-                
-                let char_width_actual = if char_index < char_widths.len() { 
-                    char_widths[char_index] 
-                } else { 
-                    8 
-                };
-                
-                let grid_x = char_index % chars_per_row;
-                let grid_y = char_index / chars_per_row;
-                
-                let src_x = grid_x * char_width;
-                let src_y = grid_y * char_height;
-                
-                let mut leftmost = char_width;
-                let mut rightmost = 0;
-                
-                for dx in 0..char_width {
-                    for dy in 0..char_height {
+            
+            if rightmost >= leftmost {
+                for dy in 0..char_height {
+                    for dx in leftmost..=rightmost {
                         let src_pixel_x = src_x + dx;
                         let src_pixel_y = src_y + dy;
                         let pixel_index = src_pixel_y * font_width + src_pixel_x;
                         
-                        if pixel_index < font_bitmap.len() && font_bitmap[pixel_index] == Pixel::Black {
-                            if dx < leftmost { leftmost = dx; }
-                            if dx > rightmost { rightmost = dx; }
-                        }
-                    }
-                }
-                
-                if rightmost >= leftmost {
-                    let actual_rightmost = leftmost + char_width_actual - 1;
-                    for dy in 0..char_height {
-                        for dx in leftmost..=actual_rightmost.min(rightmost) {
-                            let src_pixel_x = src_x + dx;
-                            let src_pixel_y = src_y + dy;
-                            let pixel_index = src_pixel_y * font_width + src_pixel_x;
-                            
-                            if pixel_index < font_bitmap.len() {
-                                let pixel = font_bitmap[pixel_index];
-                                if pixel == Pixel::Black {
-                                    let screen_x = x + dx - leftmost;
-                                    let screen_y = y + dy;
-                                    
-                                    if screen_x < 400 && screen_y < 240 {
-                                        display.draw_pixel(screen_x, screen_y, pixel);
-                                    }
+                        if pixel_index < pixels.len() {
+                            let pixel = pixels[pixel_index];
+                            if pixel == Pixel::Black {
+                                let screen_x = x + dx - leftmost;
+                                let screen_y = y + dy;
+                                
+                                if screen_x < 400 && screen_y < 240 {
+                                    display.draw_pixel(screen_x, screen_y, pixel);
                                 }
                             }
                         }
@@ -327,58 +199,33 @@ impl WriteMenuPage {
         }
     }
     
-    fn draw_text_line(&self, display: &mut SharpDisplay, x: usize, y: usize, text: &str, use_small_font: bool) {
+    fn draw_text_line(&self, display: &mut SharpDisplay, x: usize, y: usize, text: &str) {
         let mut current_x = x;
         for c in text.chars() {
             let char_index = Self::get_char_index(c);
-            let char_widths = if use_small_font { &self.small_char_widths } else { &self.char_widths };
-            let char_width = if char_index < char_widths.len() { 
-                char_widths[char_index] 
+            let char_width = if char_index < self.char_widths.len() { 
+                self.char_widths[char_index] 
             } else { 
-                if use_small_font { 6 } else { 8 }
+                8
             };
             
-            self.draw_char_cropped(display, current_x, y, c, use_small_font);
+            self.draw_char_cropped(display, current_x, y, c);
             current_x += char_width + LETTER_SPACING;
         }
     }
     
-    fn calculate_text_width(&self, text: &str, use_small_font: bool) -> usize {
+    fn calculate_text_width(&self, text: &str) -> usize {
         let mut width = 0;
-        let char_widths = if use_small_font { &self.small_char_widths } else { &self.char_widths };
-        
         for c in text.chars() {
             let char_index = Self::get_char_index(c);
-            let char_width = if char_index < char_widths.len() { 
-                char_widths[char_index] 
+            let char_width = if char_index < self.char_widths.len() { 
+                self.char_widths[char_index] 
             } else { 
-                if use_small_font { 6 } else { 8 }
+                8
             };
             width += char_width + LETTER_SPACING;
         }
         if width > 0 { width - LETTER_SPACING } else { 0 }
-    }
-    
-    fn update_word_count(&mut self) {
-        let mut count = 0;
-        let mut in_word = false;
-        
-        for line in &self.lines {
-            for c in line.chars() {
-                if c.is_alphanumeric() {
-                    if !in_word {
-                        count += 1;
-                        in_word = true;
-                    }
-                } else {
-                    in_word = false;
-                }
-            }
-            // Reset at end of each line
-            in_word = false;
-        }
-        
-        self.word_count = count;
     }
     
     fn wrap_line(&self, line: &str) -> Vec<String> {
@@ -412,7 +259,7 @@ impl WriteMenuPage {
                     
                     // Start new line with the word that was after whitespace
                     current_line = move_to_next.trim_start().to_string();
-                    current_width = self.calculate_text_width(&current_line, false) + LETTER_SPACING;
+                    current_width = self.calculate_text_width(&current_line) + LETTER_SPACING;
                     
                     // Add current character to the new line
                     current_line.push(c);
@@ -492,7 +339,7 @@ impl WriteMenuPage {
             // Check each character position in the target wrapped line
             for pos_in_wrapped in 0..=wrapped_line.len() {
                 let prefix: String = wrapped_line.chars().take(pos_in_wrapped).collect();
-                let x_pos = LEFT_MARGIN + self.calculate_text_width(&prefix, false);
+                let x_pos = LEFT_MARGIN + self.calculate_text_width(&prefix);
                 
                 let distance = if x_pos >= current_x {
                     x_pos - current_x
@@ -537,7 +384,7 @@ impl WriteMenuPage {
     fn get_cursor_x_position(&self) -> usize {
         let line = &self.lines[self.cursor_line];
         let prefix: String = line.chars().take(self.cursor_pos).collect();
-        LEFT_MARGIN + self.calculate_text_width(&prefix, false)
+        LEFT_MARGIN + self.calculate_text_width(&prefix)
     }
 }
 
@@ -557,7 +404,7 @@ impl Page for WriteMenuPage {
                 if wrapped_idx < wrapped_lines.len() {
                     let line_y = start_y + i * (self.font_char_height + LINE_SPACING);
                     let (text, original_line_idx, char_pos_in_original) = &wrapped_lines[wrapped_idx];
-                    self.draw_text_line(display, LEFT_MARGIN, line_y, text, false);
+                    self.draw_text_line(display, LEFT_MARGIN, line_y, text);
                     
                     // Draw cursor if this wrapped line contains cursor
                     if *original_line_idx == self.cursor_line {
@@ -573,7 +420,7 @@ impl Page for WriteMenuPage {
                                 before_cursor.push(c);
                                 count += 1;
                             }
-                            let cursor_x = LEFT_MARGIN + self.calculate_text_width(&before_cursor, false);
+                            let cursor_x = LEFT_MARGIN + self.calculate_text_width(&before_cursor);
                             for dy in 0..self.font_char_height {
                                 display.draw_pixel(cursor_x, line_y + dy, Pixel::Black);
                             }
@@ -595,25 +442,6 @@ impl Page for WriteMenuPage {
                     display.draw_pixel(5, 230 + dy, Pixel::Black);
                 }
             }
-            
-            // Draw black bar at the bottom (from y=220 to y=240)
-            for y in 220..240 {
-                for x in 0..400 {
-                    display.draw_pixel(x, y, Pixel::Black);
-                }
-            }
-            
-            // Draw word count on the black bar in white text
-            let word_text = format!("words: {}", self.word_count);
-            let text_x = LEFT_MARGIN;
-            // Use WORD_COUNT_TOP_PADDING (now isize) to adjust spacing from top border
-            // Ensure it doesn't go out of bounds by clamping
-            let base_y = 220i32;
-            let padding = WORD_COUNT_TOP_PADDING as i32;
-            let text_y = (base_y + padding).max(0).min(239) as usize;
-            
-            self.draw_text_line(display, text_x, text_y, &word_text, true);
-            
         } else {
             display.draw_text(150, 100, "NO FONT LOADED");
         }
@@ -623,7 +451,7 @@ impl Page for WriteMenuPage {
     }
     
     fn handle_key(&mut self, key: Key) -> Result<Option<PageId>> {
-        let needs_word_count_update = match key {
+        match key {
             Key::Char('\n') => {
                 // Always create a new line, even if we're at the end
                 if self.cursor_line >= self.lines.len() {
@@ -650,7 +478,7 @@ impl Page for WriteMenuPage {
                     self.cursor_pos = 0;
                 }
                 self.ensure_cursor_visible();
-                true
+                Ok(None)
             }
             Key::Char(c) => {
                 if self.cursor_line >= self.lines.len() {
@@ -674,7 +502,7 @@ impl Page for WriteMenuPage {
                 *line = new_line;
                 self.cursor_pos += 1;
                 self.ensure_cursor_visible();
-                true
+                Ok(None)
             }
             Key::Backspace => {
                 if self.cursor_pos > 0 {
@@ -695,7 +523,7 @@ impl Page for WriteMenuPage {
                     prev_line.push_str(&current_line);
                 }
                 self.ensure_cursor_visible();
-                true
+                Ok(None)
             }
             Key::Delete => {
                 let line = &mut self.lines[self.cursor_line];
@@ -713,7 +541,7 @@ impl Page for WriteMenuPage {
                     self.lines[self.cursor_line].push_str(&next_line);
                 }
                 self.ensure_cursor_visible();
-                true
+                Ok(None)
             }
             Key::Left => {
                 if self.cursor_pos > 0 {
@@ -723,7 +551,7 @@ impl Page for WriteMenuPage {
                     self.cursor_pos = self.lines[self.cursor_line].chars().count();
                 }
                 self.ensure_cursor_visible();
-                false
+                Ok(None)
             }
             Key::Right => {
                 let char_count = self.lines[self.cursor_line].chars().count();
@@ -734,7 +562,7 @@ impl Page for WriteMenuPage {
                     self.cursor_pos = 0;
                 }
                 self.ensure_cursor_visible();
-                false
+                Ok(None)
             }
             Key::Up => {
                 let current_wrapped_idx = self.find_wrapped_line_for_cursor();
@@ -750,7 +578,7 @@ impl Page for WriteMenuPage {
                     self.cursor_pos = self.lines[self.cursor_line].chars().count();
                 }
                 self.ensure_cursor_visible();
-                false
+                Ok(None)
             }
             Key::Down => {
                 let current_wrapped_idx = self.find_wrapped_line_for_cursor();
@@ -767,7 +595,7 @@ impl Page for WriteMenuPage {
                     self.cursor_pos = 0;
                 }
                 self.ensure_cursor_visible();
-                false
+                Ok(None)
             }
             Key::PageUp => {
                 if self.scroll_offset > 0 {
@@ -775,7 +603,7 @@ impl Page for WriteMenuPage {
                     // Keep cursor visible
                     self.ensure_cursor_visible();
                 }
-                false
+                Ok(None)
             }
             Key::PageDown => {
                 let total_wrapped = self.get_all_wrapped_lines().len();
@@ -784,21 +612,15 @@ impl Page for WriteMenuPage {
                     // Keep cursor visible
                     self.ensure_cursor_visible();
                 }
-                false
+                Ok(None)
             }
-            Key::Esc => return Ok(Some(PageId::Menu)),
+            Key::Esc => Ok(Some(PageId::Menu)),
             Key::Ctrl('s') => {
                 println!("Save not implemented yet");
-                false
+                Ok(None)
             }
-            Key::Ctrl('x') => return Ok(Some(PageId::Menu)),
-            _ => false,
-        };
-        
-        if needs_word_count_update {
-            self.update_word_count();
+            Key::Ctrl('x') => Ok(Some(PageId::Menu)),
+            _ => Ok(None),
         }
-        
-        Ok(None)
     }
 }
