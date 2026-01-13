@@ -9,7 +9,7 @@ const LINE_SPACING: usize = 3;
 const MAX_VISIBLE_LINES: usize = 6;
 const MAX_LINE_WIDTH: usize = 380;
 const LEFT_MARGIN: usize = 10;
-const WORD_COUNT_TOP_PADDING: usize = 0; // New: Adjust this value to change spacing
+const WORD_COUNT_TOP_PADDING: isize = 2; // Changed to isize to allow negative values
 
 pub struct WriteMenuPage {
     font_bitmap: Option<(Vec<Pixel>, usize, usize)>,
@@ -606,8 +606,11 @@ impl Page for WriteMenuPage {
             // Draw word count on the black bar in white text
             let word_text = format!("words: {}", self.word_count);
             let text_x = LEFT_MARGIN;
-            // Use WORD_COUNT_TOP_PADDING to adjust spacing from top border
-            let text_y = 220 + WORD_COUNT_TOP_PADDING;
+            // Use WORD_COUNT_TOP_PADDING (now isize) to adjust spacing from top border
+            // Ensure it doesn't go out of bounds by clamping
+            let base_y = 220i32;
+            let padding = WORD_COUNT_TOP_PADDING as i32;
+            let text_y = (base_y + padding).max(0).min(239) as usize;
             
             self.draw_text_line(display, text_x, text_y, &word_text, true);
             
