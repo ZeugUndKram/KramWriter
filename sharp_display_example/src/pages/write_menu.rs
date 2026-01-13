@@ -393,7 +393,7 @@ impl WriteMenuPage {
         let mut last_whitespace_idx = 0;
         
         let mut chars = line.chars().peekable();
-        while let Some(c) in chars.next() {
+        while let Some(c) = chars.next() {
             let char_index = Self::get_char_index(c);
             let char_width = if char_index < self.char_widths.len() { 
                 self.char_widths[char_index] + LETTER_SPACING
