@@ -288,6 +288,28 @@ impl WriteMenuPage {
         (0, 0)
     }
     
+    fn wrapped_cursor_to_original_position(&self, target_wrapped_line: usize, target_wrapped_pos: usize) -> (usize, usize) {
+        let mut wrapped_line_count = 0;
+        let mut char_count = 0;
+        
+        for (line_idx, line) in self.lines.iter().enumerate() {
+            let wrapped_lines = self.wrap_line(line);
+            
+            for (wrapped_idx, wrapped_line) in wrapped_lines.iter().enumerate() {
+                if wrapped_line_count == target_wrapped_line {
+                    // We found the target wrapped line
+                    let original_pos = char_count + target_wrapped_pos.min(wrapped_line.len());
+                    return (line_idx, original_pos);
+                }
+                char_count += wrapped_line.len();
+                wrapped_line_count += 1;
+            }
+        }
+        
+        // Fallback: end of document
+        (self.lines.len().saturating_sub(1), self.lines.last().map_or(0, |l| l.chars().count()))
+    }
+    
     fn ensure_cursor_visible(&mut self) {
         let (wrapped_cursor_line, _) = self.cursor_to_wrapped_position();
         let total_wrapped = self.total_wrapped_lines();
@@ -378,21 +400,6 @@ impl Page for WriteMenuPage {
             if total_wrapped > self.scroll_offset + MAX_VISIBLE_LINES {
                 for dy in 0..6 {
                     display.draw_pixel(5, 230 + dy, Pixel::Black);
-                }
-            }
-            
-            // Draw instruction
-            let instruction = "ESC: Menu";
-            for (i, c) in instruction.chars().enumerate() {
-                match c {
-                    'A'..='Z' | 'a'..='z' | ' ' | ':' => {
-                        for dy in 2..6 {
-                            for dx in 1..5 {
-                                display.draw_pixel(150 + i * 6 + dx, 220 + dy, Pixel::Black);
-                            }
-                        }
-                    }
-                    _ => {}
                 }
             }
         } else {
@@ -515,7 +522,18 @@ impl Page for WriteMenuPage {
                 Ok(None)
             }
             Key::Up => {
-                if self.cursor_line > 0 {
+                // Get current cursor position in wrapped lines
+                let (current_wrapped_line, current_wrapped_pos) = self.cursor_to_wrapped_position();
+                
+                if current_wrapped_line > 0 {
+                    // Move up one wrapped line
+                    let target_wrapped_line = current_wrapped_line - 1;
+                    let (new_line, new_pos) = self.wrapped_cursor_to_original_position(target_wrapped_line, current_wrapped_pos);
+                    
+                    self.cursor_line = new_line;
+                    self.cursor_pos = new_pos;
+                } else if self.cursor_line > 0 {
+                    // At top of screen but there's a previous line
                     self.cursor_line -= 1;
                     let char_count = self.lines[self.cursor_line].chars().count();
                     self.cursor_pos = self.cursor_pos.min(char_count);
@@ -524,7 +542,19 @@ impl Page for WriteMenuPage {
                 Ok(None)
             }
             Key::Down => {
-                if self.cursor_line < self.lines.len() - 1 {
+                // Get current cursor position in wrapped lines
+                let (current_wrapped_line, current_wrapped_pos) = self.cursor_to_wrapped_position();
+                let total_wrapped_lines = self.total_wrapped_lines();
+                
+                if current_wrapped_line < total_wrapped_lines - 1 {
+                    // Move down one wrapped line
+                    let target_wrapped_line = current_wrapped_line + 1;
+                    let (new_line, new_pos) = self.wrapped_cursor_to_original_position(target_wrapped_line, current_wrapped_pos);
+                    
+                    self.cursor_line = new_line;
+                    self.cursor_pos = new_pos;
+                } else if self.cursor_line < self.lines.len() - 1 {
+                    // At bottom of screen but there's a next line
                     self.cursor_line += 1;
                     let char_count = self.lines[self.cursor_line].chars().count();
                     self.cursor_pos = self.cursor_pos.min(char_count);
@@ -535,8 +565,11 @@ impl Page for WriteMenuPage {
             Key::PageUp => {
                 if self.scroll_offset > 0 {
                     self.scroll_offset = self.scroll_offset.saturating_sub(MAX_VISIBLE_LINES);
-                    // Keep cursor visible
-                    self.ensure_cursor_visible();
+                    // Update cursor position to match new scroll position
+                    let new_wrapped_line = self.scroll_offset + 2; // Place cursor a couple lines down from top
+                    let (new_line, new_pos) = self.wrapped_cursor_to_original_position(new_wrapped_line, self.cursor_pos);
+                    self.cursor_line = new_line;
+                    self.cursor_pos = new_pos;
                 }
                 Ok(None)
             }
@@ -544,8 +577,11 @@ impl Page for WriteMenuPage {
                 let total_wrapped = self.total_wrapped_lines();
                 if self.scroll_offset + MAX_VISIBLE_LINES < total_wrapped {
                     self.scroll_offset = (self.scroll_offset + MAX_VISIBLE_LINES).min(total_wrapped - 1);
-                    // Keep cursor visible
-                    self.ensure_cursor_visible();
+                    // Update cursor position to match new scroll position
+                    let new_wrapped_line = self.scroll_offset.saturating_sub(2); // Place cursor a couple lines up from bottom
+                    let (new_line, new_pos) = self.wrapped_cursor_to_original_position(new_wrapped_line, self.cursor_pos);
+                    self.cursor_line = new_line;
+                    self.cursor_pos = new_pos;
                 }
                 Ok(None)
             }
