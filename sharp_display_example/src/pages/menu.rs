@@ -12,8 +12,10 @@ const MENU_OPTIONS: [&str; 5] = [
     "Credits",
 ];
 
-const SPACING_MAIN_TO_SECOND: usize = 10;   // Space between main and second image
-const SPACING_SECOND_TO_THIRD: usize = 40;  // Space between second and third image
+const SPACING_TOP_TO_MAIN: usize = 0;      // Space between top image and main image
+const SPACING_MAIN_TO_BOTTOM: usize = 10;   // Space between main image and bottom image
+const SPACING_TOP_TO_FARTOP: usize = 20;    // Space between far top image and top image
+const SPACING_BOTTOM_TO_FARBOTTOM: usize = 40; // Space between bottom image and far bottom image
 
 pub struct MenuPage {
     current_index: usize,
@@ -166,7 +168,7 @@ impl Page for MenuPage {
             if self.current_index >= 2 {
                 // Second previous option (2 above) with suffix 2
                 let second_prev_image = self.images_cache[self.current_index - 2].get(2).and_then(|x| x.as_ref());
-                let second_prev_y = center_y.saturating_sub(height + SPACING_MAIN_TO_SECOND + SPACING_SECOND_TO_THIRD);
+                let second_prev_y = center_y.saturating_sub(height + SPACING_TOP_TO_MAIN + SPACING_TOP_TO_FARTOP);
                 if second_prev_y < 240 {
                     self.draw_image_at(display, second_prev_image, second_prev_y);
                 }
@@ -175,7 +177,7 @@ impl Page for MenuPage {
             if self.current_index >= 1 {
                 // Previous option (1 above) with suffix 1
                 let prev_image = self.images_cache[self.current_index - 1].get(1).and_then(|x| x.as_ref());
-                let prev_y = center_y.saturating_sub(height + SPACING_MAIN_TO_SECOND);
+                let prev_y = center_y.saturating_sub(height + SPACING_TOP_TO_MAIN);
                 if prev_y < 240 {
                     self.draw_image_at(display, prev_image, prev_y);
                 }
@@ -187,7 +189,7 @@ impl Page for MenuPage {
             // Draw images below the main one (if any)
             if self.current_index + 1 < MENU_OPTIONS.len() {
                 let next_image = self.images_cache[self.current_index + 1].get(1).and_then(|x| x.as_ref());
-                let next_y = center_y + height + SPACING_MAIN_TO_SECOND;
+                let next_y = center_y + height + SPACING_MAIN_TO_BOTTOM;
                 if next_y < 240 {
                     self.draw_image_at(display, next_image, next_y);
                 }
@@ -195,7 +197,7 @@ impl Page for MenuPage {
             
             if self.current_index + 2 < MENU_OPTIONS.len() {
                 let second_next_image = self.images_cache[self.current_index + 2].get(2).and_then(|x| x.as_ref());
-                let second_next_y = center_y + height + SPACING_MAIN_TO_SECOND + SPACING_SECOND_TO_THIRD;
+                let second_next_y = center_y + height + SPACING_MAIN_TO_BOTTOM + SPACING_BOTTOM_TO_FARBOTTOM;
                 if second_next_y < 240 {
                     self.draw_image_at(display, second_next_image, second_next_y);
                 }
