@@ -53,6 +53,7 @@ impl WriteMenuPage {
     }
     
     fn parse_font_bmp(data: &[u8]) -> Option<(Vec<Pixel>, usize, usize)> {
+        // ... (keep same as before)
         if data.len() < 54 { return None; }
         if data[0] != 0x42 || data[1] != 0x4D { return None; }
         
@@ -103,6 +104,7 @@ impl WriteMenuPage {
     
     fn measure_char_widths(pixels: &[Pixel], font_width: usize, 
                           char_width: usize, char_height: usize, chars_per_row: usize) -> Vec<usize> {
+        // ... (keep same as before)
         let printable_chars = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
         let mut widths = Vec::new();
         
@@ -147,6 +149,7 @@ impl WriteMenuPage {
     }
     
     fn draw_char_cropped(&self, display: &mut SharpDisplay, x: usize, y: usize, c: char) {
+        // ... (keep same as before)
         if let Some((pixels, font_width, _)) = &self.font_bitmap {
             let char_index = Self::get_char_index(c);
             let chars_per_row = self.chars_per_row;
@@ -253,21 +256,32 @@ impl WriteMenuPage {
         
         if !current_line.is_empty() {
             result.push(current_line);
+        } else if result.is_empty() {
+            // Empty line - add an empty string
+            result.push(String::new());
         }
         
         result
     }
     
-    fn total_wrapped_lines(&self) -> usize {
-        let mut total = 0;
-        for line in &self.lines {
-            total += self.wrap_line(line).len();
+    fn get_all_wrapped_lines(&self) -> Vec<(String, usize, usize)> {
+        // Returns (wrapped_line, original_line_index, char_position_in_original)
+        let mut result = Vec::new();
+        
+        for (line_idx, line) in self.lines.iter().enumerate() {
+            let wrapped = self.wrap_line(line);
+            let mut char_pos = 0;
+            for wrapped_line in wrapped {
+                result.push((wrapped_line, line_idx, char_pos));
+                char_pos += wrapped_line.len();
+            }
         }
-        total
+        
+        result
     }
     
-    fn cursor_to_wrapped_position(&self) -> (usize, usize) {
-        let mut wrapped_line_count = 0;
+    fn find_wrapped_line_for_cursor(&self) -> usize {
+        let mut wrapped_line_idx = 0;
         let mut char_count = 0;
         
         for (line_idx, line) in self.lines.iter().enumerate() {
@@ -276,43 +290,54 @@ impl WriteMenuPage {
             for (wrapped_idx, wrapped_line) in wrapped_lines.iter().enumerate() {
                 if line_idx == self.cursor_line {
                     if self.cursor_pos >= char_count && self.cursor_pos <= char_count + wrapped_line.len() {
-                        let cursor_in_wrapped = self.cursor_pos - char_count;
-                        return (wrapped_line_count + wrapped_idx, cursor_in_wrapped);
+                        return wrapped_line_idx + wrapped_idx;
                     }
                 }
                 char_count += wrapped_line.len();
             }
-            wrapped_line_count += wrapped_lines.len();
+            wrapped_line_idx += wrapped_lines.len();
         }
         
-        (0, 0)
+        // Fallback: cursor is at the end of a line
+        wrapped_line_idx.saturating_sub(1)
     }
     
-    fn wrapped_cursor_to_original_position(&self, target_wrapped_line: usize, target_wrapped_pos: usize) -> (usize, usize) {
-        let mut wrapped_line_count = 0;
-        let mut char_count = 0;
+    fn find_cursor_for_wrapped_line(&self, target_wrapped_idx: usize, target_x_pos: usize) -> (usize, usize) {
+        let wrapped_lines = self.get_all_wrapped_lines();
         
-        for (line_idx, line) in self.lines.iter().enumerate() {
-            let wrapped_lines = self.wrap_line(line);
+        if target_wrapped_idx < wrapped_lines.len() {
+            let (wrapped_line, original_line_idx, char_pos_in_original) = &wrapped_lines[target_wrapped_idx];
             
-            for (wrapped_idx, wrapped_line) in wrapped_lines.iter().enumerate() {
-                if wrapped_line_count == target_wrapped_line {
-                    // We found the target wrapped line
-                    let original_pos = char_count + target_wrapped_pos.min(wrapped_line.len());
-                    return (line_idx, original_pos);
+            // Find the character position in the wrapped line that matches the X position
+            let mut char_count = 0;
+            let mut total_width = 0;
+            
+            for (i, c) in wrapped_line.chars().enumerate() {
+                let char_index = Self::get_char_index(c);
+                let char_width = if char_index < self.char_widths.len() { 
+                    self.char_widths[char_index] + LETTER_SPACING
+                } else { 
+                    8 + LETTER_SPACING
+                };
+                
+                if total_width + char_width / 2 > target_x_pos {
+                    break;
                 }
-                char_count += wrapped_line.len();
-                wrapped_line_count += 1;
+                
+                total_width += char_width;
+                char_count = i + 1;
             }
+            
+            return (original_line_idx.clone(), char_pos_in_original + char_count);
         }
         
-        // Fallback: end of document
-        (self.lines.len().saturating_sub(1), self.lines.last().map_or(0, |l| l.chars().count()))
+        // Fallback
+        (self.cursor_line, self.cursor_pos)
     }
     
     fn ensure_cursor_visible(&mut self) {
-        let (wrapped_cursor_line, _) = self.cursor_to_wrapped_position();
-        let total_wrapped = self.total_wrapped_lines();
+        let wrapped_cursor_line = self.find_wrapped_line_for_cursor();
+        let total_wrapped = self.get_all_wrapped_lines().len();
         
         // Start scrolling when cursor reaches 5th visible line (0-indexed 4)
         const SCROLL_THRESHOLD: usize = 4;
@@ -330,6 +355,12 @@ impl WriteMenuPage {
             self.scroll_offset = 0;
         }
     }
+    
+    fn get_cursor_x_position(&self) -> usize {
+        let line = &self.lines[self.cursor_line];
+        let prefix: String = line.chars().take(self.cursor_pos).collect();
+        LEFT_MARGIN + self.calculate_text_width(&prefix)
+    }
 }
 
 impl Page for WriteMenuPage {
@@ -339,37 +370,21 @@ impl Page for WriteMenuPage {
         if self.font_bitmap.is_some() && !self.char_widths.is_empty() {
             let start_y = 10;
             
-            // Calculate all wrapped lines and track which original line they belong to
-            let mut all_wrapped_lines = Vec::new();
-            let mut wrapped_to_original = Vec::new();
-            let mut wrapped_line_positions = Vec::new(); // Char position in original line
-            
-            for (line_idx, line) in self.lines.iter().enumerate() {
-                let wrapped = self.wrap_line(line);
-                let mut char_pos = 0;
-                for wrapped_line in wrapped {
-                    all_wrapped_lines.push(wrapped_line.clone());
-                    wrapped_to_original.push(line_idx);
-                    wrapped_line_positions.push(char_pos);
-                    char_pos += wrapped_line.len();
-                }
-            }
+            // Get all wrapped lines with metadata
+            let wrapped_lines = self.get_all_wrapped_lines();
             
             // Draw visible wrapped lines
             for i in 0..MAX_VISIBLE_LINES {
                 let wrapped_idx = i + self.scroll_offset;
-                if wrapped_idx < all_wrapped_lines.len() {
+                if wrapped_idx < wrapped_lines.len() {
                     let line_y = start_y + i * (self.font_char_height + LINE_SPACING);
-                    let text = &all_wrapped_lines[wrapped_idx];
+                    let (text, original_line_idx, char_pos_in_original) = &wrapped_lines[wrapped_idx];
                     self.draw_text_line(display, LEFT_MARGIN, line_y, text);
                     
                     // Draw cursor if this wrapped line contains cursor
-                    let original_line = wrapped_to_original[wrapped_idx];
-                    let start_pos = wrapped_line_positions[wrapped_idx];
-                    
-                    if original_line == self.cursor_line {
+                    if *original_line_idx == self.cursor_line {
                         let cursor_in_original = self.cursor_pos;
-                        let cursor_in_wrapped = cursor_in_original.saturating_sub(start_pos);
+                        let cursor_in_wrapped = cursor_in_original.saturating_sub(*char_pos_in_original);
                         
                         if cursor_in_wrapped <= text.len() {
                             // Get characters up to cursor position
@@ -396,7 +411,7 @@ impl Page for WriteMenuPage {
                 }
             }
             
-            let total_wrapped = all_wrapped_lines.len();
+            let total_wrapped = wrapped_lines.len();
             if total_wrapped > self.scroll_offset + MAX_VISIBLE_LINES {
                 for dy in 0..6 {
                     display.draw_pixel(5, 230 + dy, Pixel::Black);
@@ -413,8 +428,11 @@ impl Page for WriteMenuPage {
     fn handle_key(&mut self, key: Key) -> Result<Option<PageId>> {
         match key {
             Key::Char('\n') => {
-                // When pressing Enter at the END of a line, create new empty line
-                // When pressing Enter in MIDDLE of line, split the line
+                // Always create a new line, even if we're at the end
+                if self.cursor_line >= self.lines.len() {
+                    self.lines.push(String::new());
+                }
+                
                 let line = &self.lines[self.cursor_line];
                 let at_end = self.cursor_pos >= line.chars().count();
                 
@@ -522,42 +540,53 @@ impl Page for WriteMenuPage {
                 Ok(None)
             }
             Key::Up => {
-                // Get current cursor position in wrapped lines
-                let (current_wrapped_line, current_wrapped_pos) = self.cursor_to_wrapped_position();
-                
-                if current_wrapped_line > 0 {
-                    // Move up one wrapped line
-                    let target_wrapped_line = current_wrapped_line - 1;
-                    let (new_line, new_pos) = self.wrapped_cursor_to_original_position(target_wrapped_line, current_wrapped_pos);
+                if self.cursor_line > 0 {
+                    let current_x_pos = self.get_cursor_x_position();
+                    let current_wrapped_idx = self.find_wrapped_line_for_cursor();
                     
-                    self.cursor_line = new_line;
-                    self.cursor_pos = new_pos;
-                } else if self.cursor_line > 0 {
-                    // At top of screen but there's a previous line
-                    self.cursor_line -= 1;
-                    let char_count = self.lines[self.cursor_line].chars().count();
-                    self.cursor_pos = self.cursor_pos.min(char_count);
+                    if current_wrapped_idx > 0 {
+                        // Find position in the wrapped line above
+                        let (new_line, new_pos) = self.find_cursor_for_wrapped_line(
+                            current_wrapped_idx - 1,
+                            current_x_pos
+                        );
+                        self.cursor_line = new_line;
+                        self.cursor_pos = new_pos;
+                    } else {
+                        // Move to previous line, end of line
+                        self.cursor_line -= 1;
+                        self.cursor_pos = self.lines[self.cursor_line].chars().count();
+                    }
                 }
                 self.ensure_cursor_visible();
                 Ok(None)
             }
             Key::Down => {
-                // Get current cursor position in wrapped lines
-                let (current_wrapped_line, current_wrapped_pos) = self.cursor_to_wrapped_position();
-                let total_wrapped_lines = self.total_wrapped_lines();
-                
-                if current_wrapped_line < total_wrapped_lines - 1 {
-                    // Move down one wrapped line
-                    let target_wrapped_line = current_wrapped_line + 1;
-                    let (new_line, new_pos) = self.wrapped_cursor_to_original_position(target_wrapped_line, current_wrapped_pos);
+                if self.cursor_line < self.lines.len() - 1 {
+                    let current_x_pos = self.get_cursor_x_position();
+                    let current_wrapped_idx = self.find_wrapped_line_for_cursor();
                     
-                    self.cursor_line = new_line;
-                    self.cursor_pos = new_pos;
-                } else if self.cursor_line < self.lines.len() - 1 {
-                    // At bottom of screen but there's a next line
-                    self.cursor_line += 1;
+                    let wrapped_lines = self.get_all_wrapped_lines();
+                    
+                    if current_wrapped_idx < wrapped_lines.len() - 1 {
+                        // Find position in the wrapped line below
+                        let (new_line, new_pos) = self.find_cursor_for_wrapped_line(
+                            current_wrapped_idx + 1,
+                            current_x_pos
+                        );
+                        self.cursor_line = new_line;
+                        self.cursor_pos = new_pos;
+                    } else {
+                        // Move to next line, start of line
+                        self.cursor_line += 1;
+                        self.cursor_pos = 0;
+                    }
+                } else {
+                    // Already at last line, move to end of line
                     let char_count = self.lines[self.cursor_line].chars().count();
-                    self.cursor_pos = self.cursor_pos.min(char_count);
+                    if self.cursor_pos < char_count {
+                        self.cursor_pos = char_count;
+                    }
                 }
                 self.ensure_cursor_visible();
                 Ok(None)
@@ -565,23 +594,17 @@ impl Page for WriteMenuPage {
             Key::PageUp => {
                 if self.scroll_offset > 0 {
                     self.scroll_offset = self.scroll_offset.saturating_sub(MAX_VISIBLE_LINES);
-                    // Update cursor position to match new scroll position
-                    let new_wrapped_line = self.scroll_offset + 2; // Place cursor a couple lines down from top
-                    let (new_line, new_pos) = self.wrapped_cursor_to_original_position(new_wrapped_line, self.cursor_pos);
-                    self.cursor_line = new_line;
-                    self.cursor_pos = new_pos;
+                    // Keep cursor visible
+                    self.ensure_cursor_visible();
                 }
                 Ok(None)
             }
             Key::PageDown => {
-                let total_wrapped = self.total_wrapped_lines();
+                let total_wrapped = self.get_all_wrapped_lines().len();
                 if self.scroll_offset + MAX_VISIBLE_LINES < total_wrapped {
                     self.scroll_offset = (self.scroll_offset + MAX_VISIBLE_LINES).min(total_wrapped - 1);
-                    // Update cursor position to match new scroll position
-                    let new_wrapped_line = self.scroll_offset.saturating_sub(2); // Place cursor a couple lines up from bottom
-                    let (new_line, new_pos) = self.wrapped_cursor_to_original_position(new_wrapped_line, self.cursor_pos);
-                    self.cursor_line = new_line;
-                    self.cursor_pos = new_pos;
+                    // Keep cursor visible
+                    self.ensure_cursor_visible();
                 }
                 Ok(None)
             }
