@@ -154,20 +154,21 @@ impl Page for MenuPage {
     fn draw(&mut self, display: &mut SharpDisplay) -> Result<()> {
         display.clear()?;
         
-        // Current option (suffix 0) at top
+        // Main option (suffix 0) centered vertically
         let center_image = self.images_cache[self.current_index].get(0).and_then(|x| x.as_ref());
-        self.draw_image_at(display, center_image, 40);
+        let center_y = 80; // Center of screen
+        self.draw_image_at(display, center_image, center_y);
         
-        // Next option (suffix 1) in middle
+        // Next option (suffix 1) 20px lower
         if self.current_index + 1 < MENU_OPTIONS.len() {
             let next_image = self.images_cache[self.current_index + 1].get(1).and_then(|x| x.as_ref());
-            self.draw_image_at(display, next_image, 120);
+            self.draw_image_at(display, next_image, center_y + 100);
         }
         
-        // Second next option (suffix 2) at bottom
+        // Second next option (suffix 2) 30px lower than previous
         if self.current_index + 2 < MENU_OPTIONS.len() {
             let second_next_image = self.images_cache[self.current_index + 2].get(2).and_then(|x| x.as_ref());
-            self.draw_image_at(display, second_next_image, 200);
+            self.draw_image_at(display, second_next_image, center_y + 150);
         }
         
         display.update()?;
