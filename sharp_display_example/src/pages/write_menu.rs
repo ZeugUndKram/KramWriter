@@ -146,7 +146,6 @@ impl WriteMenuPage {
             let mut leftmost = char_width;
             let mut rightmost = 0;
             
-            // Find actual bounding box of character
             for dx in 0..char_width {
                 for dy in 0..char_height {
                     let src_pixel_x = src_x + dx;
@@ -163,7 +162,7 @@ impl WriteMenuPage {
             let actual_width = if rightmost >= leftmost { 
                 (rightmost - leftmost + 1).min(char_width) 
             } else { 
-                char_width / 4  // Space character
+                8  // Space character - narrower
             };
             
             widths.push(actual_width);
@@ -177,7 +176,7 @@ impl WriteMenuPage {
         printable_chars.find(c).unwrap_or(0)
     }
     
-    fn draw_char(&self, display: &mut SharpDisplay, x: usize, y: usize, c: char) {
+    fn draw_char_cropped(&self, display: &mut SharpDisplay, x: usize, y: usize, c: char) {
         if let Some((pixels, font_width, font_height)) = &self.font_bitmap {
             let char_index = Self::get_char_index(c);
             let chars_per_row = self.chars_per_row;
@@ -190,23 +189,41 @@ impl WriteMenuPage {
             let src_x = grid_x * char_width;
             let src_y = grid_y * char_height;
             
-            if src_y + char_height > *font_height || src_x + char_width > *font_width {
-                return;
-            }
+            // Get character bounds
+            let mut leftmost = char_width;
+            let mut rightmost = 0;
             
-            for dy in 0..char_height {
-                for dx in 0..char_width {
+            for dx in 0..char_width {
+                for dy in 0..char_height {
                     let src_pixel_x = src_x + dx;
                     let src_pixel_y = src_y + dy;
                     let pixel_index = src_pixel_y * font_width + src_pixel_x;
                     
-                    if pixel_index < pixels.len() {
-                        let pixel = pixels[pixel_index];
-                        let screen_x = x + dx;
-                        let screen_y = y + dy;
+                    if pixel_index < pixels.len() && pixels[pixel_index] == Pixel::Black {
+                        if dx < leftmost { leftmost = dx; }
+                        if dx > rightmost { rightmost = dx; }
+                    }
+                }
+            }
+            
+            // Only draw the actual character pixels, not the full 30px box
+            if rightmost >= leftmost {
+                for dy in 0..char_height {
+                    for dx in leftmost..=rightmost {
+                        let src_pixel_x = src_x + dx;
+                        let src_pixel_y = src_y + dy;
+                        let pixel_index = src_pixel_y * font_width + src_pixel_x;
                         
-                        if screen_x < 400 && screen_y < 240 {
-                            display.draw_pixel(screen_x, screen_y, pixel);
+                        if pixel_index < pixels.len() {
+                            let pixel = pixels[pixel_index];
+                            if pixel == Pixel::Black {
+                                let screen_x = x + dx - leftmost;
+                                let screen_y = y + dy;
+                                
+                                if screen_x < 400 && screen_y < 240 {
+                                    display.draw_pixel(screen_x, screen_y, pixel);
+                                }
+                            }
                         }
                     }
                 }
@@ -221,11 +238,11 @@ impl WriteMenuPage {
             let char_width = if char_index < self.char_widths.len() { 
                 self.char_widths[char_index] 
             } else { 
-                self.font_char_width / 4  // Default narrow width
+                8  // Default narrow width
             };
             
-            self.draw_char(display, current_x, y, c);
-            current_x += char_width; // REDUCED: No extra spacing between characters
+            self.draw_char_cropped(display, current_x, y, c);
+            current_x += char_width; // Move by actual character width
         }
     }
     
@@ -236,9 +253,9 @@ impl WriteMenuPage {
             let char_width = if char_index < self.char_widths.len() { 
                 self.char_widths[char_index] 
             } else { 
-                self.font_char_width / 4
+                8
             };
-            width += char_width; // REDUCED: No extra spacing
+            width += char_width;
         }
         width
     }
