@@ -134,8 +134,8 @@ impl Page for MenuPage {
             let start_x = (400usize.saturating_sub(*width)) / 2;
             let start_y = (240usize.saturating_sub(*height)) / 2;
             
-            for y in 0..height.min(&240) {
-                for x in 0..width.min(&400) {
+            for y in 0..*height.min(&240) {
+                for x in 0..*width.min(&400) {
                     let pixel = pixels[y * width + x];
                     display.draw_pixel(start_x + x, start_y + y, pixel);
                 }
