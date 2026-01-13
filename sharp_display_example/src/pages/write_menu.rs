@@ -139,10 +139,9 @@ impl WriteMenuPage {
     }
     
     fn draw_text_line(&self, display: &mut SharpDisplay, x: usize, y: usize, text: &str) {
-        let font = self.current_font(); // FIXED: Added this line
+        let font = self.current_font();
         let mut current_x = x;
         for c in text.chars() {
-            let char_index = Self::get_char_index(c);
             // For libsans, use the full character width (monospaced)
             let char_width = font.char_width;
             
@@ -338,12 +337,22 @@ impl FontSize {
             Ok(data) => {
                 match Self::parse_font_bmp(&data) {
                     Some((bitmap, width, height)) => {
-                        // For libsans, we'll assume monospaced, so char_widths is not needed
-                        // But we'll still measure for consistency
+                        println!("DEBUG: Font bitmap {}x{}px, expecting grid: {}x{} chars ({}x{}px grid)", 
+                                width, height, self.chars_per_row, height/self.char_height, 
+                                self.chars_per_row * self.char_width, height);
+                        
+                        // Let's calculate actual chars_per_row from bitmap dimensions
+                        let actual_chars_per_row = width / self.char_width;
+                        println!("DEBUG: Actual chars per row: {} (calculated from {} / {})", 
+                                actual_chars_per_row, width, self.char_width);
+                        
+                        // Update chars_per_row based on actual bitmap
+                        self.chars_per_row = actual_chars_per_row;
+                        
                         self.char_widths = Self::measure_char_widths(&bitmap, width, self.char_width, self.char_height, self.chars_per_row);
                         self.bitmap = Some((bitmap, width, height));
-                        println!("Loaded font {}: {}x{}, char widths measured: {}", 
-                                self.path, width, height, self.char_widths.len());
+                        println!("Loaded font {}: {}x{}, chars per row: {}, char widths measured: {}", 
+                                self.path, width, height, self.chars_per_row, self.char_widths.len());
                         Ok(())
                     }
                     None => anyhow::bail!("Failed to parse font bitmap"),
@@ -362,8 +371,6 @@ impl FontSize {
         let bits_per_pixel = u16::from_le_bytes([data[28], data[29]]) as usize;
         let data_offset = u32::from_le_bytes([data[10], data[11], data[12], data[13]]) as usize;
         
-        println!("BMP info: {}x{}px, {}bpp, offset: {}", width, height, bits_per_pixel, data_offset);
-        
         if data_offset >= data.len() { 
             println!("Data offset out of bounds");
             return None; 
@@ -373,7 +380,6 @@ impl FontSize {
         
         match bits_per_pixel {
             32 => {
-                println!("Parsing 32-bit BMP");
                 let row_bytes = width * 4;
                 for y in 0..height {
                     let row_start = data_offset + (height - 1 - y) * row_bytes;
@@ -391,10 +397,10 @@ impl FontSize {
                         let luminance = (r * 299 + g * 587 + b * 114) / 1000;
                         let alpha = a;
                         
-                        // For libsans fonts (black text on white background with alpha)
+                        // Try different thresholds for libsans
                         let pixel = if alpha < 128 {
                             Pixel::White
-                        } else if luminance < 128 { // Black text
+                        } else if luminance < 64 { // More sensitive threshold for black
                             Pixel::Black
                         } else {
                             Pixel::White
@@ -404,8 +410,7 @@ impl FontSize {
                 }
             }
             24 => {
-                println!("Parsing 24-bit BMP");
-                let row_bytes = ((width * 3 + 3) / 4) * 4; // BMP rows are padded to 4 bytes
+                let row_bytes = ((width * 3 + 3) / 4) * 4;
                 for y in 0..height {
                     let row_start = data_offset + (height - 1 - y) * row_bytes;
                     for x in 0..width {
@@ -420,8 +425,7 @@ impl FontSize {
                         
                         let luminance = (r * 299 + g * 587 + b * 114) / 1000;
                         
-                        // For 24-bit libsans fonts - black text on white background
-                        let pixel = if luminance < 128 { // Black text
+                        let pixel = if luminance < 64 { // More sensitive threshold
                             Pixel::Black
                         } else {
                             Pixel::White
@@ -431,19 +435,14 @@ impl FontSize {
                 }
             }
             8 => {
-                println!("Parsing 8-bit BMP (palette)");
-                // For 8-bit BMPs, we need to read the color palette
                 let palette_start = 54;
-                let _palette_size = 256 * 4; // 256 colors * 4 bytes each (prefix with underscore to avoid warning)
+                let row_bytes = ((width + 3) / 4) * 4;
                 
-                let row_bytes = ((width + 3) / 4) * 4; // Padded to 4 bytes
-                
-                // Read palette
                 let mut palette = Vec::with_capacity(256);
                 for i in 0..256 {
                     let palette_offset = palette_start + i * 4;
                     if palette_offset + 2 >= data.len() {
-                        palette.push((0, 0, 0)); // Default to black
+                        palette.push((0, 0, 0));
                         continue;
                     }
                     let b = data[palette_offset] as u32;
@@ -452,7 +451,6 @@ impl FontSize {
                     palette.push((r, g, b));
                 }
                 
-                // Read pixels
                 for y in 0..height {
                     let row_start = data_offset + (height - 1 - y) * row_bytes;
                     for x in 0..width {
@@ -469,7 +467,7 @@ impl FontSize {
                         let (r, g, b) = palette[palette_index];
                         let luminance = (r * 299 + g * 587 + b * 114) / 1000;
                         
-                        let pixel = if luminance < 128 {
+                        let pixel = if luminance < 64 {
                             Pixel::Black
                         } else {
                             Pixel::White
@@ -479,13 +477,12 @@ impl FontSize {
                 }
             }
             1 => {
-                println!("Parsing 1-bit BMP (monochrome)");
-                let row_bytes = ((width + 31) / 32) * 4; // Padded to 4 bytes
+                let row_bytes = ((width + 31) / 32) * 4;
                 for y in 0..height {
                     let row_start = data_offset + (height - 1 - y) * row_bytes;
                     for x in 0..width {
                         let byte_offset = row_start + (x / 8);
-                        let bit_offset = 7 - (x % 8); // BMP bits are stored MSB first
+                        let bit_offset = 7 - (x % 8);
                         
                         if byte_offset >= data.len() {
                             pixels.push(Pixel::White);
@@ -495,11 +492,11 @@ impl FontSize {
                         let byte = data[byte_offset];
                         let bit = (byte >> bit_offset) & 1;
                         
-                        // 1 = white, 0 = black (typically for monochrome)
-                        let pixel = if bit == 1 {
-                            Pixel::White
-                        } else {
+                        // Try both possibilities
+                        let pixel = if bit == 0 { // Try 0=black, 1=white
                             Pixel::Black
+                        } else {
+                            Pixel::White
                         };
                         pixels.push(pixel);
                     }
@@ -511,7 +508,6 @@ impl FontSize {
             }
         }
         
-        println!("Successfully parsed BMP with {} pixels", pixels.len());
         Some((pixels, width, height))
     }
     
@@ -573,7 +569,15 @@ impl Page for WriteMenuPage {
                 if wrapped_idx < wrapped_lines.len() {
                     let line_y = start_y + i * (font.char_height + LINE_SPACING);
                     let (text, original_line_idx, char_pos_in_original) = &wrapped_lines[wrapped_idx];
-                    self.draw_text_line(display, LEFT_MARGIN, line_y, text);
+                    
+                    // Draw a test character first to debug
+                    if i == 0 && text.is_empty() {
+                        self.draw_char_cropped(display, LEFT_MARGIN, line_y, 'A');
+                        self.draw_char_cropped(display, LEFT_MARGIN + font.char_width + LETTER_SPACING, line_y, 'B');
+                        self.draw_char_cropped(display, LEFT_MARGIN + 2*(font.char_width + LETTER_SPACING), line_y, 'C');
+                    } else {
+                        self.draw_text_line(display, LEFT_MARGIN, line_y, text);
+                    }
                     
                     // Draw cursor if this wrapped line contains cursor
                     if *original_line_idx == self.cursor_line {
@@ -798,13 +802,31 @@ impl Page for WriteMenuPage {
                 self.ensure_cursor_visible();
                 Ok(None)
             }
+            Key::Alt('=') => {
+                self.increase_font_size();
+                self.ensure_cursor_visible();
+                Ok(None)
+            }
+            Key::Alt('+') => {
+                self.increase_font_size();
+                self.ensure_cursor_visible();
+                Ok(None)
+            }
+            Key::Alt('-') => {
+                self.decrease_font_size();
+                self.ensure_cursor_visible();
+                Ok(None)
+            }
             Key::Esc => Ok(Some(PageId::Menu)),
             Key::Ctrl('s') => {
                 println!("Save not implemented yet");
                 Ok(None)
             }
             Key::Ctrl('x') => Ok(Some(PageId::Menu)),
-            _ => Ok(None),
+            _ => {
+                println!("Unhandled key: {:?}", key);
+                Ok(None)
+            }
         }
     }
 }
