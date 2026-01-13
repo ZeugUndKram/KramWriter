@@ -143,36 +143,31 @@ impl WriteMenuPage {
             let src_x = grid_x * char_width;
             let src_y = grid_y * char_height;
             
-            let mut max_width = 0;
+            let mut leftmost = char_width;
+            let mut rightmost = 0;
             
-            // Find rightmost black pixel in each column
+            // Find actual bounding box of character
             for dx in 0..char_width {
-                let mut column_has_black = false;
                 for dy in 0..char_height {
                     let src_pixel_x = src_x + dx;
                     let src_pixel_y = src_y + dy;
                     let pixel_index = src_pixel_y * font_width + src_pixel_x;
                     
                     if pixel_index < pixels.len() && pixels[pixel_index] == Pixel::Black {
-                        column_has_black = true;
-                        break;
+                        if dx < leftmost { leftmost = dx; }
+                        if dx > rightmost { rightmost = dx; }
                     }
-                }
-                if column_has_black {
-                    max_width = dx + 1; // +1 because dx is 0-indexed
                 }
             }
             
-            // Add some spacing (1px on left, 1px on right)
-            let actual_width = if max_width > 0 { max_width.min(char_width) } else { char_width / 3 };
+            let actual_width = if rightmost >= leftmost { 
+                (rightmost - leftmost + 1).min(char_width) 
+            } else { 
+                char_width / 4  // Space character
+            };
+            
             widths.push(actual_width);
         }
-        
-        println!("Measured widths for {} characters", widths.len());
-        println!("Sample widths: Space={}, A={}, i={}, .={}", 
-                 widths[0], widths[printable_chars.find('A').unwrap()],
-                 widths[printable_chars.find('i').unwrap()],
-                 widths[printable_chars.find('.').unwrap()]);
         
         widths
     }
@@ -226,11 +221,11 @@ impl WriteMenuPage {
             let char_width = if char_index < self.char_widths.len() { 
                 self.char_widths[char_index] 
             } else { 
-                self.font_char_width / 3  // Default narrow width
+                self.font_char_width / 4  // Default narrow width
             };
             
             self.draw_char(display, current_x, y, c);
-            current_x += char_width + 1; // +1 for spacing between characters
+            current_x += char_width; // REDUCED: No extra spacing between characters
         }
     }
     
@@ -241,11 +236,11 @@ impl WriteMenuPage {
             let char_width = if char_index < self.char_widths.len() { 
                 self.char_widths[char_index] 
             } else { 
-                self.font_char_width / 3
+                self.font_char_width / 4
             };
-            width += char_width + 1; // +1 for spacing
+            width += char_width; // REDUCED: No extra spacing
         }
-        if width > 0 { width - 1 } else { 0 } // Remove last spacing
+        width
     }
 }
 
