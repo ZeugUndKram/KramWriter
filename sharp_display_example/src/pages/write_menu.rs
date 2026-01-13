@@ -31,7 +31,7 @@ struct FontSize {
 impl WriteMenuPage {
     pub fn new() -> Result<Self> {
         // Define all available font sizes
-        let font_sizes = vec![
+        let mut font_sizes = vec![ // Added 'mut' here
             FontSize::new("/home/kramwriter/KramWriter/fonts/libsans12.bmp", 12, 12, 32),
             FontSize::new("/home/kramwriter/KramWriter/fonts/libsans14.bmp", 14, 14, 32),
             FontSize::new("/home/kramwriter/KramWriter/fonts/libsans16.bmp", 16, 16, 32),
