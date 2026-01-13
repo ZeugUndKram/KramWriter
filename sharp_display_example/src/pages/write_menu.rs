@@ -6,45 +6,55 @@ use rpi_memory_display::Pixel;
 
 const LETTER_SPACING: usize = 2;
 const LINE_SPACING: usize = 3;
-const MAX_VISIBLE_LINES: usize = 7;
+const MAX_VISIBLE_LINES: usize = 6;
 const MAX_LINE_WIDTH: usize = 380;
 const LEFT_MARGIN: usize = 10;
 
 pub struct WriteMenuPage {
-    font_bitmap: Option<(Vec<Pixel>, usize, usize)>,
-    font_char_width: usize,
-    font_char_height: usize,
-    chars_per_row: usize,
-    char_widths: Vec<usize>,
+    font_sizes: Vec<FontSize>,
+    current_font_index: usize,
     lines: Vec<String>,
     cursor_line: usize,
     cursor_pos: usize,
     scroll_offset: usize,
 }
 
+struct FontSize {
+    path: &'static str,
+    char_width: usize,
+    char_height: usize,
+    chars_per_row: usize,
+    bitmap: Option<(Vec<Pixel>, usize, usize)>,
+    char_widths: Vec<usize>,
+}
+
 impl WriteMenuPage {
     pub fn new() -> Result<Self> {
-        let font_path = "/home/kramwriter/KramWriter/fonts/libsans20.bmp";
+        // Define all available font sizes
+        let font_sizes = vec![
+            FontSize::new("/home/kramwriter/KramWriter/fonts/libsans12.bmp", 12, 12, 32),
+            FontSize::new("/home/kramwriter/KramWriter/fonts/libsans14.bmp", 14, 14, 32),
+            FontSize::new("/home/kramwriter/KramWriter/fonts/libsans16.bmp", 16, 16, 32),
+            FontSize::new("/home/kramwriter/KramWriter/fonts/libsans18.bmp", 18, 18, 32),
+            FontSize::new("/home/kramwriter/KramWriter/fonts/libsans20.bmp", 20, 20, 32),
+            FontSize::new("/home/kramwriter/KramWriter/fonts/libsans22.bmp", 22, 22, 32),
+            FontSize::new("/home/kramwriter/KramWriter/fonts/libsans24.bmp", 24, 24, 32),
+            FontSize::new("/home/kramwriter/KramWriter/fonts/libsans26.bmp", 26, 26, 32),
+        ];
         
-        let (font_bitmap, char_widths) = match std::fs::read(font_path) {
-            Ok(data) => {
-                match Self::parse_font_bmp(&data) {
-                    Some((bitmap, width, height)) => {
-                        let widths = Self::measure_char_widths(&bitmap, width, 30, 30, 19);
-                        (Some((bitmap, width, height)), widths)
-                    }
-                    None => (None, Vec::new()),
-                }
+        // Start with libsans20 (index 4)
+        let current_font_index = 4;
+        
+        // Load the initial font
+        if current_font_index < font_sizes.len() {
+            if let Err(e) = font_sizes[current_font_index].load() {
+                eprintln!("Failed to load font {}: {}", font_sizes[current_font_index].path, e);
             }
-            Err(_) => (None, Vec::new()),
-        };
+        }
         
         Ok(Self {
-            font_bitmap,
-            font_char_width: 30,
-            font_char_height: 30,
-            chars_per_row: 19,
-            char_widths,
+            font_sizes,
+            current_font_index,
             lines: vec![String::new()],
             cursor_line: 0,
             cursor_pos: 0,
@@ -52,93 +62,30 @@ impl WriteMenuPage {
         })
     }
     
-    fn parse_font_bmp(data: &[u8]) -> Option<(Vec<Pixel>, usize, usize)> {
-        if data.len() < 54 { return None; }
-        if data[0] != 0x42 || data[1] != 0x4D { return None; }
-        
-        let width = u32::from_le_bytes([data[18], data[19], data[20], data[21]]) as usize;
-        let height = u32::from_le_bytes([data[22], data[23], data[24], data[25]]) as usize;
-        let bits_per_pixel = u16::from_le_bytes([data[28], data[29]]) as usize;
-        let data_offset = u32::from_le_bytes([data[10], data[11], data[12], data[13]]) as usize;
-        
-        if data_offset >= data.len() { return None; }
-        
-        let mut pixels = Vec::with_capacity(width * height);
-        
-        match bits_per_pixel {
-            32 => {
-                let row_bytes = width * 4;
-                for y in 0..height {
-                    let row_start = data_offset + (height - 1 - y) * row_bytes;
-                    for x in 0..width {
-                        let pixel_start = row_start + x * 4;
-                        if pixel_start + 3 >= data.len() {
-                            pixels.push(Pixel::White);
-                            continue;
-                        }
-                        let b = data[pixel_start] as u32;
-                        let g = data[pixel_start + 1] as u32;
-                        let r = data[pixel_start + 2] as u32;
-                        let a = data[pixel_start + 3] as u32;
-                        
-                        let luminance = (r * 299 + g * 587 + b * 114) / 1000;
-                        let alpha = a;
-                        
-                        let pixel = if alpha < 128 {
-                            Pixel::White
-                        } else if luminance > 128 {
-                            Pixel::Black
-                        } else {
-                            Pixel::White
-                        };
-                        pixels.push(pixel);
-                    }
-                }
-            }
-            _ => return None,
-        }
-        
-        Some((pixels, width, height))
+    fn current_font(&self) -> &FontSize {
+        &self.font_sizes[self.current_font_index]
     }
     
-    fn measure_char_widths(pixels: &[Pixel], font_width: usize, 
-                          char_width: usize, char_height: usize, chars_per_row: usize) -> Vec<usize> {
-        let printable_chars = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
-        let mut widths = Vec::new();
-        
-        for char_index in 0..printable_chars.len() {
-            let grid_x = char_index % chars_per_row;
-            let grid_y = char_index / chars_per_row;
-            
-            let src_x = grid_x * char_width;
-            let src_y = grid_y * char_height;
-            
-            let mut leftmost = char_width;
-            let mut rightmost = 0;
-            
-            for dx in 0..char_width {
-                for dy in 0..char_height {
-                    let src_pixel_x = src_x + dx;
-                    let src_pixel_y = src_y + dy;
-                    let pixel_index = src_pixel_y * font_width + src_pixel_x;
-                    
-                    if pixel_index < pixels.len() && pixels[pixel_index] == Pixel::Black {
-                        if dx < leftmost { leftmost = dx; }
-                        if dx > rightmost { rightmost = dx; }
-                    }
-                }
+    fn current_font_mut(&mut self) -> &mut FontSize {
+        &mut self.font_sizes[self.current_font_index]
+    }
+    
+    fn decrease_font_size(&mut self) {
+        if self.current_font_index > 0 {
+            self.current_font_index -= 1;
+            if let Err(e) = self.current_font_mut().load() {
+                eprintln!("Failed to load font {}: {}", self.current_font().path, e);
             }
-            
-            let actual_width = if rightmost >= leftmost { 
-                (rightmost - leftmost + 1).min(char_width) 
-            } else { 
-                8
-            };
-            
-            widths.push(actual_width);
         }
-        
-        widths
+    }
+    
+    fn increase_font_size(&mut self) {
+        if self.current_font_index < self.font_sizes.len() - 1 {
+            self.current_font_index += 1;
+            if let Err(e) = self.current_font_mut().load() {
+                eprintln!("Failed to load font {}: {}", self.current_font().path, e);
+            }
+        }
     }
     
     fn get_char_index(c: char) -> usize {
@@ -147,11 +94,12 @@ impl WriteMenuPage {
     }
     
     fn draw_char_cropped(&self, display: &mut SharpDisplay, x: usize, y: usize, c: char) {
-        if let Some((pixels, font_width, _)) = &self.font_bitmap {
+        let font = self.current_font();
+        if let Some((pixels, font_width, _)) = &font.bitmap {
             let char_index = Self::get_char_index(c);
-            let chars_per_row = self.chars_per_row;
-            let char_width = self.font_char_width;
-            let char_height = self.font_char_height;
+            let chars_per_row = font.chars_per_row;
+            let char_width = font.char_width;
+            let char_height = font.char_height;
             
             let grid_x = char_index % chars_per_row;
             let grid_y = char_index / chars_per_row;
@@ -203,10 +151,10 @@ impl WriteMenuPage {
         let mut current_x = x;
         for c in text.chars() {
             let char_index = Self::get_char_index(c);
-            let char_width = if char_index < self.char_widths.len() { 
-                self.char_widths[char_index] 
+            let char_width = if char_index < self.current_font().char_widths.len() { 
+                self.current_font().char_widths[char_index] 
             } else { 
-                8
+                self.current_font().char_width / 2 // Default to half char width
             };
             
             self.draw_char_cropped(display, current_x, y, c);
@@ -218,10 +166,10 @@ impl WriteMenuPage {
         let mut width = 0;
         for c in text.chars() {
             let char_index = Self::get_char_index(c);
-            let char_width = if char_index < self.char_widths.len() { 
-                self.char_widths[char_index] 
+            let char_width = if char_index < self.current_font().char_widths.len() { 
+                self.current_font().char_widths[char_index] 
             } else { 
-                8
+                self.current_font().char_width / 2 // Default to half char width
             };
             width += char_width + LETTER_SPACING;
         }
@@ -243,10 +191,10 @@ impl WriteMenuPage {
         let mut chars = line.chars().peekable();
         while let Some(c) = chars.next() {
             let char_index = Self::get_char_index(c);
-            let char_width = if char_index < self.char_widths.len() { 
-                self.char_widths[char_index] + LETTER_SPACING
+            let char_width = if char_index < self.current_font().char_widths.len() { 
+                self.current_font().char_widths[char_index] + LETTER_SPACING
             } else { 
-                8 + LETTER_SPACING
+                (self.current_font().char_width / 2) + LETTER_SPACING
             };
             
             // Check if adding this character would overflow
@@ -388,11 +336,160 @@ impl WriteMenuPage {
     }
 }
 
+impl FontSize {
+    fn new(path: &'static str, char_width: usize, char_height: usize, chars_per_row: usize) -> Self {
+        Self {
+            path,
+            char_width,
+            char_height,
+            chars_per_row,
+            bitmap: None,
+            char_widths: Vec::new(),
+        }
+    }
+    
+    fn load(&mut self) -> Result<()> {
+        if self.bitmap.is_some() {
+            return Ok(()); // Already loaded
+        }
+        
+        match std::fs::read(self.path) {
+            Ok(data) => {
+                match Self::parse_font_bmp(&data) {
+                    Some((bitmap, width, height)) => {
+                        self.char_widths = Self::measure_char_widths(&bitmap, width, self.char_width, self.char_height, self.chars_per_row);
+                        self.bitmap = Some((bitmap, width, height));
+                        Ok(())
+                    }
+                    None => anyhow::bail!("Failed to parse font bitmap"),
+                }
+            }
+            Err(e) => anyhow::bail!("Failed to read font file: {}", e),
+        }
+    }
+    
+    fn parse_font_bmp(data: &[u8]) -> Option<(Vec<Pixel>, usize, usize)> {
+        if data.len() < 54 { return None; }
+        if data[0] != 0x42 || data[1] != 0x4D { return None; }
+        
+        let width = u32::from_le_bytes([data[18], data[19], data[20], data[21]]) as usize;
+        let height = u32::from_le_bytes([data[22], data[23], data[24], data[25]]) as usize;
+        let bits_per_pixel = u16::from_le_bytes([data[28], data[29]]) as usize;
+        let data_offset = u32::from_le_bytes([data[10], data[11], data[12], data[13]]) as usize;
+        
+        if data_offset >= data.len() { return None; }
+        
+        let mut pixels = Vec::with_capacity(width * height);
+        
+        match bits_per_pixel {
+            32 => {
+                let row_bytes = width * 4;
+                for y in 0..height {
+                    let row_start = data_offset + (height - 1 - y) * row_bytes;
+                    for x in 0..width {
+                        let pixel_start = row_start + x * 4;
+                        if pixel_start + 3 >= data.len() {
+                            pixels.push(Pixel::White);
+                            continue;
+                        }
+                        let b = data[pixel_start] as u32;
+                        let g = data[pixel_start + 1] as u32;
+                        let r = data[pixel_start + 2] as u32;
+                        let a = data[pixel_start + 3] as u32;
+                        
+                        let luminance = (r * 299 + g * 587 + b * 114) / 1000;
+                        let alpha = a;
+                        
+                        let pixel = if alpha < 128 {
+                            Pixel::White
+                        } else if luminance > 128 {
+                            Pixel::Black
+                        } else {
+                            Pixel::White
+                        };
+                        pixels.push(pixel);
+                    }
+                }
+            }
+            24 => {
+                let row_bytes = ((width * 3 + 3) / 4) * 4; // BMP rows are padded to 4 bytes
+                for y in 0..height {
+                    let row_start = data_offset + (height - 1 - y) * row_bytes;
+                    for x in 0..width {
+                        let pixel_start = row_start + x * 3;
+                        if pixel_start + 2 >= data.len() {
+                            pixels.push(Pixel::White);
+                            continue;
+                        }
+                        let b = data[pixel_start] as u32;
+                        let g = data[pixel_start + 1] as u32;
+                        let r = data[pixel_start + 2] as u32;
+                        
+                        let luminance = (r * 299 + g * 587 + b * 114) / 1000;
+                        
+                        // For 24-bit BMPs
+                        let pixel = if luminance > 128 {
+                            Pixel::Black
+                        } else {
+                            Pixel::White
+                        };
+                        pixels.push(pixel);
+                    }
+                }
+            }
+            _ => return None,
+        }
+        
+        Some((pixels, width, height))
+    }
+    
+    fn measure_char_widths(pixels: &[Pixel], font_width: usize, 
+                          char_width: usize, char_height: usize, chars_per_row: usize) -> Vec<usize> {
+        let printable_chars = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
+        let mut widths = Vec::new();
+        
+        for char_index in 0..printable_chars.len() {
+            let grid_x = char_index % chars_per_row;
+            let grid_y = char_index / chars_per_row;
+            
+            let src_x = grid_x * char_width;
+            let src_y = grid_y * char_height;
+            
+            let mut leftmost = char_width;
+            let mut rightmost = 0;
+            
+            for dx in 0..char_width {
+                for dy in 0..char_height {
+                    let src_pixel_x = src_x + dx;
+                    let src_pixel_y = src_y + dy;
+                    let pixel_index = src_pixel_y * font_width + src_pixel_x;
+                    
+                    if pixel_index < pixels.len() && pixels[pixel_index] == Pixel::Black {
+                        if dx < leftmost { leftmost = dx; }
+                        if dx > rightmost { rightmost = dx; }
+                    }
+                }
+            }
+            
+            let actual_width = if rightmost >= leftmost { 
+                (rightmost - leftmost + 1).min(char_width) 
+            } else { 
+                char_width / 2 // Default to half char width
+            };
+            
+            widths.push(actual_width);
+        }
+        
+        widths
+    }
+}
+
 impl Page for WriteMenuPage {
     fn draw(&mut self, display: &mut SharpDisplay) -> Result<()> {
         display.clear()?;
         
-        if self.font_bitmap.is_some() && !self.char_widths.is_empty() {
+        let font = self.current_font();
+        if font.bitmap.is_some() && !font.char_widths.is_empty() {
             let start_y = 10;
             
             // Get all wrapped lines with metadata
@@ -402,7 +499,7 @@ impl Page for WriteMenuPage {
             for i in 0..MAX_VISIBLE_LINES {
                 let wrapped_idx = i + self.scroll_offset;
                 if wrapped_idx < wrapped_lines.len() {
-                    let line_y = start_y + i * (self.font_char_height + LINE_SPACING);
+                    let line_y = start_y + i * (font.char_height + LINE_SPACING);
                     let (text, original_line_idx, char_pos_in_original) = &wrapped_lines[wrapped_idx];
                     self.draw_text_line(display, LEFT_MARGIN, line_y, text);
                     
@@ -421,7 +518,7 @@ impl Page for WriteMenuPage {
                                 count += 1;
                             }
                             let cursor_x = LEFT_MARGIN + self.calculate_text_width(&before_cursor);
-                            for dy in 0..self.font_char_height {
+                            for dy in 0..font.char_height {
                                 display.draw_pixel(cursor_x, line_y + dy, Pixel::Black);
                             }
                         }
@@ -612,6 +709,16 @@ impl Page for WriteMenuPage {
                     // Keep cursor visible
                     self.ensure_cursor_visible();
                 }
+                Ok(None)
+            }
+            Key::Ctrl('=') | Key::Ctrl('+') => {
+                self.increase_font_size();
+                self.ensure_cursor_visible();
+                Ok(None)
+            }
+            Key::Ctrl('-') => {
+                self.decrease_font_size();
+                self.ensure_cursor_visible();
                 Ok(None)
             }
             Key::Esc => Ok(Some(PageId::Menu)),
