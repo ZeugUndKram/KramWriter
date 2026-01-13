@@ -5,37 +5,44 @@ use termion::event::Key;
 use rpi_memory_display::Pixel;
 
 const MENU_OPTIONS: [&str; 5] = [
-    "Write_0.bmp",
-    "Learn_0.bmp", 
-    "Zeugtris_0.bmp",
-    "Settings_0.bmp",
-    "Credits_0.bmp",
+    "Write",
+    "Learn", 
+    "Zeugtris",
+    "Settings",
+    "Credits",
 ];
 
 pub struct MenuPage {
     current_index: usize,
-    images: Vec<Option<(Vec<Pixel>, usize, usize)>>,
+    images_cache: Vec<Vec<Option<(Vec<Pixel>, usize, usize)>>>,
 }
 
 impl MenuPage {
     pub fn new() -> Result<Self> {
-        let mut images = Vec::new();
+        let mut images_cache = Vec::new();
         
+        // Preload all images (0, 1, 2 for each option)
         for option in MENU_OPTIONS.iter() {
-            let path = format!("/home/kramwriter/KramWriter/assets/{}", option);
-            match std::fs::read(&path) {
-                Ok(data) => {
-                    images.push(Self::parse_bmp(&data));
-                }
-                Err(_) => {
-                    images.push(None);
+            let mut option_images = Vec::new();
+            
+            for suffix in 0..3 {
+                let path = format!("/home/kramwriter/KramWriter/assets/{}_{}.bmp", option, suffix);
+                match std::fs::read(&path) {
+                    Ok(data) => {
+                        option_images.push(Self::parse_bmp(&data));
+                    }
+                    Err(_) => {
+                        option_images.push(None);
+                    }
                 }
             }
+            
+            images_cache.push(option_images);
         }
         
         Ok(Self {
             current_index: 0,
-            images,
+            images_cache,
         })
     }
     
@@ -123,25 +130,45 @@ impl MenuPage {
         
         Some((pixels, width, height))
     }
+    
+    fn draw_image(&self, display: &mut SharpDisplay, image_data: Option<&(Vec<Pixel>, usize, usize)>, x_offset: i32, y_offset: i32) {
+        if let Some((pixels, width, height)) = image_data {
+            let start_x = ((400 - width) / 2) as i32 + x_offset;
+            let start_y = ((240 - height) / 2) as i32 + y_offset;
+            
+            for y in 0..*height {
+                for x in 0..*width {
+                    let screen_x = start_x + x as i32;
+                    let screen_y = start_y + y as i32;
+                    
+                    if screen_x >= 0 && screen_x < 400 && screen_y >= 0 && screen_y < 240 {
+                        let pixel = pixels[y * width + x];
+                        display.draw_pixel(screen_x as usize, screen_y as usize, pixel);
+                    }
+                }
+            }
+        }
+    }
 }
 
 impl Page for MenuPage {
     fn draw(&mut self, display: &mut SharpDisplay) -> Result<()> {
         display.clear()?;
         
-        if let Some(image_data) = &self.images[self.current_index] {
-            let (pixels, width, height) = image_data;
-            let start_x = (400usize.saturating_sub(*width)) / 2;
-            let start_y = (240usize.saturating_sub(*height)) / 2;
-            
-            for y in 0..*height.min(&240) {
-                for x in 0..*width.min(&400) {
-                    let pixel = pixels[y * width + x];
-                    display.draw_pixel(start_x + x, start_y + y, pixel);
-                }
-            }
-        } else {
-            display.draw_text(150, 100, "NO IMAGE");
+        // Draw centered image (current_index, suffix 0)
+        let center_image = self.images_cache[self.current_index].get(0).and_then(|x| x.as_ref());
+        self.draw_image(display, center_image, 0, 0);
+        
+        // Draw next image below (current_index + 1, suffix 1) if exists
+        if self.current_index + 1 < MENU_OPTIONS.len() {
+            let next_image = self.images_cache[self.current_index + 1].get(1).and_then(|x| x.as_ref());
+            self.draw_image(display, next_image, 0, 120);
+        }
+        
+        // Draw second next image below (current_index + 2, suffix 2) if exists
+        if self.current_index + 2 < MENU_OPTIONS.len() {
+            let second_next_image = self.images_cache[self.current_index + 2].get(2).and_then(|x| x.as_ref());
+            self.draw_image(display, second_next_image, 0, 180);
         }
         
         display.update()?;
