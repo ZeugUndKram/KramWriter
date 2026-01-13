@@ -12,9 +12,9 @@ const MENU_OPTIONS: [&str; 5] = [
     "Credits",
 ];
 
-const SPACING_TOP_TO_MAIN: i32 = 0;           // Space between top image and main image (can be negative)
-const SPACING_MAIN_TO_BOTTOM: i32 = 0;        // Space between main image and bottom image (can be negative)
-const SPACING_TOP_TO_FARTOP: i32 = 40;        // Space between far top image and top image (can be negative)
+const SPACING_TOP_TO_MAIN: i32 = -10;           // Space between top image and main image (can be negative)
+const SPACING_MAIN_TO_BOTTOM: i32 = 10;        // Space between main image and bottom image (can be negative)
+const SPACING_TOP_TO_FARTOP: i32 = 20;        // Space between far top image and top image (can be negative)
 const SPACING_BOTTOM_TO_FARBOTTOM: i32 = 40;  // Space between bottom image and far bottom image (can be negative)
 
 pub struct MenuPage {
