@@ -300,12 +300,46 @@ impl WriteMenuPage {
         result
     }
     
+    fn total_wrapped_lines(&self) -> usize {
+        let mut total = 0;
+        for line in &self.lines {
+            total += self.wrap_line(line).len();
+        }
+        total
+    }
+    
+    fn cursor_to_wrapped_position(&self) -> (usize, usize) {
+        let mut wrapped_line_count = 0;
+        let mut char_count = 0;
+        
+        for (line_idx, line) in self.lines.iter().enumerate() {
+            let wrapped_lines = self.wrap_line(line);
+            
+            for (wrapped_idx, wrapped_line) in wrapped_lines.iter().enumerate() {
+                if line_idx == self.cursor_line {
+                    if self.cursor_pos >= char_count && self.cursor_pos <= char_count + wrapped_line.len() {
+                        let cursor_in_wrapped = self.cursor_pos - char_count;
+                        return (wrapped_line_count + wrapped_idx, cursor_in_wrapped);
+                    }
+                }
+                char_count += wrapped_line.len();
+            }
+            wrapped_line_count += wrapped_lines.len();
+        }
+        
+        (0, 0)
+    }
+    
     fn ensure_cursor_visible(&mut self) {
-        // Ensure cursor line is visible
-        if self.cursor_line < self.scroll_offset {
-            self.scroll_offset = self.cursor_line;
-        } else if self.cursor_line >= self.scroll_offset + MAX_VISIBLE_LINES {
-            self.scroll_offset = self.cursor_line - MAX_VISIBLE_LINES + 1;
+        let (wrapped_cursor_line, _) = self.cursor_to_wrapped_position();
+        
+        // If cursor is above visible area
+        if wrapped_cursor_line < self.scroll_offset {
+            self.scroll_offset = wrapped_cursor_line;
+        }
+        // If cursor is below visible area
+        else if wrapped_cursor_line >= self.scroll_offset + MAX_VISIBLE_LINES {
+            self.scroll_offset = wrapped_cursor_line - MAX_VISIBLE_LINES + 1;
         }
     }
 }
@@ -317,58 +351,68 @@ impl Page for WriteMenuPage {
         if self.font_bitmap.is_some() && !self.char_widths.is_empty() {
             let start_y = 10;
             
-            // Draw visible lines with wrapping
-            let mut line_counter = 0;
-            for line_idx in self.scroll_offset..self.lines.len() {
-                if line_counter >= MAX_VISIBLE_LINES { break; }
-                
-                let wrapped_lines = self.wrap_line(&self.lines[line_idx]);
-                for wrapped_line in wrapped_lines {
-                    if line_counter >= MAX_VISIBLE_LINES { break; }
+            // Calculate all wrapped lines
+            let mut all_wrapped_lines = Vec::new();
+            let mut line_to_original = Vec::new(); // Maps wrapped line to original line index
+            for (line_idx, line) in self.lines.iter().enumerate() {
+                let wrapped = self.wrap_line(line);
+                for _ in &wrapped {
+                    line_to_original.push(line_idx);
+                }
+                all_wrapped_lines.extend(wrapped);
+            }
+            
+            // Draw visible wrapped lines
+            for i in 0..MAX_VISIBLE_LINES {
+                let wrapped_idx = i + self.scroll_offset;
+                if wrapped_idx < all_wrapped_lines.len() {
+                    let line_y = start_y + i * (self.font_char_height + LINE_SPACING);
+                    let text = &all_wrapped_lines[wrapped_idx];
+                    self.draw_text_line(display, LEFT_MARGIN, line_y, text);
                     
-                    let line_y = start_y + line_counter * (self.font_char_height + LINE_SPACING);
-                    self.draw_text_line(display, LEFT_MARGIN, line_y, &wrapped_line);
-                    
-                    // Draw cursor if on this line and visible
-                    if line_idx == self.cursor_line && line_counter < MAX_VISIBLE_LINES {
-                        // Find which wrapped line contains the cursor
-                        let mut char_count = 0;
-                        let mut cursor_wrapped_line_idx = 0;
-                        let mut cursor_in_wrapped_line_pos = 0;
-                        
-                        for (wrapped_idx, w_line) in self.wrap_line(&self.lines[line_idx]).iter().enumerate() {
-                            if self.cursor_pos >= char_count && self.cursor_pos <= char_count + w_line.len() {
-                                cursor_wrapped_line_idx = wrapped_idx;
-                                cursor_in_wrapped_line_pos = self.cursor_pos - char_count;
-                                break;
-                            }
-                            char_count += w_line.len();
-                        }
-                        
-                        // If cursor is on this specific wrapped line
-                        if cursor_wrapped_line_idx == line_counter - (line_idx - self.scroll_offset) {
-                            let before_cursor = &wrapped_line[..cursor_in_wrapped_line_pos.min(wrapped_line.len())];
-                            let cursor_x = LEFT_MARGIN + self.calculate_text_width(before_cursor);
-                            for dy in 0..self.font_char_height {
-                                display.draw_pixel(cursor_x, line_y + dy, Pixel::Black);
-                            }
+                    // Draw cursor if this wrapped line contains cursor
+                    let (cursor_wrapped_line, cursor_in_wrapped) = self.cursor_to_wrapped_position();
+                    if wrapped_idx == cursor_wrapped_line {
+                        let before_cursor = &text[..cursor_in_wrapped.min(text.len())];
+                        let cursor_x = LEFT_MARGIN + self.calculate_text_width(before_cursor);
+                        for dy in 0..self.font_char_height {
+                            display.draw_pixel(cursor_x, line_y + dy, Pixel::Black);
                         }
                     }
-                    
-                    line_counter += 1;
                 }
             }
             
-            // Draw scroll indicator if needed
+            // Draw scroll indicators
             if self.scroll_offset > 0 {
-                display.draw_text(5, 5, "↑");
+                for dy in 0..6 {
+                    display.draw_pixel(5, 5 + dy, Pixel::Black);
+                }
             }
-            if self.lines.len() > self.scroll_offset + MAX_VISIBLE_LINES {
-                display.draw_text(5, 230, "↓");
+            
+            let total_wrapped = all_wrapped_lines.len();
+            if total_wrapped > self.scroll_offset + MAX_VISIBLE_LINES {
+                for dy in 0..6 {
+                    display.draw_pixel(5, 230 + dy, Pixel::Black);
+                }
+            }
+            
+            // Draw status line
+            let status = format!("Line {} of {}", self.cursor_line + 1, self.lines.len());
+            for (i, c) in status.chars().enumerate() {
+                match c {
+                    '0'..='9' => {
+                        for dy in 2..6 {
+                            for dx in 1..5 {
+                                display.draw_pixel(300 + i * 6 + dx, 220 + dy, Pixel::Black);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
             }
             
             // Draw instruction
-            let instruction = "ESC: Menu  Ctrl+S: Save  Ctrl+X: Exit";
+            let instruction = "ESC: Menu";
             for (i, c) in instruction.chars().enumerate() {
                 match c {
                     'A'..='Z' | 'a'..='z' | ' ' | ':' => {
@@ -437,6 +481,7 @@ impl Page for WriteMenuPage {
                     let next_line = self.lines.remove(self.cursor_line + 1);
                     self.lines[self.cursor_line].push_str(&next_line);
                 }
+                self.ensure_cursor_visible();
                 Ok(None)
             }
             Key::Left => {
@@ -481,16 +526,28 @@ impl Page for WriteMenuPage {
             Key::PageUp => {
                 if self.scroll_offset > 0 {
                     self.scroll_offset = self.scroll_offset.saturating_sub(MAX_VISIBLE_LINES);
-                    if self.cursor_line >= self.scroll_offset + MAX_VISIBLE_LINES {
-                        self.cursor_line = self.scroll_offset + MAX_VISIBLE_LINES - 1;
+                    // Adjust cursor to stay visible
+                    let (cursor_wrapped, _) = self.cursor_to_wrapped_position();
+                    if cursor_wrapped < self.scroll_offset {
+                        // Need to move cursor up
+                        // Simplified: just move to top visible line
+                        self.cursor_line = self.scroll_offset.min(self.lines.len() - 1);
+                        self.cursor_pos = 0;
                     }
                 }
                 Ok(None)
             }
             Key::PageDown => {
-                self.scroll_offset = (self.scroll_offset + MAX_VISIBLE_LINES).min(self.lines.len().saturating_sub(1));
-                if self.cursor_line < self.scroll_offset {
-                    self.cursor_line = self.scroll_offset;
+                let total_wrapped = self.total_wrapped_lines();
+                if self.scroll_offset + MAX_VISIBLE_LINES < total_wrapped {
+                    self.scroll_offset = (self.scroll_offset + MAX_VISIBLE_LINES).min(total_wrapped - 1);
+                    // Adjust cursor to stay visible
+                    let (cursor_wrapped, _) = self.cursor_to_wrapped_position();
+                    if cursor_wrapped >= self.scroll_offset + MAX_VISIBLE_LINES {
+                        // Need to move cursor down
+                        self.cursor_line = (self.scroll_offset + MAX_VISIBLE_LINES - 1).min(self.lines.len() - 1);
+                        self.cursor_pos = 0;
+                    }
                 }
                 Ok(None)
             }
