@@ -154,27 +154,28 @@ impl Page for MenuPage {
     fn draw(&mut self, display: &mut SharpDisplay) -> Result<()> {
         display.clear()?;
         
-        // Get dimensions of main image to center it properly
         let main_image_data = self.images_cache[self.current_index].get(0).and_then(|x| x.as_ref());
         
         if let Some((_, width, height)) = main_image_data {
-            // Center main image vertically and horizontally
             let center_y = (240 - height) / 2;
             self.draw_image_at(display, main_image_data, center_y);
             
-            // Next option 20px lower than main image
             if self.current_index + 1 < MENU_OPTIONS.len() {
                 let next_image = self.images_cache[self.current_index + 1].get(1).and_then(|x| x.as_ref());
-                self.draw_image_at(display, next_image, center_y + height + 20);
+                let next_y = center_y + height + 20;
+                if next_y < 240 {
+                    self.draw_image_at(display, next_image, next_y);
+                }
             }
             
-            // Second next option 30px lower than previous
             if self.current_index + 2 < MENU_OPTIONS.len() {
                 let second_next_image = self.images_cache[self.current_index + 2].get(2).and_then(|x| x.as_ref());
-                self.draw_image_at(display, second_next_image, center_y + height + 20 + 30);
+                let second_next_y = center_y + height + 50;
+                if second_next_y < 240 {
+                    self.draw_image_at(display, second_next_image, second_next_y);
+                }
             }
         } else {
-            // Fallback if no image
             display.draw_text(150, 100, "NO IMAGE");
         }
         
