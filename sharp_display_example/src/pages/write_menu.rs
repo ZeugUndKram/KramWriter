@@ -31,7 +31,7 @@ struct FontSize {
 impl WriteMenuPage {
     pub fn new() -> Result<Self> {
         // Define all available font sizes
-        let mut font_sizes = vec![ // Added 'mut' here
+        let mut font_sizes = vec![
             FontSize::new("/home/kramwriter/KramWriter/fonts/libsans12.bmp", 12, 12, 32),
             FontSize::new("/home/kramwriter/KramWriter/fonts/libsans14.bmp", 14, 14, 32),
             FontSize::new("/home/kramwriter/KramWriter/fonts/libsans16.bmp", 16, 16, 32),
@@ -76,6 +76,7 @@ impl WriteMenuPage {
             if let Err(e) = self.current_font_mut().load() {
                 eprintln!("Failed to load font {}: {}", self.current_font().path, e);
             }
+            println!("Decreased font size to: {}", self.current_font().char_height);
         }
     }
     
@@ -85,6 +86,7 @@ impl WriteMenuPage {
             if let Err(e) = self.current_font_mut().load() {
                 eprintln!("Failed to load font {}: {}", self.current_font().path, e);
             }
+            println!("Increased font size to: {}", self.current_font().char_height);
         }
     }
     
@@ -109,7 +111,9 @@ impl WriteMenuPage {
             
             let mut leftmost = char_width;
             let mut rightmost = 0;
+            let mut found_pixel = false;
             
+            // Find the bounding box of the character
             for dx in 0..char_width {
                 for dy in 0..char_height {
                     let src_pixel_x = src_x + dx;
@@ -117,13 +121,15 @@ impl WriteMenuPage {
                     let pixel_index = src_pixel_y * font_width + src_pixel_x;
                     
                     if pixel_index < pixels.len() && pixels[pixel_index] == Pixel::Black {
+                        found_pixel = true;
                         if dx < leftmost { leftmost = dx; }
                         if dx > rightmost { rightmost = dx; }
                     }
                 }
             }
             
-            if rightmost >= leftmost {
+            // If we found black pixels, draw them
+            if found_pixel && rightmost >= leftmost {
                 for dy in 0..char_height {
                     for dx in leftmost..=rightmost {
                         let src_pixel_x = src_x + dx;
@@ -154,7 +160,7 @@ impl WriteMenuPage {
             let char_width = if char_index < self.current_font().char_widths.len() { 
                 self.current_font().char_widths[char_index] 
             } else { 
-                self.current_font().char_width / 2 // Default to half char width
+                self.current_font().char_width // Use full char width as default
             };
             
             self.draw_char_cropped(display, current_x, y, c);
@@ -169,7 +175,7 @@ impl WriteMenuPage {
             let char_width = if char_index < self.current_font().char_widths.len() { 
                 self.current_font().char_widths[char_index] 
             } else { 
-                self.current_font().char_width / 2 // Default to half char width
+                self.current_font().char_width // Use full char width as default
             };
             width += char_width + LETTER_SPACING;
         }
@@ -194,7 +200,7 @@ impl WriteMenuPage {
             let char_width = if char_index < self.current_font().char_widths.len() { 
                 self.current_font().char_widths[char_index] + LETTER_SPACING
             } else { 
-                (self.current_font().char_width / 2) + LETTER_SPACING
+                self.current_font().char_width + LETTER_SPACING
             };
             
             // Check if adding this character would overflow
@@ -427,8 +433,8 @@ impl FontSize {
                         
                         let luminance = (r * 299 + g * 587 + b * 114) / 1000;
                         
-                        // For 24-bit BMPs
-                        let pixel = if luminance > 128 {
+                        // For 24-bit BMPs - libsans fonts are usually black text on white
+                        let pixel = if luminance < 128 { // Inverted threshold for black text
                             Pixel::Black
                         } else {
                             Pixel::White
@@ -474,7 +480,7 @@ impl FontSize {
             let actual_width = if rightmost >= leftmost { 
                 (rightmost - leftmost + 1).min(char_width) 
             } else { 
-                char_width / 2 // Default to half char width
+                char_width // Use full char width as default
             };
             
             widths.push(actual_width);
@@ -711,12 +717,34 @@ impl Page for WriteMenuPage {
                 }
                 Ok(None)
             }
-            Key::Ctrl('=') | Key::Ctrl('+') => {
+            // Try multiple key combinations for font size adjustment
+            Key::Ctrl('=') => {
+                self.increase_font_size();
+                self.ensure_cursor_visible();
+                Ok(None)
+            }
+            Key::Ctrl('+') => {
                 self.increase_font_size();
                 self.ensure_cursor_visible();
                 Ok(None)
             }
             Key::Ctrl('-') => {
+                self.decrease_font_size();
+                self.ensure_cursor_visible();
+                Ok(None)
+            }
+            // Also try Alt key combinations (sometimes terminals send these)
+            Key::Alt('=') => {
+                self.increase_font_size();
+                self.ensure_cursor_visible();
+                Ok(None)
+            }
+            Key::Alt('+') => {
+                self.increase_font_size();
+                self.ensure_cursor_visible();
+                Ok(None)
+            }
+            Key::Alt('-') => {
                 self.decrease_font_size();
                 self.ensure_cursor_visible();
                 Ok(None)
