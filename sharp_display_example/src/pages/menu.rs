@@ -12,8 +12,8 @@ const MENU_OPTIONS: [&str; 5] = [
     "Credits",
 ];
 
-const SPACING_MAIN_TO_SECOND: usize = 10;  // Space between main and second image
-const SPACING_SECOND_TO_THIRD: usize = 40; // Space between second and third image
+const SPACING_MAIN_TO_SECOND: usize = 10;   // Space between main and second image
+const SPACING_SECOND_TO_THIRD: usize = 40;  // Space between second and third image
 
 pub struct MenuPage {
     current_index: usize,
@@ -161,8 +161,30 @@ impl Page for MenuPage {
         
         if let Some((_, width, height)) = main_image_data {
             let center_y = (240 - height) / 2;
+            
+            // Draw images above the main one (if any)
+            if self.current_index >= 2 {
+                // Second previous option (2 above) with suffix 2
+                let second_prev_image = self.images_cache[self.current_index - 2].get(2).and_then(|x| x.as_ref());
+                let second_prev_y = center_y.saturating_sub(height + SPACING_MAIN_TO_SECOND + SPACING_SECOND_TO_THIRD);
+                if second_prev_y < 240 {
+                    self.draw_image_at(display, second_prev_image, second_prev_y);
+                }
+            }
+            
+            if self.current_index >= 1 {
+                // Previous option (1 above) with suffix 1
+                let prev_image = self.images_cache[self.current_index - 1].get(1).and_then(|x| x.as_ref());
+                let prev_y = center_y.saturating_sub(height + SPACING_MAIN_TO_SECOND);
+                if prev_y < 240 {
+                    self.draw_image_at(display, prev_image, prev_y);
+                }
+            }
+            
+            // Draw main image
             self.draw_image_at(display, main_image_data, center_y);
             
+            // Draw images below the main one (if any)
             if self.current_index + 1 < MENU_OPTIONS.len() {
                 let next_image = self.images_cache[self.current_index + 1].get(1).and_then(|x| x.as_ref());
                 let next_y = center_y + height + SPACING_MAIN_TO_SECOND;
