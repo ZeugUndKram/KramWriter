@@ -8,7 +8,8 @@ use rand::Rng;
 
 pub struct ZeugtrisMenuPage {
     background_pieces: Vec<BackgroundPiece>,
-    last_update: Instant,
+    last_frame_time: Instant,
+    frame_count: u32,
 }
 
 struct BackgroundPiece {
@@ -39,10 +40,11 @@ impl BackgroundPiece {
         }
     }
     
-    fn update(&mut self) {
-        self.y += self.speed;
-        self.rotation = (self.rotation as f32 + self.rotation_speed) as usize % 4;
-        self.x += self.drift * self.drift_direction;
+    fn update(&mut self, delta_time: f32) {
+        // Update position based on delta time for smooth animation
+        self.y += self.speed * delta_time;
+        self.rotation = (self.rotation as f32 + self.rotation_speed * delta_time) as usize % 4;
+        self.x += self.drift * self.drift_direction * delta_time;
         
         // Wrap around screen edges
         if self.x < -50.0 {
@@ -156,21 +158,21 @@ impl ZeugtrisMenuPage {
         
         Ok(Self {
             background_pieces,
-            last_update: Instant::now(),
+            last_frame_time: Instant::now(),
+            frame_count: 0,
         })
     }
     
     fn update_background(&mut self) {
         let now = Instant::now();
+        self.frame_count += 1;
         
-        // Only update at ~60fps for smooth animation
-        if now.duration_since(self.last_update) < Duration::from_millis(16) {
-            return;
-        }
+        // Calculate delta time in seconds
+        let delta_time = now.duration_since(self.last_frame_time).as_secs_f32();
         
-        // Update all background pieces
+        // Always update background pieces regardless of redraw
         for piece in &mut self.background_pieces {
-            piece.update();
+            piece.update(delta_time * 60.0); // Scale to make movement reasonable
             
             // Reset pieces that have fallen off screen
             if piece.is_off_screen() {
@@ -178,15 +180,16 @@ impl ZeugtrisMenuPage {
             }
         }
         
-        self.last_update = now;
+        self.last_frame_time = now;
     }
 }
 
 impl Page for ZeugtrisMenuPage {
     fn draw(&mut self, display: &mut SharpDisplay) -> Result<()> {
-        // Update background animation automatically
+        // Always update background animation
         self.update_background();
         
+        // Always redraw - no frame skipping for smooth animation
         display.clear()?;
         
         // Draw all background pieces
