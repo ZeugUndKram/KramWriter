@@ -11,7 +11,7 @@ pub struct ZeugtrisMenuPage {
     last_update: Instant,
     frame_count: u32,
     blink_timer: Instant,
-    show_press_enter: bool,
+    show_enter_prompt: bool,
 }
 
 struct BackgroundPiece {
@@ -38,7 +38,7 @@ impl BackgroundPiece {
             rotation_speed: rng.gen_range(-0.05..0.05),
             drift: rng.gen_range(0.0..0.3),
             drift_direction: if rng.gen_bool(0.5) { 1.0 } else { -1.0 },
-            size: 6, // Smaller than game pieces
+            size: 8, // Size of each block
         }
     }
     
@@ -72,6 +72,7 @@ impl BackgroundPiece {
     }
     
     fn draw(&self, display: &mut SharpDisplay) {
+        // Tetromino definitions
         let piece_data = match self.piece_type {
             0 => [ // I piece
                 [0,0,0,0, 1,1,1,1, 0,0,0,0, 0,0,0,0],
@@ -137,10 +138,7 @@ impl BackgroundPiece {
                         let draw_y = screen_y + by as i32;
                         
                         if draw_x >= 0 && draw_x < 400 && draw_y >= 0 && draw_y < 240 {
-                            // Draw with a checkerboard pattern for a semi-transparent look
-                            if (bx + by) % 2 == 0 {
-                                display.draw_pixel(draw_x as usize, draw_y as usize, Pixel::Black);
-                            }
+                            display.draw_pixel(draw_x as usize, draw_y as usize, Pixel::Black);
                         }
                     }
                 }
@@ -154,8 +152,8 @@ impl ZeugtrisMenuPage {
         let mut rng = rand::thread_rng();
         let mut background_pieces = Vec::new();
         
-        // Create 8-12 background pieces
-        for _ in 0..rng.gen_range(8..13) {
+        // Create 10-15 background pieces
+        for _ in 0..rng.gen_range(10..16) {
             background_pieces.push(BackgroundPiece::new());
         }
         
@@ -164,7 +162,7 @@ impl ZeugtrisMenuPage {
             last_update: Instant::now(),
             frame_count: 0,
             blink_timer: Instant::now(),
-            show_press_enter: true,
+            show_enter_prompt: true,
         })
     }
     
@@ -181,9 +179,9 @@ impl ZeugtrisMenuPage {
             }
         }
         
-        // Update blink for "PRESS ENTER" indicator
-        if now.duration_since(self.blink_timer) >= Duration::from_millis(500) {
-            self.show_press_enter = !self.show_press_enter;
+        // Blink effect for visual interest
+        if now.duration_since(self.blink_timer) >= Duration::from_millis(1000) {
+            self.show_enter_prompt = !self.show_enter_prompt;
             self.blink_timer = now;
         }
         
@@ -191,120 +189,30 @@ impl ZeugtrisMenuPage {
         self.frame_count += 1;
     }
     
-    fn draw_press_enter_indicator(&self, display: &mut SharpDisplay) {
-        if !self.show_press_enter {
+    fn draw_enter_indicator(&self, display: &mut SharpDisplay) {
+        if !self.show_enter_prompt {
             return;
         }
         
-        // Draw a simple arrow pointing down in the center bottom
+        // Draw a simple down arrow at the center bottom
         let center_x = 200;
-        let center_y = 200;
+        let bottom_y = 220;
         
-        // Draw arrow (simple triangle)
-        for y in 0..10 {
-            let width = 10 - y;
-            for x in 0..width {
-                if center_x - x >= 0 && center_x - x < 400 && center_y + y < 240 {
-                    display.draw_pixel(center_x - x, center_y + y, Pixel::Black);
-                }
-                if center_x + x < 400 && center_y + y < 240 {
-                    display.draw_pixel(center_x + x, center_y + y, Pixel::Black);
-                }
+        // Draw arrow shaft
+        for y in 0..15 {
+            if bottom_y - y >= 0 {
+                display.draw_pixel(center_x, bottom_y - y, Pixel::Black);
             }
         }
         
-        // Draw horizontal line
-        for x in 0..30 {
-            if center_x - 15 + x >= 0 && center_x - 15 + x < 400 && center_y + 10 < 240 {
-                display.draw_pixel(center_x - 15 + x as usize, center_y + 10, Pixel::Black);
-            }
-        }
-    }
-    
-    fn draw_title(&self, display: &mut SharpDisplay) {
-        // Draw "ZEUGTRIS" using Tetris blocks
-        // Each letter made of 3x5 blocks
-        let title_y = 40;
-        
-        // Z
-        for y in 0..5 {
-            for x in 0..3 {
-                let block_x = 100 + x * 12;
-                let block_y = title_y + y * 12;
-                
-                if (y == 0 || y == 4) || (y == 1 && x == 2) || (y == 2 && x == 1) || (y == 3 && x == 0) {
-                    self.draw_title_block(display, block_x, block_y);
+        // Draw arrow head
+        for x in 1..=5 {
+            for offset in 0..=x {
+                if center_x - offset >= 0 && bottom_y + x < 240 {
+                    display.draw_pixel(center_x - offset, bottom_y + x, Pixel::Black);
                 }
-            }
-        }
-        
-        // E (offset by 40 pixels)
-        for y in 0..5 {
-            for x in 0..3 {
-                let block_x = 140 + x * 12;
-                let block_y = title_y + y * 12;
-                
-                if (y == 0 || y == 2 || y == 4) || (x == 0) {
-                    self.draw_title_block(display, block_x, block_y);
-                }
-            }
-        }
-        
-        // U (offset by 80 pixels)
-        for y in 0..5 {
-            for x in 0..3 {
-                let block_x = 180 + x * 12;
-                let block_y = title_y + y * 12;
-                
-                if (y < 4 && x == 0) || (y < 4 && x == 2) || (y == 4 && (x == 0 || x == 1 || x == 2)) {
-                    self.draw_title_block(display, block_x, block_y);
-                }
-            }
-        }
-        
-        // G (offset by 120 pixels)
-        for y in 0..5 {
-            for x in 0..3 {
-                let block_x = 220 + x * 12;
-                let block_y = title_y + y * 12;
-                
-                if (y == 0 || y == 4) || (x == 0) || (y == 2 && x > 0) || (y == 3 && x == 2) {
-                    self.draw_title_block(display, block_x, block_y);
-                }
-            }
-        }
-        
-        // T (offset by 160 pixels)
-        for y in 0..5 {
-            for x in 0..3 {
-                let block_x = 260 + x * 12;
-                let block_y = title_y + y * 12;
-                
-                if (y == 0) || (x == 1 && y > 0) {
-                    self.draw_title_block(display, block_x, block_y);
-                }
-            }
-        }
-        
-        // R (offset by 200 pixels)
-        for y in 0..5 {
-            for x in 0..3 {
-                let block_x = 300 + x * 12;
-                let block_y = title_y + y * 12;
-                
-                if (y == 0 || y == 2) || (x == 0) || (y == 1 && x == 2) || (y == 3 && x == 1) || (y == 4 && x == 2) {
-                    self.draw_title_block(display, block_x, block_y);
-                }
-            }
-        }
-    }
-    
-    fn draw_title_block(&self, display: &mut SharpDisplay, x: usize, y: usize) {
-        // Draw a solid block for title
-        for by in 0..8 {
-            for bx in 0..8 {
-                if x + bx < 400 && y + by < 240 {
-                    display.draw_pixel(x + bx, y + by, Pixel::Black);
+                if center_x + offset < 400 && bottom_y + x < 240 {
+                    display.draw_pixel(center_x + offset, bottom_y + x, Pixel::Black);
                 }
             }
         }
@@ -323,11 +231,8 @@ impl Page for ZeugtrisMenuPage {
             piece.draw(display);
         }
         
-        // Draw title
-        self.draw_title(display);
-        
-        // Draw "PRESS ENTER" indicator
-        self.draw_press_enter_indicator(display);
+        // Draw enter indicator
+        self.draw_enter_indicator(display);
         
         display.update()?;
         Ok(())
