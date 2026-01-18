@@ -5,11 +5,14 @@ use anyhow::Result;
 use pages::{PageId, LogoPage, MenuPage, WriteMenuPage, ZeugtrisMenuPage, ZeugtrisPage};
 use display::SharpDisplay;
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 struct App {
     display: SharpDisplay,
     current_page: PageId,
     pages: HashMap<PageId, Box<dyn pages::Page>>,
+    last_frame_time: Instant,
+    frame_duration: Duration,
 }
 
 impl App {
@@ -27,30 +30,43 @@ impl App {
             display,
             current_page: PageId::Logo,
             pages,
+            last_frame_time: Instant::now(),
+            frame_duration: Duration::from_millis(16), // ~60 FPS
         })
     }
     
     fn run(&mut self) -> Result<()> {
-        use termion::{input::TermRead, raw::IntoRawMode};
-        let stdin = std::io::stdin();
+        use termion::{input::TermRead, raw::IntoRawMode, async_stdin};
+        
+        let stdin = async_stdin();
         let _stdout = std::io::stdout().into_raw_mode()?;
         
+        // Initial draw
         self.draw_current_page()?;
         
-        for key in stdin.keys() {
-            let key = key?;
-            
-            if let Some(page) = self.pages.get_mut(&self.current_page) {
-                if let Some(next_page) = page.handle_key(key)? {
-                    self.current_page = next_page;
+        loop {
+            // Check for input without blocking
+            if let Some(Ok(key)) = stdin.lock().keys().next() {
+                if let Some(page) = self.pages.get_mut(&self.current_page) {
+                    if let Some(next_page) = page.handle_key(key)? {
+                        self.current_page = next_page;
+                    }
+                }
+                
+                if key == termion::event::Key::Ctrl('c') {
+                    break;
                 }
             }
             
-            self.draw_current_page()?;
-            
-            if key == termion::event::Key::Ctrl('c') {
-                break;
+            // Redraw at fixed intervals for smooth animation
+            let now = Instant::now();
+            if now.duration_since(self.last_frame_time) >= self.frame_duration {
+                self.draw_current_page()?;
+                self.last_frame_time = now;
             }
+            
+            // Small sleep to prevent 100% CPU usage
+            std::thread::sleep(Duration::from_millis(1));
         }
         
         Ok(())

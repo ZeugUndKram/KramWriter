@@ -6,6 +6,6 @@ edition = "2021"
 [dependencies]
 rpi_memory_display = "0.1.2"
 rppal = "0.11.3"
-termion = "1.5"
+termion = { version = "1.5", features = ["async"] }
 anyhow = "1.0"
 rand = "0.8"  # Add this for random number generation
