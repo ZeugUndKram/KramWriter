@@ -1,5 +1,3 @@
-[file name]: zeugtris_menu.rs
-[file content begin]
 use super::{Page, PageId};
 use crate::display::SharpDisplay;
 use anyhow::Result;
@@ -209,4 +207,3 @@ impl Page for ZeugtrisMenuPage {
         }
     }
 }
-[file content end]
