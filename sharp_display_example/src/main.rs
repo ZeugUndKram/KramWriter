@@ -6,9 +6,10 @@ use pages::{PageId, LogoPage, MenuPage, WriteMenuPage, ZeugtrisMenuPage, Zeugtri
 use display::SharpDisplay;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use termion::event::Key;
 use termion::input::TermRead;
+use termion::raw::IntoRawMode;
 
 struct App {
     display: SharpDisplay,
@@ -39,37 +40,36 @@ impl App {
     }
     
     fn run(&mut self) -> Result<()> {
-        use termion::raw::IntoRawMode;
+        use termion::async_stdin;
         
-        let stdin = io::stdin();
+        let mut stdin = async_stdin();
         let _stdout = io::stdout().into_raw_mode()?;
-        
-        // Set stdin to non-blocking mode
-        let mut stdin_locked = stdin.lock();
         
         // Initial draw
         self.draw_current_page()?;
         
         loop {
-            // Check for input without blocking
-            if let Some(Ok(key)) = stdin_locked.by_ref().keys().next() {
-                if let Some(page) = self.pages.get_mut(&self.current_page) {
-                    if let Some(next_page) = page.handle_key(key)? {
-                        self.current_page = next_page;
-                        // Force immediate redraw on page change
-                        self.draw_current_page()?;
-                        self.last_frame_time = Instant::now();
-                        continue;
+            // Check for available input
+            let mut buffer = [0; 1];
+            if stdin.read(&mut buffer).is_ok() {
+                // We got a key, now parse it
+                let mut keys = termion::input::Keys::new(io::stdin());
+                if let Some(Ok(key)) = keys.next() {
+                    if let Some(page) = self.pages.get_mut(&self.current_page) {
+                        if let Some(next_page) = page.handle_key(key)? {
+                            self.current_page = next_page;
+                        }
                     }
+                    
+                    if key == Key::Ctrl('c') {
+                        break;
+                    }
+                    
+                    // Force redraw after handling key
+                    self.draw_current_page()?;
+                    self.last_frame_time = Instant::now();
+                    continue;
                 }
-                
-                if key == Key::Ctrl('c') {
-                    break;
-                }
-                
-                // Force redraw after handling key
-                self.draw_current_page()?;
-                self.last_frame_time = Instant::now();
             }
             
             // Redraw at fixed intervals for smooth animation
@@ -79,7 +79,7 @@ impl App {
                 self.last_frame_time = now;
             }
             
-            // Small sleep to prevent 100% CPU usage while still being responsive
+            // Small sleep to prevent 100% CPU usage
             std::thread::sleep(Duration::from_millis(5));
         }
         
