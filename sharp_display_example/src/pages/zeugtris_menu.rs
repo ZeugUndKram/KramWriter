@@ -9,9 +9,6 @@ use rand::Rng;
 pub struct ZeugtrisMenuPage {
     background_pieces: Vec<BackgroundPiece>,
     last_update: Instant,
-    frame_count: u32,
-    blink_timer: Instant,
-    show_enter_prompt: bool,
 }
 
 struct BackgroundPiece {
@@ -38,7 +35,7 @@ impl BackgroundPiece {
             rotation_speed: rng.gen_range(-0.05..0.05),
             drift: rng.gen_range(0.0..0.3),
             drift_direction: if rng.gen_bool(0.5) { 1.0 } else { -1.0 },
-            size: 8, // Size of each block
+            size: 8,
         }
     }
     
@@ -152,24 +149,26 @@ impl ZeugtrisMenuPage {
         let mut rng = rand::thread_rng();
         let mut background_pieces = Vec::new();
         
-        // Create 10-15 background pieces
-        for _ in 0..rng.gen_range(10..16) {
+        // Create 12-18 background pieces
+        for _ in 0..rng.gen_range(12..19) {
             background_pieces.push(BackgroundPiece::new());
         }
         
         Ok(Self {
             background_pieces,
             last_update: Instant::now(),
-            frame_count: 0,
-            blink_timer: Instant::now(),
-            show_enter_prompt: true,
         })
     }
     
     fn update_background(&mut self) {
         let now = Instant::now();
         
-        // Update background pieces
+        // Only update at ~60fps for smooth animation
+        if now.duration_since(self.last_update) < Duration::from_millis(16) {
+            return;
+        }
+        
+        // Update all background pieces
         for piece in &mut self.background_pieces {
             piece.update();
             
@@ -179,60 +178,21 @@ impl ZeugtrisMenuPage {
             }
         }
         
-        // Blink effect for visual interest
-        if now.duration_since(self.blink_timer) >= Duration::from_millis(1000) {
-            self.show_enter_prompt = !self.show_enter_prompt;
-            self.blink_timer = now;
-        }
-        
         self.last_update = now;
-        self.frame_count += 1;
-    }
-    
-    fn draw_enter_indicator(&self, display: &mut SharpDisplay) {
-        if !self.show_enter_prompt {
-            return;
-        }
-        
-        // Draw a simple down arrow at the center bottom
-        let center_x = 200;
-        let bottom_y = 220;
-        
-        // Draw arrow shaft
-        for y in 0..15 {
-            if bottom_y - y >= 0 {
-                display.draw_pixel(center_x, bottom_y - y, Pixel::Black);
-            }
-        }
-        
-        // Draw arrow head
-        for x in 1..=5 {
-            for offset in 0..=x {
-                if center_x - offset >= 0 && bottom_y + x < 240 {
-                    display.draw_pixel(center_x - offset, bottom_y + x, Pixel::Black);
-                }
-                if center_x + offset < 400 && bottom_y + x < 240 {
-                    display.draw_pixel(center_x + offset, bottom_y + x, Pixel::Black);
-                }
-            }
-        }
     }
 }
 
 impl Page for ZeugtrisMenuPage {
     fn draw(&mut self, display: &mut SharpDisplay) -> Result<()> {
-        // Update background animation
+        // Update background animation automatically
         self.update_background();
         
         display.clear()?;
         
-        // Draw background pieces
+        // Draw all background pieces
         for piece in &self.background_pieces {
             piece.draw(display);
         }
-        
-        // Draw enter indicator
-        self.draw_enter_indicator(display);
         
         display.update()?;
         Ok(())
