@@ -1,3 +1,5 @@
+[file name]: zeugtris_menu.rs
+[file content begin]
 use super::{Page, PageId};
 use crate::display::SharpDisplay;
 use anyhow::Result;
@@ -8,9 +10,8 @@ use rand::Rng;
 
 pub struct ZeugtrisMenuPage {
     background_pieces: Vec<BackgroundPiece>,
-    last_frame_time: Instant,
+    last_update_time: Instant,
     frame_count: u32,
-    needs_redraw: bool,  // NEW: Track when redraw is needed
 }
 
 struct BackgroundPiece {
@@ -43,7 +44,7 @@ impl BackgroundPiece {
     
     fn update(&mut self, delta_time: f32) {
         // Update position based on delta time for smooth animation
-        self.y += self.speed * delta_time * 60.0; // Scale for smooth movement
+        self.y += self.speed * delta_time * 60.0;
         self.rotation = (self.rotation as f32 + self.rotation_speed * delta_time * 60.0) as usize % 4;
         self.x += self.drift * self.drift_direction * delta_time * 60.0;
         
@@ -159,61 +160,44 @@ impl ZeugtrisMenuPage {
         
         Ok(Self {
             background_pieces,
-            last_frame_time: Instant::now(),
+            last_update_time: Instant::now(),
             frame_count: 0,
-            needs_redraw: true,
         })
     }
     
-    fn update_background(&mut self) -> bool {
+    fn update_background(&mut self) {
         let now = Instant::now();
-        let delta_time = now.duration_since(self.last_frame_time).as_secs_f32();
-        
-        let mut needs_redraw = false;
+        let delta_time = now.duration_since(self.last_update_time).as_secs_f32();
+        self.frame_count = self.frame_count.wrapping_add(1);
         
         // Always update background pieces regardless of redraw
         for piece in &mut self.background_pieces {
-            let old_x = piece.x;
-            let old_y = piece.y;
-            let old_rotation = piece.rotation;
-            
             piece.update(delta_time);
-            
-            // Check if piece moved enough to require redraw
-            if (piece.x - old_x).abs() > 0.1 || (piece.y - old_y).abs() > 0.1 || piece.rotation != old_rotation {
-                needs_redraw = true;
-            }
             
             // Reset pieces that have fallen off screen
             if piece.is_off_screen() {
                 piece.reset();
-                needs_redraw = true;
             }
         }
         
-        self.last_frame_time = now;
-        self.frame_count = self.frame_count.wrapping_add(1);
-        
-        needs_redraw
+        self.last_update_time = now;
     }
 }
 
 impl Page for ZeugtrisMenuPage {
     fn draw(&mut self, display: &mut SharpDisplay) -> Result<()> {
         // Always update background animation
-        let needs_update = self.update_background();
+        self.update_background();
         
-        // Only redraw if something changed or we force redraw every 4th frame
-        if needs_update || self.frame_count % 4 == 0 {
-            display.clear()?;
-            
-            // Draw all background pieces
-            for piece in &self.background_pieces {
-                piece.draw(display);
-            }
-            
-            display.update()?;
+        // Clear and redraw every time - for smooth animation
+        display.clear()?;
+        
+        // Draw all background pieces
+        for piece in &self.background_pieces {
+            piece.draw(display);
         }
+        
+        display.update()?;
         Ok(())
     }
     
@@ -225,3 +209,4 @@ impl Page for ZeugtrisMenuPage {
         }
     }
 }
+[file content end]

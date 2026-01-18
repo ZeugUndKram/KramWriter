@@ -6,6 +6,9 @@ use pages::{PageId, LogoPage, MenuPage, WriteMenuPage, ZeugtrisMenuPage, Zeugtri
 use display::SharpDisplay;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
+use std::io::{self, Read};
+use termion::event::Key;
+use termion::input::TermRead;
 
 struct App {
     display: SharpDisplay,
@@ -36,26 +39,37 @@ impl App {
     }
     
     fn run(&mut self) -> Result<()> {
-        use termion::{input::TermRead, raw::IntoRawMode, async_stdin};
+        use termion::raw::IntoRawMode;
         
-        let stdin = async_stdin();
-        let _stdout = std::io::stdout().into_raw_mode()?;
+        let stdin = io::stdin();
+        let _stdout = io::stdout().into_raw_mode()?;
+        
+        // Set stdin to non-blocking mode
+        let mut stdin_locked = stdin.lock();
         
         // Initial draw
         self.draw_current_page()?;
         
         loop {
             // Check for input without blocking
-            if let Some(Ok(key)) = stdin.lock().keys().next() {
+            if let Some(Ok(key)) = stdin_locked.by_ref().keys().next() {
                 if let Some(page) = self.pages.get_mut(&self.current_page) {
                     if let Some(next_page) = page.handle_key(key)? {
                         self.current_page = next_page;
+                        // Force immediate redraw on page change
+                        self.draw_current_page()?;
+                        self.last_frame_time = Instant::now();
+                        continue;
                     }
                 }
                 
-                if key == termion::event::Key::Ctrl('c') {
+                if key == Key::Ctrl('c') {
                     break;
                 }
+                
+                // Force redraw after handling key
+                self.draw_current_page()?;
+                self.last_frame_time = Instant::now();
             }
             
             // Redraw at fixed intervals for smooth animation
@@ -65,8 +79,8 @@ impl App {
                 self.last_frame_time = now;
             }
             
-            // Small sleep to prevent 100% CPU usage
-            std::thread::sleep(Duration::from_millis(1));
+            // Small sleep to prevent 100% CPU usage while still being responsive
+            std::thread::sleep(Duration::from_millis(5));
         }
         
         Ok(())
