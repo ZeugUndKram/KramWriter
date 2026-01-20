@@ -5,10 +5,10 @@ use rpi_memory_display::Pixel;
 use std::time::Instant;
 use std::fs;
 
-// Game constants
-const BLOCK_SIZE: usize = 10;
+// Game constants - UPDATED FOR 12PX BLOCKS
+const BLOCK_SIZE: usize = 12;  // Changed from 10 to 12
 const ARENA_X: usize = 50;
-const ARENA_Y: usize = 10;
+const ARENA_Y: usize = 12;
 const NEXT_X: usize = 300;
 const NEXT_Y: usize = 30;
 const HOLD_X: usize = 300;
@@ -18,7 +18,7 @@ const SCORE_Y: usize = 160;
 const OVERLAY_X: usize = 0;
 const OVERLAY_Y: usize = 0;
 
-// SRS Wall kick data
+// SRS Wall kick data (unchanged)
 const WALL_KICKS: [[(i32, i32); 5]; 8] = [
     [(0, 0), (-1, 0), (-1, 1), (0, -2), (-1, -2)],
     [(0, 0), (1, 0), (1, -1), (0, 2), (1, 2)],
@@ -563,16 +563,23 @@ impl TetrisGame {
         let block_y = ARENA_Y + y * BLOCK_SIZE;
         
         if is_ghost {
-            // Draw ghost piece (checkerboard pattern)
+            // Draw ghost piece (checkerboard pattern for 12px blocks)
+            // Use 4x4 checkerboard pattern for better visibility
             for by in 0..BLOCK_SIZE {
                 for bx in 0..BLOCK_SIZE {
-                    if (bx + by) % 2 == 0 && block_x + bx < 400 && block_y + by < 240 {
+                    // Create a visible checkerboard pattern
+                    let check_size = 3; // 3x3 pixels per check
+                    let check_x = bx / check_size;
+                    let check_y = by / check_size;
+                    
+                    if (check_x + check_y) % 2 == 0 && block_x + bx < 400 && block_y + by < 240 {
                         display.draw_pixel(block_x + bx, block_y + by, Pixel::Black);
                     }
                 }
             }
         } else {
-            // Draw solid block
+            // Draw solid block - adjust for 12px
+            // Fill the interior (leaving 1px border)
             for by in 1..BLOCK_SIZE - 1 {
                 for bx in 1..BLOCK_SIZE - 1 {
                     if block_x + bx < 400 && block_y + by < 240 {
@@ -618,7 +625,7 @@ impl TetrisGame {
     }
     
     fn draw_preview(&self, display: &mut SharpDisplay, x: usize, y: usize, tetrimino: &Tetrimino) {
-        let preview_size = 8;
+        let preview_size = 10;  // Increased from 8 to 10 for better visibility with 12px blocks
         let matrix = tetrimino.matrix();
         
         for py in 0..4 {
@@ -627,8 +634,8 @@ impl TetrisGame {
                     continue;
                 }
                 
-                let screen_x = x + px * (preview_size + 1);
-                let screen_y = y + py * (preview_size + 1);
+                let screen_x = x + px * (preview_size + 2);  // Increased spacing
+                let screen_y = y + py * (preview_size + 2);  // Increased spacing
                 
                 for by in 0..preview_size {
                     for bx in 0..preview_size {
