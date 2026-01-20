@@ -9,8 +9,8 @@ use std::fs;
 const BLOCK_SIZE: usize = 12;
 const ARENA_X: usize = 140;  // Updated to 140
 const ARENA_Y: usize = 12;
-const NEXT_X: usize = 287;
-const NEXT_Y: usize = 30;
+const NEXT_X: usize = 288;
+const NEXT_Y: usize = 10;
 const SCORE_X: usize = 300;
 const SCORE_Y: usize = 100;  // Moved up since we removed hold
 const OVERLAY_X: usize = 0;
