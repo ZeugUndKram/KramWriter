@@ -1,7 +1,7 @@
 use super::tetrimino::Tetrimino;
 
 const ARENA_WIDTH: usize = 10;
-const ARENA_HEIGHT: usize = 20;
+const ARENA_HEIGHT: usize = 18;
 
 pub struct Board {
     grid: [[Option<u8>; ARENA_WIDTH]; ARENA_HEIGHT],

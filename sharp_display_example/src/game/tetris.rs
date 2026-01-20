@@ -3,6 +3,7 @@ use crate::display::SharpDisplay;
 use anyhow::Result;
 use rpi_memory_display::Pixel;
 use std::time::Instant;
+use std::fs;
 
 // Game constants
 const BLOCK_SIZE: usize = 10;
@@ -14,6 +15,8 @@ const HOLD_X: usize = 300;
 const HOLD_Y: usize = 100;
 const SCORE_X: usize = 300;
 const SCORE_Y: usize = 160;
+const OVERLAY_X: usize = 0;
+const OVERLAY_Y: usize = 0;
 
 // SRS Wall kick data
 const WALL_KICKS: [[(i32, i32); 5]; 8] = [
@@ -50,10 +53,37 @@ pub struct TetrisGame {
     paused: bool,
     last_update: Instant,
     needs_redraw: bool,
+    overlay_data: Option<Vec<Pixel>>,
+    overlay_width: usize,
+    overlay_height: usize,
 }
 
 impl TetrisGame {
     pub fn new() -> Result<Self> {
+        // Load overlay bitmap
+        let overlay_path = "/home/kramwriter/KramWriter/assets/zeugtris/zeugtris_overlay.bmp";
+        println!("Loading overlay from: {}", overlay_path);
+        
+        let (overlay_data, overlay_width, overlay_height) = match fs::read(overlay_path) {
+            Ok(data) => {
+                println!("Loaded overlay: {} bytes", data.len());
+                match Self::parse_bmp(&data) {
+                    Some((pixels, width, height)) => {
+                        println!("Parsed overlay BMP: {}x{}, {} pixels", width, height, pixels.len());
+                        (Some(pixels), width, height)
+                    }
+                    None => {
+                        println!("Failed to parse overlay BMP");
+                        (None, 0, 0)
+                    }
+                }
+            }
+            Err(e) => {
+                println!("Failed to read overlay: {}", e);
+                (None, 0, 0)
+            }
+        };
+        
         let mut game = Self {
             board: Board::new(),
             score: Score::new(),
@@ -61,11 +91,14 @@ impl TetrisGame {
             next_tetrimino: Tetrimino::random(),
             hold_tetrimino: None,
             can_hold: true,
-            position: (4, 0), // Center position
+            position: (4, 0), // Center position for 10-width board
             game_over: false,
             paused: false,
             last_update: Instant::now(),
             needs_redraw: true,
+            overlay_data,
+            overlay_width,
+            overlay_height,
         };
         
         // Check initial position
@@ -74,6 +107,97 @@ impl TetrisGame {
         }
         
         Ok(game)
+    }
+    
+    fn parse_bmp(data: &[u8]) -> Option<(Vec<Pixel>, usize, usize)> {
+        if data.len() < 54 { return None; }
+        if data[0] != 0x42 || data[1] != 0x4D { return None; }
+        
+        let width = u32::from_le_bytes([data[18], data[19], data[20], data[21]]) as usize;
+        let height = u32::from_le_bytes([data[22], data[23], data[24], data[25]]) as usize;
+        let bits_per_pixel = u16::from_le_bytes([data[28], data[29]]) as usize;
+        let data_offset = u32::from_le_bytes([data[10], data[11], data[12], data[13]]) as usize;
+        
+        println!("Overlay BMP: {}x{}, {} bpp, offset: {}", width, height, bits_per_pixel, data_offset);
+        
+        if data_offset >= data.len() { return None; }
+        
+        let mut pixels = Vec::with_capacity(width * height);
+        
+        match bits_per_pixel {
+            32 => {
+                let row_bytes = width * 4;
+                for y in 0..height {
+                    let row_start = data_offset + (height - 1 - y) * row_bytes;
+                    for x in 0..width {
+                        let pixel_start = row_start + x * 4;
+                        if pixel_start + 3 >= data.len() {
+                            pixels.push(Pixel::White);
+                            continue;
+                        }
+                        let b = data[pixel_start] as u32;
+                        let g = data[pixel_start + 1] as u32;
+                        let r = data[pixel_start + 2] as u32;
+                        let a = data[pixel_start + 3] as u32;
+                        
+                        let luminance = (r * 299 + g * 587 + b * 114) / 1000;
+                        let alpha = a;
+                        
+                        // For overlay: black stays black, white/transparent becomes white
+                        let pixel = if alpha < 128 {
+                            Pixel::White
+                        } else if luminance > 128 {
+                            Pixel::White
+                        } else {
+                            Pixel::Black
+                        };
+                        pixels.push(pixel);
+                    }
+                }
+            }
+            24 => {
+                let row_bytes = ((width * 3 + 3) / 4) * 4;
+                for y in 0..height {
+                    let row_start = data_offset + (height - 1 - y) * row_bytes;
+                    for x in 0..width {
+                        let pixel_start = row_start + x * 3;
+                        if pixel_start + 2 >= data.len() {
+                            pixels.push(Pixel::White);
+                            continue;
+                        }
+                        let b = data[pixel_start] as u32;
+                        let g = data[pixel_start + 1] as u32;
+                        let r = data[pixel_start + 2] as u32;
+                        
+                        let luminance = (r * 299 + g * 587 + b * 114) / 1000;
+                        let pixel = if luminance > 128 { Pixel::White } else { Pixel::Black };
+                        pixels.push(pixel);
+                    }
+                }
+            }
+            1 => {
+                let row_bytes = ((width + 31) / 32) * 4;
+                for y in 0..height {
+                    let row_start = data_offset + (height - 1 - y) * row_bytes;
+                    for x in 0..width {
+                        if row_start + (x / 8) >= data.len() {
+                            pixels.push(Pixel::White);
+                            continue;
+                        }
+                        let byte = data[row_start + (x / 8)];
+                        let bit = 7 - (x % 8);
+                        let pixel = if (byte >> bit) & 1 == 1 { Pixel::Black } else { Pixel::White };
+                        pixels.push(pixel);
+                    }
+                }
+            }
+            _ => {
+                println!("Unsupported BMP format: {} bpp", bits_per_pixel);
+                return None;
+            }
+        }
+        
+        Some((pixels, width, height))
     }
     
     fn check_collision(&self, x: i32, y: i32, rotation: Option<usize>) -> bool {
@@ -315,6 +439,10 @@ impl TetrisGame {
     
     // Drawing methods
     pub fn draw(&self, display: &mut SharpDisplay) {
+        // Draw overlay first (as background)
+        self.draw_overlay(display);
+        
+        // Then draw game elements on top
         self.draw_arena(display);
         self.draw_game_info(display);
         
@@ -324,6 +452,25 @@ impl TetrisGame {
         
         if self.paused {
             self.draw_pause(display);
+        }
+    }
+    
+    fn draw_overlay(&self, display: &mut SharpDisplay) {
+        if let Some(overlay_pixels) = &self.overlay_data {
+            // Draw overlay at specified position
+            for y in 0..self.overlay_height.min(240 - OVERLAY_Y) {
+                for x in 0..self.overlay_width.min(400 - OVERLAY_X) {
+                    let pixel = overlay_pixels[y * self.overlay_width + x];
+                    // Only draw black pixels (skip white/transparent)
+                    if pixel == Pixel::Black {
+                        let screen_x = OVERLAY_X + x;
+                        let screen_y = OVERLAY_Y + y;
+                        if screen_x < 400 && screen_y < 240 {
+                            display.draw_pixel(screen_x, screen_y, pixel);
+                        }
+                    }
+                }
+            }
         }
     }
     
