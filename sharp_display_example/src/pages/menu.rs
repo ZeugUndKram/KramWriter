@@ -30,7 +30,7 @@ impl MenuPage {
             let mut option_images = Vec::new();
             
             for suffix in 0..3 {
-                let path = format!("/home/kramwriter/KramWriter/assets/{}_{}.bmp", option, suffix);
+                let path = format!("/home/kramwriter/KramWriter/assets/menu/{}_{}.bmp", option, suffix);
                 match std::fs::read(&path) {
                     Ok(data) => {
                         option_images.push(Self::parse_bmp(&data));

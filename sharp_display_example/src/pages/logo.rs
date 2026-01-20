@@ -12,7 +12,7 @@ pub struct LogoPage {
 
 impl LogoPage {
     pub fn new() -> Result<Self> {
-        let path = "/home/kramwriter/KramWriter/assets/logo.bmp";
+        let path = "/home/kramwriter/KramWriter/assets/logo/logo.bmp";
         println!("Loading logo from: {}", path);
         
         match std::fs::read(path) {
