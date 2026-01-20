@@ -1,12 +1,12 @@
-use super::{board::Board, score::Score, tetrimino::{Tetrimino, TetriminoType}};
+use super::{board::Board, score::Score, tetrimino::{Tetrimino, TetriminoType}, sprites::BlockSprites};
 use crate::display::SharpDisplay;
 use anyhow::Result;
 use rpi_memory_display::Pixel;
 use std::time::Instant;
 use std::fs;
 
-// Game constants - UPDATED FOR 12PX BLOCKS
-const BLOCK_SIZE: usize = 12;  // Changed from 10 to 12
+// Game constants
+const BLOCK_SIZE: usize = 12;
 const ARENA_X: usize = 50;
 const ARENA_Y: usize = 12;
 const NEXT_X: usize = 300;
@@ -18,7 +18,7 @@ const SCORE_Y: usize = 160;
 const OVERLAY_X: usize = 0;
 const OVERLAY_Y: usize = 0;
 
-// SRS Wall kick data (unchanged)
+// SRS Wall kick data
 const WALL_KICKS: [[(i32, i32); 5]; 8] = [
     [(0, 0), (-1, 0), (-1, 1), (0, -2), (-1, -2)],
     [(0, 0), (1, 0), (1, -1), (0, 2), (1, 2)],
@@ -56,10 +56,37 @@ pub struct TetrisGame {
     overlay_data: Option<Vec<Pixel>>,
     overlay_width: usize,
     overlay_height: usize,
+    sprites: BlockSprites,
 }
 
 impl TetrisGame {
     pub fn new() -> Result<Self> {
+        // Load block sprites
+        let sprites = match BlockSprites::new() {
+            Ok(sprites) => {
+                if sprites.has_sprites() {
+                    println!("Successfully loaded some Tetris sprites");
+                } else {
+                    println!("Warning: No Tetris sprites were loaded");
+                }
+                sprites
+            }
+            Err(e) => {
+                println!("Failed to load sprites: {}", e);
+                BlockSprites {
+                    i_sprite: None,
+                    o_sprite: None,
+                    s_sprite: None,
+                    z_sprite: None,
+                    t_sprite: None,
+                    l_sprite: None,
+                    j_sprite: None,
+                    sprite_width: 12,
+                    sprite_height: 12,
+                }
+            }
+        };
+        
         // Load overlay bitmap
         let overlay_path = "/home/kramwriter/KramWriter/assets/zeugtris/zeugtris_overlay.bmp";
         println!("Loading overlay from: {}", overlay_path);
@@ -91,7 +118,7 @@ impl TetrisGame {
             next_tetrimino: Tetrimino::random(),
             hold_tetrimino: None,
             can_hold: true,
-            position: (4, 0), // Center position for 10-width board
+            position: (4, 0),
             game_over: false,
             paused: false,
             last_update: Instant::now(),
@@ -99,6 +126,7 @@ impl TetrisGame {
             overlay_data,
             overlay_width,
             overlay_height,
+            sprites,
         };
         
         // Check initial position
@@ -143,7 +171,6 @@ impl TetrisGame {
                         let luminance = (r * 299 + g * 587 + b * 114) / 1000;
                         let alpha = a;
                         
-                        // For overlay: black stays black, white/transparent becomes white
                         let pixel = if alpha < 128 {
                             Pixel::White
                         } else if luminance > 128 {
@@ -490,11 +517,13 @@ impl TetrisGame {
             display.draw_pixel(border_right, y, Pixel::Black);
         }
         
-        // Draw placed blocks
+        // Draw placed blocks using sprites
         for y in 0..self.board.height() {
             for x in 0..self.board.width() {
-                if let Some(_color) = self.board.get_cell(x, y) {
-                    self.draw_block(display, x, y, false);
+                if let Some(color_index) = self.board.get_cell(x, y) {
+                    // color_index is 1-7, convert to 0-6 for sprite lookup
+                    let piece_type = (color_index as usize).saturating_sub(1);
+                    self.draw_block(display, x, y, piece_type, false);
                 }
             }
         }
@@ -512,10 +541,10 @@ impl TetrisGame {
     }
     
     fn draw_game_info(&self, display: &mut SharpDisplay) {
-        // Draw next piece
+        // Draw next piece using sprite
         self.draw_preview(display, NEXT_X, NEXT_Y, &self.next_tetrimino);
         
-        // Draw hold piece
+        // Draw hold piece using sprite
         if let Some(hold_piece) = &self.hold_tetrimino {
             self.draw_preview(display, HOLD_X, HOLD_Y, hold_piece);
         } else {
@@ -558,17 +587,16 @@ impl TetrisGame {
         ghost_y
     }
     
-    fn draw_block(&self, display: &mut SharpDisplay, x: usize, y: usize, is_ghost: bool) {
+    fn draw_block(&self, display: &mut SharpDisplay, x: usize, y: usize, piece_type: usize, is_ghost: bool) {
         let block_x = ARENA_X + x * BLOCK_SIZE;
         let block_y = ARENA_Y + y * BLOCK_SIZE;
         
         if is_ghost {
-            // Draw ghost piece (checkerboard pattern for 12px blocks)
-            // Use 4x4 checkerboard pattern for better visibility
+            // Draw ghost piece (checkerboard pattern)
             for by in 0..BLOCK_SIZE {
                 for bx in 0..BLOCK_SIZE {
                     // Create a visible checkerboard pattern
-                    let check_size = 3; // 3x3 pixels per check
+                    let check_size = 3;
                     let check_x = bx / check_size;
                     let check_y = by / check_size;
                     
@@ -578,33 +606,50 @@ impl TetrisGame {
                 }
             }
         } else {
-            // Draw solid block - adjust for 12px
-            // Fill the interior (leaving 1px border)
-            for by in 1..BLOCK_SIZE - 1 {
-                for bx in 1..BLOCK_SIZE - 1 {
-                    if block_x + bx < 400 && block_y + by < 240 {
-                        display.draw_pixel(block_x + bx, block_y + by, Pixel::Black);
+            // Try to draw sprite if available
+            if let Some(sprite_pixels) = self.sprites.get_sprite(piece_type) {
+                // Draw the sprite
+                for sy in 0..self.sprites.sprite_height {
+                    for sx in 0..self.sprites.sprite_width {
+                        let pixel = sprite_pixels[sy * self.sprites.sprite_width + sx];
+                        if pixel == Pixel::Black {
+                            let screen_x = block_x + sx;
+                            let screen_y = block_y + sy;
+                            if screen_x < 400 && screen_y < 240 {
+                                display.draw_pixel(screen_x, screen_y, Pixel::Black);
+                            }
+                        }
                     }
                 }
-            }
-            
-            // Draw outline
-            for bx in 0..BLOCK_SIZE {
-                if block_x + bx < 400 {
-                    display.draw_pixel(block_x + bx, block_y, Pixel::Black);
-                    display.draw_pixel(block_x + bx, block_y + BLOCK_SIZE - 1, Pixel::Black);
+            } else {
+                // Fallback: draw solid block if sprite not available
+                for by in 1..BLOCK_SIZE - 1 {
+                    for bx in 1..BLOCK_SIZE - 1 {
+                        if block_x + bx < 400 && block_y + by < 240 {
+                            display.draw_pixel(block_x + bx, block_y + by, Pixel::Black);
+                        }
+                    }
                 }
-            }
-            for by in 0..BLOCK_SIZE {
-                if block_y + by < 240 {
-                    display.draw_pixel(block_x, block_y + by, Pixel::Black);
-                    display.draw_pixel(block_x + BLOCK_SIZE - 1, block_y + by, Pixel::Black);
+                
+                // Draw outline
+                for bx in 0..BLOCK_SIZE {
+                    if block_x + bx < 400 {
+                        display.draw_pixel(block_x + bx, block_y, Pixel::Black);
+                        display.draw_pixel(block_x + bx, block_y + BLOCK_SIZE - 1, Pixel::Black);
+                    }
+                }
+                for by in 0..BLOCK_SIZE {
+                    if block_y + by < 240 {
+                        display.draw_pixel(block_x, block_y + by, Pixel::Black);
+                        display.draw_pixel(block_x + BLOCK_SIZE - 1, block_y + by, Pixel::Black);
+                    }
                 }
             }
         }
     }
     
     fn draw_tetrimino(&self, display: &mut SharpDisplay, x: i32, y: i32, tetrimino: &Tetrimino, is_ghost: bool) {
+        let piece_type = tetrimino.tetrimino_type.as_index();
         let matrix = tetrimino.matrix();
         
         for py in 0..4 {
@@ -618,29 +663,65 @@ impl TetrisGame {
                 let block_y = (y + py as i32) as usize;
                 
                 if block_x < self.board.width() && block_y < self.board.height() {
-                    self.draw_block(display, block_x, block_y, is_ghost);
+                    self.draw_block(display, block_x, block_y, piece_type, is_ghost);
                 }
             }
         }
     }
     
     fn draw_preview(&self, display: &mut SharpDisplay, x: usize, y: usize, tetrimino: &Tetrimino) {
-        let preview_size = 10;  // Increased from 8 to 10 for better visibility with 12px blocks
+        let piece_type = tetrimino.tetrimino_type.as_index();
+        let preview_size = 10;
         let matrix = tetrimino.matrix();
         
-        for py in 0..4 {
-            for px in 0..4 {
-                if matrix[py * 4 + px] == 0 {
-                    continue;
+        // Try to draw sprite if available
+        if let Some(sprite_pixels) = self.sprites.get_sprite(piece_type) {
+            for py in 0..4 {
+                for px in 0..4 {
+                    if matrix[py * 4 + px] == 0 {
+                        continue;
+                    }
+                    
+                    let screen_x = x + px * (preview_size + 2);
+                    let screen_y = y + py * (preview_size + 2);
+                    
+                    // Draw scaled down sprite (10x10 instead of 12x12)
+                    for sy in 0..preview_size {
+                        for sx in 0..preview_size {
+                            // Map preview coordinates to sprite coordinates (simple scaling)
+                            let sprite_x = (sx * self.sprites.sprite_width) / preview_size;
+                            let sprite_y = (sy * self.sprites.sprite_height) / preview_size;
+                            
+                            if sprite_x < self.sprites.sprite_width && sprite_y < self.sprites.sprite_height {
+                                let pixel = sprite_pixels[sprite_y * self.sprites.sprite_width + sprite_x];
+                                if pixel == Pixel::Black {
+                                    let draw_x = screen_x + sx;
+                                    let draw_y = screen_y + sy;
+                                    if draw_x < 400 && draw_y < 240 {
+                                        display.draw_pixel(draw_x, draw_y, Pixel::Black);
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
-                
-                let screen_x = x + px * (preview_size + 2);  // Increased spacing
-                let screen_y = y + py * (preview_size + 2);  // Increased spacing
-                
-                for by in 0..preview_size {
-                    for bx in 0..preview_size {
-                        if screen_x + bx < 400 && screen_y + by < 240 {
-                            display.draw_pixel(screen_x + bx, screen_y + by, Pixel::Black);
+            }
+        } else {
+            // Fallback: draw solid preview
+            for py in 0..4 {
+                for px in 0..4 {
+                    if matrix[py * 4 + px] == 0 {
+                        continue;
+                    }
+                    
+                    let screen_x = x + px * (preview_size + 2);
+                    let screen_y = y + py * (preview_size + 2);
+                    
+                    for by in 0..preview_size {
+                        for bx in 0..preview_size {
+                            if screen_x + bx < 400 && screen_y + by < 240 {
+                                display.draw_pixel(screen_x + bx, screen_y + by, Pixel::Black);
+                            }
                         }
                     }
                 }

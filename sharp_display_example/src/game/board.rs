@@ -53,27 +53,27 @@ impl Board {
     }
     
     pub fn lock_tetrimino(&mut self, tetrimino: &Tetrimino, x: i32, y: i32) -> usize {
-        let color_index = tetrimino.tetrimino_type.as_index() as u8 + 1;
-        let matrix = tetrimino.matrix();
-        
-        for py in 0..4 {
-            for px in 0..4 {
-                let index = py * 4 + px;
-                if matrix[index] == 0 {
-                    continue;
-                }
-                
-                let arena_x = (x + px as i32) as usize;
-                let arena_y = (y + py as i32) as usize;
-                
-                if arena_x < ARENA_WIDTH && arena_y < ARENA_HEIGHT {
-                    self.grid[arena_y][arena_x] = Some(color_index);
-                }
+    let color_index = tetrimino.tetrimino_type.as_index() as u8 + 1;  // 1-7
+    let matrix = tetrimino.matrix();
+    
+    for py in 0..4 {
+        for px in 0..4 {
+            let index = py * 4 + px;
+            if matrix[index] == 0 {
+                continue;
+            }
+            
+            let arena_x = (x + px as i32) as usize;
+            let arena_y = (y + py as i32) as usize;
+            
+            if arena_x < ARENA_WIDTH && arena_y < ARENA_HEIGHT {
+                self.grid[arena_y][arena_x] = Some(color_index);  // Store 1-7
             }
         }
-        
-        self.check_lines()
     }
+    
+    self.check_lines()
+}
     
     fn check_lines(&mut self) -> usize {
         let mut lines_cleared = 0;
