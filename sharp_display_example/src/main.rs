@@ -1,15 +1,14 @@
 mod pages;
 mod display;
-mod game;  // NEW: Add game module
+mod game;
 
 use anyhow::Result;
 use pages::{PageId, LogoPage, MenuPage, WriteMenuPage, ZeugtrisMenuPage, ZeugtrisPage};
 use display::SharpDisplay;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use std::io::{self, Read};
+use std::io;
 use termion::event::Key;
-use termion::input::TermRead;
 use termion::raw::IntoRawMode;
 
 struct App {
@@ -36,54 +35,52 @@ impl App {
             current_page: PageId::Logo,
             pages,
             last_frame_time: Instant::now(),
-            frame_duration: Duration::from_millis(16), // ~60 FPS
+            frame_duration: Duration::from_millis(16),
         })
     }
     
     fn run(&mut self) -> Result<()> {
-        use termion::async_stdin;
-        
-        let mut stdin = async_stdin();
         let _stdout = io::stdout().into_raw_mode()?;
         
         // Initial draw
         self.draw_current_page()?;
         
         loop {
-            // Check for available input
-            let mut buffer = [0; 1];
-            if stdin.read(&mut buffer).is_ok() {
-                // We got a key, now parse it
-                let mut keys = termion::input::Keys::new(io::stdin());
-                if let Some(Ok(key)) = keys.next() {
-                    if let Some(page) = self.pages.get_mut(&self.current_page) {
-                        if let Some(next_page) = page.handle_key(key)? {
-                            self.current_page = next_page;
-                        }
-                    }
-                    
-                    if key == Key::Ctrl('c') {
-                        break;
-                    }
-                    
-                    // Force redraw after handling key
-                    self.draw_current_page()?;
-                    self.last_frame_time = Instant::now();
-                    continue;
+            // Check for keyboard input using termion's keys() method
+            if let Some(Ok(key)) = io::stdin().lock().keys().next() {
+                self.handle_key(key)?;
+                
+                if key == Key::Ctrl('c') {
+                    break;
                 }
+                
+                // Force redraw after handling key
+                self.draw_current_page()?;
+                self.last_frame_time = Instant::now();
+                continue;
             }
             
-            // Redraw at fixed intervals for smooth animation
+            // Fixed frame rate update
             let now = Instant::now();
             if now.duration_since(self.last_frame_time) >= self.frame_duration {
                 self.draw_current_page()?;
                 self.last_frame_time = now;
             }
             
-            // Small sleep to prevent 100% CPU usage
             std::thread::sleep(Duration::from_millis(5));
         }
         
+        Ok(())
+    }
+    
+    fn handle_key(&mut self, key: Key) -> Result<()> {
+        if let Some(page) = self.pages.get_mut(&self.current_page) {
+            if let Some(next_page) = page.handle_key(key)? {
+                self.current_page = next_page;
+                // Force redraw on page change
+                self.draw_current_page()?;
+            }
+        }
         Ok(())
     }
     

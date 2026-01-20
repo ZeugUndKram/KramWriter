@@ -3,7 +3,7 @@ use crate::display::SharpDisplay;
 use anyhow::Result;
 use termion::event::Key;
 use rpi_memory_display::Pixel;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use rand::Rng;
 
 pub struct ZeugtrisMenuPage {

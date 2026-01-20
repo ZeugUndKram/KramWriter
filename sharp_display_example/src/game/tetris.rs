@@ -1,9 +1,8 @@
 use super::{board::Board, score::Score, tetrimino::{Tetrimino, TetriminoType}};
 use crate::display::SharpDisplay;
 use anyhow::Result;
-use rand::Rng;
 use rpi_memory_display::Pixel;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 // Game constants
 const BLOCK_SIZE: usize = 10;
