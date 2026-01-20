@@ -1,4 +1,3 @@
-// main.rs
 mod pages;
 mod display;
 mod game;  // NEW: Add game module
