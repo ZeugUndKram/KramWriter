@@ -7,7 +7,7 @@ use std::fs;
 
 // Game constants
 const BLOCK_SIZE: usize = 12;
-const ARENA_X: usize = 80;
+const ARENA_X: usize = 120;
 const ARENA_Y: usize = 12;
 const NEXT_X: usize = 300;
 const NEXT_Y: usize = 30;
