@@ -331,7 +331,7 @@ impl ZeugtrisMenuPage {
             let start_y = 100;
             
             // Simple text drawing
-            for (i, c) in text.chars().enumerate() {
+            for (i, _c) in text.chars().enumerate() {
                 // Draw a simple box for each character
                 let char_x = start_x + i * 10;
                 for y in 0..10 {

@@ -89,9 +89,7 @@ impl Page for ZeugtrisPage {
             Key::Up | Key::Char(' ') => {
                 self.game.hard_drop();
             }
-            Key::Char('c') | Key::Char('C') => {
-                self.game.hold_current_piece();
-            }
+            // REMOVED: Key::Char('c') | Key::Char('C') => hold functionality
             Key::Esc => return Ok(Some(PageId::ZeugtrisMenu)),
             Key::Char('r') | Key::Char('R') => {
                 self.game.reset()?;
