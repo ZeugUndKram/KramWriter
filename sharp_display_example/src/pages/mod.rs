@@ -2,7 +2,7 @@ pub mod logo;
 pub mod menu;
 pub mod write_menu;
 pub mod zeugtris_menu;
-pub mod zeugtris;
+pub mod zeugtris;  // Now uses OOP TetrisGame
 
 use crate::display::SharpDisplay;
 use anyhow::Result;

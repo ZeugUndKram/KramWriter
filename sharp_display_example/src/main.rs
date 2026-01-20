@@ -1,12 +1,14 @@
+// main.rs
 mod pages;
 mod display;
+mod game;  // NEW: Add game module
 
 use anyhow::Result;
 use pages::{PageId, LogoPage, MenuPage, WriteMenuPage, ZeugtrisMenuPage, ZeugtrisPage};
 use display::SharpDisplay;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use std::io::{self, Read, Write};
+use std::io::{self, Read};
 use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
