@@ -1,4 +1,3 @@
-// game/tetris.rs
 use super::{board::Board, score::Score, tetrimino::{Tetrimino, TetriminoType}, sprites::BlockSprites};
 use crate::display::SharpDisplay;
 use anyhow::Result;
