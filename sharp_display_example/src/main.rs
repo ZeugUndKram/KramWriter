@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use std::io;
 use termion::event::Key;
+use termion::input::TermRead;  // KEEP THIS IMPORT - it's needed for .keys()
 use termion::raw::IntoRawMode;
 
 struct App {
@@ -42,12 +43,16 @@ impl App {
     fn run(&mut self) -> Result<()> {
         let _stdout = io::stdout().into_raw_mode()?;
         
+        // Create a keys iterator
+        let stdin = io::stdin();
+        let mut keys = stdin.lock().keys();
+        
         // Initial draw
         self.draw_current_page()?;
         
         loop {
-            // Check for keyboard input using termion's keys() method
-            if let Some(Ok(key)) = io::stdin().lock().keys().next() {
+            // Check for keyboard input
+            if let Some(Ok(key)) = keys.next() {
                 self.handle_key(key)?;
                 
                 if key == Key::Ctrl('c') {
