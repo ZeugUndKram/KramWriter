@@ -17,25 +17,42 @@ const OVERLAY_X: usize = 0;
 const OVERLAY_Y: usize = 0;
 
 // SRS Wall kick data
-const WALL_KICKS: [[(i32, i32); 5]; 8] = [
+const WALL_KICKS_JLSTZ: [[(i32, i32); 5]; 8] = [
+    // 0->R (0 to 1)
     [(0, 0), (-1, 0), (-1, 1), (0, -2), (-1, -2)],
+    // R->0 (1 to 0)
     [(0, 0), (1, 0), (1, -1), (0, 2), (1, 2)],
+    // R->2 (1 to 2)
     [(0, 0), (1, 0), (1, -1), (0, 2), (1, 2)],
+    // 2->R (2 to 1)
     [(0, 0), (-1, 0), (-1, 1), (0, -2), (-1, -2)],
+    // 2->L (2 to 3)
     [(0, 0), (1, 0), (1, 1), (0, -2), (1, -2)],
+    // L->2 (3 to 2)
     [(0, 0), (-1, 0), (-1, -1), (0, 2), (-1, 2)],
+    // L->0 (3 to 0)
     [(0, 0), (-1, 0), (-1, -1), (0, 2), (-1, 2)],
+    // 0->L (0 to 3)
     [(0, 0), (1, 0), (1, 1), (0, -2), (1, -2)],
 ];
 
+// I piece special wall kicks
 const WALL_KICKS_I: [[(i32, i32); 5]; 8] = [
+    // 0->R (0 to 1)
     [(0, 0), (-2, 0), (1, 0), (-2, -1), (1, 2)],
+    // R->0 (1 to 0)
     [(0, 0), (2, 0), (-1, 0), (2, 1), (-1, -2)],
+    // R->2 (1 to 2)
     [(0, 0), (-1, 0), (2, 0), (-1, 2), (2, -1)],
+    // 2->R (2 to 1)
     [(0, 0), (1, 0), (-2, 0), (1, -2), (-2, 1)],
+    // 2->L (2 to 3)
     [(0, 0), (2, 0), (-1, 0), (2, 1), (-1, -2)],
+    // L->2 (3 to 2)
     [(0, 0), (-2, 0), (1, 0), (-2, -1), (1, 2)],
+    // L->0 (3 to 0)
     [(0, 0), (1, 0), (-2, 0), (1, -2), (-2, 1)],
+    // 0->L (0 to 3)
     [(0, 0), (-1, 0), (2, 0), (-1, 2), (2, -1)],
 ];
 
@@ -229,9 +246,24 @@ impl TetrisGame {
         !self.check_collision(x, y, rotation)
     }
     
+    // Helper function for wall kick index
+    fn get_kick_index(from_rotation: usize, to_rotation: usize) -> Option<usize> {
+        match (from_rotation, to_rotation) {
+            (0, 1) => Some(0),  // 0->R (clockwise)
+            (1, 0) => Some(1),  // R->0 (counter-clockwise)
+            (1, 2) => Some(2),  // R->2 (clockwise)
+            (2, 1) => Some(3),  // 2->R (counter-clockwise)
+            (2, 3) => Some(4),  // 2->L (clockwise)
+            (3, 2) => Some(5),  // L->2 (counter-clockwise)
+            (3, 0) => Some(6),  // L->0 (clockwise)
+            (0, 3) => Some(7),  // 0->L (counter-clockwise)
+            _ => None,
+        }
+    }
+    
     fn try_wall_kick(&self, from_rotation: usize, to_rotation: usize, x: i32, y: i32) -> Option<(i32, i32)> {
         let is_i_piece = matches!(self.current_tetrimino.tetrimino_type, TetriminoType::I);
-        let kick_table = if is_i_piece { &WALL_KICKS_I } else { &WALL_KICKS };
+        let kick_table = if is_i_piece { &WALL_KICKS_I } else { &WALL_KICKS_JLSTZ };
         
         let kick_index = match (from_rotation, to_rotation) {
             (0, 1) => 0,
@@ -315,20 +347,38 @@ impl TetrisGame {
             return false;
         }
         
+        // O piece doesn't rotate
+        if matches!(self.current_tetrimino.tetrimino_type, TetriminoType::O) {
+            return false;
+        }
+        
         let from_rotation = self.current_tetrimino.rotation;
         let to_rotation = (from_rotation + 3) % 4; // +3 ≡ -1 mod 4
         
-        // Try normal rotation first
-        if self.valid_position(self.position.0, self.position.1, Some(to_rotation)) {
-            self.current_tetrimino.rotate_left();
-            self.needs_redraw = true;
-            return true;
+        // Get the correct wall kick table
+        let is_i_piece = matches!(self.current_tetrimino.tetrimino_type, TetriminoType::I);
+        let kick_table = if is_i_piece { &WALL_KICKS_I } else { &WALL_KICKS_JLSTZ };
+        
+        // Get kick index
+        if let Some(kick_index) = Self::get_kick_index(from_rotation, to_rotation) {
+            // Try each wall kick offset
+            for &(kx, ky) in &kick_table[kick_index] {
+                let new_x = self.position.0 + kx;
+                let new_y = self.position.1 + ky;
+                
+                if self.valid_position(new_x, new_y, Some(to_rotation)) {
+                    // Rotation successful with wall kick
+                    self.current_tetrimino.set_rotation(to_rotation);
+                    self.position = (new_x, new_y);
+                    self.needs_redraw = true;
+                    return true;
+                }
+            }
         }
         
-        // Try wall kicks
-        if let Some((new_x, new_y)) = self.try_wall_kick(from_rotation, to_rotation, self.position.0, self.position.1) {
-            self.current_tetrimino.rotate_left();
-            self.position = (new_x, new_y);
+        // Try rotation without wall kick first
+        if self.valid_position(self.position.0, self.position.1, Some(to_rotation)) {
+            self.current_tetrimino.set_rotation(to_rotation);
             self.needs_redraw = true;
             return true;
         }
@@ -341,20 +391,38 @@ impl TetrisGame {
             return false;
         }
         
+        // O piece doesn't rotate
+        if matches!(self.current_tetrimino.tetrimino_type, TetriminoType::O) {
+            return false;
+        }
+        
         let from_rotation = self.current_tetrimino.rotation;
         let to_rotation = (from_rotation + 1) % 4;
         
-        // Try normal rotation first
-        if self.valid_position(self.position.0, self.position.1, Some(to_rotation)) {
-            self.current_tetrimino.rotate_right();
-            self.needs_redraw = true;
-            return true;
+        // Get the correct wall kick table
+        let is_i_piece = matches!(self.current_tetrimino.tetrimino_type, TetriminoType::I);
+        let kick_table = if is_i_piece { &WALL_KICKS_I } else { &WALL_KICKS_JLSTZ };
+        
+        // Get kick index
+        if let Some(kick_index) = Self::get_kick_index(from_rotation, to_rotation) {
+            // Try each wall kick offset
+            for &(kx, ky) in &kick_table[kick_index] {
+                let new_x = self.position.0 + kx;
+                let new_y = self.position.1 + ky;
+                
+                if self.valid_position(new_x, new_y, Some(to_rotation)) {
+                    // Rotation successful with wall kick
+                    self.current_tetrimino.set_rotation(to_rotation);
+                    self.position = (new_x, new_y);
+                    self.needs_redraw = true;
+                    return true;
+                }
+            }
         }
         
-        // Try wall kicks
-        if let Some((new_x, new_y)) = self.try_wall_kick(from_rotation, to_rotation, self.position.0, self.position.1) {
-            self.current_tetrimino.rotate_right();
-            self.position = (new_x, new_y);
+        // Try rotation without wall kick first
+        if self.valid_position(self.position.0, self.position.1, Some(to_rotation)) {
+            self.current_tetrimino.set_rotation(to_rotation);
             self.needs_redraw = true;
             return true;
         }
@@ -586,11 +654,11 @@ impl TetrisGame {
     fn draw_preview(&self, display: &mut SharpDisplay, x: usize, y: usize, tetrimino: &Tetrimino) {
         let piece_type = tetrimino.tetrimino_type.as_index();
         
+        // For preview, always show rotation 0 (spawn orientation)
+        let matrix = tetrimino.get_matrix(Some(0)); // Get rotation 0 matrix
+        
         // Try to draw sprite if available
         if let Some(sprite_pixels) = self.sprites.get_sprite(piece_type) {
-            // Draw the full 12x12 sprite at the preview location
-            let matrix = tetrimino.matrix();
-            
             // Find the bounding box of the piece to center it in preview
             let mut min_x = 4;
             let mut max_x = 0;
@@ -644,7 +712,6 @@ impl TetrisGame {
         } else {
             // Fallback: draw simple preview
             let preview_size = 8;
-            let matrix = tetrimino.matrix();
             
             for py in 0..4 {
                 for px in 0..4 {
