@@ -1,3 +1,4 @@
+// game/tetris.rs
 use super::{board::Board, score::Score, tetrimino::{Tetrimino, TetriminoType}, sprites::BlockSprites};
 use crate::display::SharpDisplay;
 use anyhow::Result;
@@ -7,14 +8,12 @@ use std::fs;
 
 // Game constants
 const BLOCK_SIZE: usize = 12;
-const ARENA_X: usize = 140;
+const ARENA_X: usize = 140;  // Updated to 140
 const ARENA_Y: usize = 12;
 const NEXT_X: usize = 300;
 const NEXT_Y: usize = 30;
-const HOLD_X: usize = 300;
-const HOLD_Y: usize = 100;
 const SCORE_X: usize = 300;
-const SCORE_Y: usize = 160;
+const SCORE_Y: usize = 100;  // Moved up since we removed hold
 const OVERLAY_X: usize = 0;
 const OVERLAY_Y: usize = 0;
 
@@ -46,8 +45,6 @@ pub struct TetrisGame {
     score: Score,
     current_tetrimino: Tetrimino,
     next_tetrimino: Tetrimino,
-    hold_tetrimino: Option<Tetrimino>,
-    can_hold: bool,
     position: (i32, i32),
     game_over: bool,
     paused: bool,
@@ -116,8 +113,6 @@ impl TetrisGame {
             score: Score::new(),
             current_tetrimino: Tetrimino::random(),
             next_tetrimino: Tetrimino::random(),
-            hold_tetrimino: None,
-            can_hold: true,
             position: (4, 0),
             game_over: false,
             paused: false,
@@ -368,32 +363,6 @@ impl TetrisGame {
         false
     }
     
-    pub fn hold_current_piece(&mut self) -> bool {
-        if self.game_over || self.paused || !self.can_hold {
-            return false;
-        }
-        
-        if let Some(hold_piece) = self.hold_tetrimino.take() {
-            let temp = std::mem::replace(&mut self.current_tetrimino, hold_piece);
-            self.hold_tetrimino = Some(temp);
-        } else {
-            self.hold_tetrimino = Some(self.current_tetrimino);
-            self.current_tetrimino = std::mem::replace(&mut self.next_tetrimino, Tetrimino::random());
-        }
-        
-        self.position = (4, 0);
-        self.current_tetrimino.rotation = 0;
-        self.can_hold = false;
-        
-        // Check if game over after hold
-        if self.check_collision(self.position.0, self.position.1, None) {
-            self.game_over = true;
-        }
-        
-        self.needs_redraw = true;
-        true
-    }
-    
     fn lock_current_piece(&mut self) -> bool {
         if self.game_over || self.paused {
             return false;
@@ -412,7 +381,6 @@ impl TetrisGame {
         self.current_tetrimino = std::mem::replace(&mut self.next_tetrimino, Tetrimino::random());
         self.position = (4, 0);
         self.current_tetrimino.rotation = 0;
-        self.can_hold = true;
         self.last_update = Instant::now();
         
         // Check for game over
@@ -523,49 +491,20 @@ impl TetrisGame {
                 if let Some(color_index) = self.board.get_cell(x, y) {
                     // color_index is 1-7, convert to 0-6 for sprite lookup
                     let piece_type = (color_index as usize).saturating_sub(1);
-                    self.draw_block(display, x, y, piece_type, false);
+                    self.draw_block(display, x, y, piece_type);
                 }
             }
-        }
-        
-        // Draw ghost piece
-        if !self.game_over && !self.paused {
-            let ghost_y = self.ghost_position();
-            self.draw_tetrimino(display, self.position.0, ghost_y, &self.current_tetrimino, true);
         }
         
         // Draw current piece
         if !self.game_over && !self.paused {
-            self.draw_tetrimino(display, self.position.0, self.position.1, &self.current_tetrimino, false);
+            self.draw_tetrimino(display, self.position.0, self.position.1, &self.current_tetrimino);
         }
     }
     
     fn draw_game_info(&self, display: &mut SharpDisplay) {
-        // Draw next piece using sprite
+        // Draw next piece using actual 12x12 sprite (not scaled)
         self.draw_preview(display, NEXT_X, NEXT_Y, &self.next_tetrimino);
-        
-        // Draw hold piece using sprite
-        if let Some(hold_piece) = &self.hold_tetrimino {
-            self.draw_preview(display, HOLD_X, HOLD_Y, hold_piece);
-        } else {
-            // Draw empty indicator (cross)
-            let cross_size = 20;
-            let center_x = HOLD_X + 15;
-            let center_y = HOLD_Y + 25;
-            
-            for i in 0..cross_size {
-                if center_x + i < 400 && center_y < 240 {
-                    display.draw_pixel(center_x + i, center_y, Pixel::Black);
-                    display.draw_pixel(center_x, center_y + i, Pixel::Black);
-                }
-                if center_x >= i && center_y < 240 {
-                    display.draw_pixel(center_x - i, center_y, Pixel::Black);
-                }
-                if center_x < 400 && center_y + i < 240 {
-                    display.draw_pixel(center_x, center_y + i, Pixel::Black);
-                }
-            }
-        }
         
         // Draw score/level info
         let info_x = SCORE_X;
@@ -579,76 +518,52 @@ impl TetrisGame {
         self.draw_score_bar(display, info_x, info_y, (self.score.lines_cleared() % 10) as u32, 10, 10);
     }
     
-    fn ghost_position(&self) -> i32 {
-        let mut ghost_y = self.position.1;
-        while self.valid_position(self.position.0, ghost_y + 1, None) {
-            ghost_y += 1;
-        }
-        ghost_y
-    }
-    
-    fn draw_block(&self, display: &mut SharpDisplay, x: usize, y: usize, piece_type: usize, is_ghost: bool) {
+    fn draw_block(&self, display: &mut SharpDisplay, x: usize, y: usize, piece_type: usize) {
         let block_x = ARENA_X + x * BLOCK_SIZE;
         let block_y = ARENA_Y + y * BLOCK_SIZE;
         
-        if is_ghost {
-            // Draw ghost piece (checkerboard pattern)
-            for by in 0..BLOCK_SIZE {
-                for bx in 0..BLOCK_SIZE {
-                    // Create a visible checkerboard pattern
-                    let check_size = 3;
-                    let check_x = bx / check_size;
-                    let check_y = by / check_size;
-                    
-                    if (check_x + check_y) % 2 == 0 && block_x + bx < 400 && block_y + by < 240 {
-                        display.draw_pixel(block_x + bx, block_y + by, Pixel::Black);
+        // Try to draw sprite if available
+        if let Some(sprite_pixels) = self.sprites.get_sprite(piece_type) {
+            // Draw the sprite
+            for sy in 0..self.sprites.sprite_height {
+                for sx in 0..self.sprites.sprite_width {
+                    let pixel = sprite_pixels[sy * self.sprites.sprite_width + sx];
+                    if pixel == Pixel::Black {
+                        let screen_x = block_x + sx;
+                        let screen_y = block_y + sy;
+                        if screen_x < 400 && screen_y < 240 {
+                            display.draw_pixel(screen_x, screen_y, Pixel::Black);
+                        }
                     }
                 }
             }
         } else {
-            // Try to draw sprite if available
-            if let Some(sprite_pixels) = self.sprites.get_sprite(piece_type) {
-                // Draw the sprite
-                for sy in 0..self.sprites.sprite_height {
-                    for sx in 0..self.sprites.sprite_width {
-                        let pixel = sprite_pixels[sy * self.sprites.sprite_width + sx];
-                        if pixel == Pixel::Black {
-                            let screen_x = block_x + sx;
-                            let screen_y = block_y + sy;
-                            if screen_x < 400 && screen_y < 240 {
-                                display.draw_pixel(screen_x, screen_y, Pixel::Black);
-                            }
-                        }
+            // Fallback: draw solid block if sprite not available
+            for by in 1..BLOCK_SIZE - 1 {
+                for bx in 1..BLOCK_SIZE - 1 {
+                    if block_x + bx < 400 && block_y + by < 240 {
+                        display.draw_pixel(block_x + bx, block_y + by, Pixel::Black);
                     }
                 }
-            } else {
-                // Fallback: draw solid block if sprite not available
-                for by in 1..BLOCK_SIZE - 1 {
-                    for bx in 1..BLOCK_SIZE - 1 {
-                        if block_x + bx < 400 && block_y + by < 240 {
-                            display.draw_pixel(block_x + bx, block_y + by, Pixel::Black);
-                        }
-                    }
+            }
+            
+            // Draw outline
+            for bx in 0..BLOCK_SIZE {
+                if block_x + bx < 400 {
+                    display.draw_pixel(block_x + bx, block_y, Pixel::Black);
+                    display.draw_pixel(block_x + bx, block_y + BLOCK_SIZE - 1, Pixel::Black);
                 }
-                
-                // Draw outline
-                for bx in 0..BLOCK_SIZE {
-                    if block_x + bx < 400 {
-                        display.draw_pixel(block_x + bx, block_y, Pixel::Black);
-                        display.draw_pixel(block_x + bx, block_y + BLOCK_SIZE - 1, Pixel::Black);
-                    }
-                }
-                for by in 0..BLOCK_SIZE {
-                    if block_y + by < 240 {
-                        display.draw_pixel(block_x, block_y + by, Pixel::Black);
-                        display.draw_pixel(block_x + BLOCK_SIZE - 1, block_y + by, Pixel::Black);
-                    }
+            }
+            for by in 0..BLOCK_SIZE {
+                if block_y + by < 240 {
+                    display.draw_pixel(block_x, block_y + by, Pixel::Black);
+                    display.draw_pixel(block_x + BLOCK_SIZE - 1, block_y + by, Pixel::Black);
                 }
             }
         }
     }
     
-    fn draw_tetrimino(&self, display: &mut SharpDisplay, x: i32, y: i32, tetrimino: &Tetrimino, is_ghost: bool) {
+    fn draw_tetrimino(&self, display: &mut SharpDisplay, x: i32, y: i32, tetrimino: &Tetrimino) {
         let piece_type = tetrimino.tetrimino_type.as_index();
         let matrix = tetrimino.matrix();
         
@@ -663,7 +578,7 @@ impl TetrisGame {
                 let block_y = (y + py as i32) as usize;
                 
                 if block_x < self.board.width() && block_y < self.board.height() {
-                    self.draw_block(display, block_x, block_y, piece_type, is_ghost);
+                    self.draw_block(display, block_x, block_y, piece_type);
                 }
             }
         }
@@ -671,34 +586,55 @@ impl TetrisGame {
     
     fn draw_preview(&self, display: &mut SharpDisplay, x: usize, y: usize, tetrimino: &Tetrimino) {
         let piece_type = tetrimino.tetrimino_type.as_index();
-        let preview_size = 10;
-        let matrix = tetrimino.matrix();
         
         // Try to draw sprite if available
         if let Some(sprite_pixels) = self.sprites.get_sprite(piece_type) {
+            // Draw the full 12x12 sprite at the preview location
+            let matrix = tetrimino.matrix();
+            
+            // Find the bounding box of the piece to center it in preview
+            let mut min_x = 4;
+            let mut max_x = 0;
+            let mut min_y = 4;
+            let mut max_y = 0;
+            
             for py in 0..4 {
                 for px in 0..4 {
-                    if matrix[py * 4 + px] == 0 {
-                        continue;
+                    if matrix[py * 4 + px] != 0 {
+                        if px < min_x { min_x = px; }
+                        if px > max_x { max_x = px; }
+                        if py < min_y { min_y = py; }
+                        if py > max_y { max_y = py; }
                     }
-                    
-                    let screen_x = x + px * (preview_size + 2);
-                    let screen_y = y + py * (preview_size + 2);
-                    
-                    // Draw scaled down sprite (10x10 instead of 12x12)
-                    for sy in 0..preview_size {
-                        for sx in 0..preview_size {
-                            // Map preview coordinates to sprite coordinates (simple scaling)
-                            let sprite_x = (sx * self.sprites.sprite_width) / preview_size;
-                            let sprite_y = (sy * self.sprites.sprite_height) / preview_size;
-                            
-                            if sprite_x < self.sprites.sprite_width && sprite_y < self.sprites.sprite_height {
-                                let pixel = sprite_pixels[sprite_y * self.sprites.sprite_width + sprite_x];
+                }
+            }
+            
+            let piece_width = (max_x - min_x + 1) as usize;
+            let piece_height = (max_y - min_y + 1) as usize;
+            
+            // Center the piece in the preview area
+            let preview_width = piece_width * self.sprites.sprite_width;
+            let preview_height = piece_height * self.sprites.sprite_height;
+            
+            let start_x = x + (48 - preview_width) / 2; // Center in ~48px width
+            let start_y = y + (48 - preview_height) / 2; // Center in ~48px height
+            
+            // Draw each block of the piece
+            for py in min_y..=max_y {
+                for px in min_x..=max_x {
+                    if matrix[py * 4 + px] != 0 {
+                        let block_x = start_x + (px - min_x) as usize * self.sprites.sprite_width;
+                        let block_y = start_y + (py - min_y) as usize * self.sprites.sprite_height;
+                        
+                        // Draw the sprite
+                        for sy in 0..self.sprites.sprite_height {
+                            for sx in 0..self.sprites.sprite_width {
+                                let pixel = sprite_pixels[sy * self.sprites.sprite_width + sx];
                                 if pixel == Pixel::Black {
-                                    let draw_x = screen_x + sx;
-                                    let draw_y = screen_y + sy;
-                                    if draw_x < 400 && draw_y < 240 {
-                                        display.draw_pixel(draw_x, draw_y, Pixel::Black);
+                                    let screen_x = block_x + sx;
+                                    let screen_y = block_y + sy;
+                                    if screen_x < 400 && screen_y < 240 {
+                                        display.draw_pixel(screen_x, screen_y, Pixel::Black);
                                     }
                                 }
                             }
@@ -707,7 +643,10 @@ impl TetrisGame {
                 }
             }
         } else {
-            // Fallback: draw solid preview
+            // Fallback: draw simple preview
+            let preview_size = 8;
+            let matrix = tetrimino.matrix();
+            
             for py in 0..4 {
                 for px in 0..4 {
                     if matrix[py * 4 + px] == 0 {
