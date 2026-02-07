@@ -1,8 +1,10 @@
 pub mod logo;
 pub mod menu;
-pub mod write_menu;
 pub mod zeugtris_menu;
-pub mod zeugtris;  // Now uses OOP TetrisGame
+pub mod zeugtris;
+pub mod writing_game;
+pub mod writing_renderer;
+pub mod writing_menu;
 
 use crate::display::SharpDisplay;
 use anyhow::Result;
@@ -12,7 +14,7 @@ use termion::event::Key;
 pub enum PageId {
     Logo,
     Menu,
-    WriteMenu,
+    Writing,      // Replaces WriteMenu
     ZeugtrisMenu,
     Zeugtris,
 }
@@ -24,6 +26,6 @@ pub trait Page {
 
 pub use logo::LogoPage;
 pub use menu::MenuPage;
-pub use write_menu::WriteMenuPage;
 pub use zeugtris_menu::ZeugtrisMenuPage;
 pub use zeugtris::ZeugtrisPage;
+pub use writing_menu::WritingPage;  // Changed from WritingMenuPage to WritingPage

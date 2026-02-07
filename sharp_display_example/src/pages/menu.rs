@@ -4,10 +4,10 @@ use anyhow::Result;
 use termion::event::Key;
 use rpi_memory_display::Pixel;
 
-const MENU_OPTIONS: [&str; 5] = [
-    "Write",
+const MENU_OPTIONS: [&str; 5] = [  // Back to 5 options
+    "Write",      // Now uses the modular WritingPage
     "Learn", 
-    "Zeugtris",  // Updated to match the new Zeugtris option
+    "Zeugtris",
     "Settings",
     "Credits",
 ];
@@ -208,7 +208,7 @@ impl Page for MenuPage {
         match key {
             Key::Char('\n') => {
                 match self.current_index {
-                    0 => Ok(Some(PageId::WriteMenu)),
+                    0 => Ok(Some(PageId::Writing)),
                     2 => Ok(Some(PageId::ZeugtrisMenu)),  // Zeugtris option - index 2
                     _ => Ok(Some(PageId::Logo)),
                 }

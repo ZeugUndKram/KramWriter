@@ -1,15 +1,18 @@
 mod pages;
 mod display;
 mod game;
+mod writing_game;
+mod writing_renderer;
+mod writing_menu;
 
 use anyhow::Result;
-use pages::{PageId, LogoPage, MenuPage, WriteMenuPage, ZeugtrisMenuPage, ZeugtrisPage};
+use pages::{PageId, LogoPage, MenuPage, ZeugtrisMenuPage, ZeugtrisPage, WritingPage};  // Updated
 use display::SharpDisplay;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use std::io;
 use termion::event::Key;
-use termion::input::TermRead;  // KEEP THIS IMPORT - it's needed for .keys()
+use termion::input::TermRead;
 use termion::raw::IntoRawMode;
 
 struct App {
@@ -27,9 +30,9 @@ impl App {
         let mut pages: HashMap<PageId, Box<dyn pages::Page>> = HashMap::new();
         pages.insert(PageId::Logo, Box::new(LogoPage::new()?));
         pages.insert(PageId::Menu, Box::new(MenuPage::new()?));
-        pages.insert(PageId::WriteMenu, Box::new(WriteMenuPage::new()?));
         pages.insert(PageId::ZeugtrisMenu, Box::new(ZeugtrisMenuPage::new()?));
         pages.insert(PageId::Zeugtris, Box::new(ZeugtrisPage::new()?));
+        pages.insert(PageId::Writing, Box::new(WritingPage::new()?));  // New
         
         Ok(Self {
             display,
