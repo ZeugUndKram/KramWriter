@@ -213,7 +213,8 @@ impl WritingRenderer {
         }
     }
     
-    fn calculate_text_width(&self, text: &str) -> usize {
+    // Make this public
+    pub fn calculate_text_width(&self, text: &str) -> usize {
         let mut width = 0;
         for c in text.chars() {
             let char_index = Self::get_char_index(c);
@@ -305,13 +306,13 @@ impl WritingRenderer {
             }
         }
         
-        // Draw cursor
-        self.draw_cursor(display, document);
+        // Cursor is drawn separately in the writing module
     }
     
-    fn draw_cursor(&self, display: &mut SharpDisplay, document: &WritingDocument) {
-        // We'll implement cursor drawing in the main writing module
-    }
+    // Remove unused draw_cursor method
+    // fn draw_cursor(&self, _display: &mut SharpDisplay, _document: &WritingDocument) {
+    //     // Cursor drawing is handled in the writing module
+    // }
     
     pub fn draw_status_bar(&self, display: &mut SharpDisplay, document: &WritingDocument) {
         let status_y = 240 - self.font_char_height - 5;

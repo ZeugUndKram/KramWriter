@@ -151,8 +151,13 @@ impl WritingPage {
             Key::Ctrl('q') => {
                 return Ok(Some(PageId::Menu));
             }
-            Key::F1 => {
-                self.show_status_bar = !self.show_status_bar;
+            Key::Char('s') if self.show_status_bar => {
+                // Use 's' key to toggle status bar instead of F1
+                self.show_status_bar = false;
+            }
+            Key::Char('S') if !self.show_status_bar => {
+                // Use 'S' key to toggle status bar back on
+                self.show_status_bar = true;
             }
             _ => {}
         }

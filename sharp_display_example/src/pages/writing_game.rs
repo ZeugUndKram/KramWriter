@@ -110,7 +110,8 @@ impl WritingDocument {
         self.cursor_position = self.get_line_end_position(current_line);
     }
     
-    fn get_current_line_index(&self) -> usize {
+    // Make these public
+    pub fn get_current_line_index(&self) -> usize {
         let mut pos = 0;
         for (i, line) in self.lines.iter().enumerate() {
             pos += line.len() + 1; // +1 for newline
@@ -121,12 +122,14 @@ impl WritingDocument {
         self.lines.len().saturating_sub(1)
     }
     
-    fn get_cursor_column(&self) -> usize {
+    // Make this public
+    pub fn get_cursor_column(&self) -> usize {
         let current_line = self.get_current_line_index();
         let line_start = self.get_line_start_position(current_line);
         self.cursor_position - line_start
     }
     
+    // Keep these private since they're implementation details
     fn get_line_start_position(&self, line_index: usize) -> usize {
         self.lines.iter().take(line_index).map(|l| l.len() + 1).sum()
     }
