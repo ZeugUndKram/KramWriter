@@ -128,7 +128,7 @@ impl WritingDocument {
     pub fn move_cursor_up(&mut self) {
         let current_line = self.get_current_line_index();
         if current_line > 0 {
-            let prev_line_end = self.get_line_end_position(current_line - 1);
+            let prev_line_end = self.get_line_end_byte_position(current_line - 1);
             let current_col = self.get_cursor_column();
             let prev_line_len = self.get_line_byte_length(current_line - 1);
             
@@ -144,7 +144,7 @@ impl WritingDocument {
     pub fn move_cursor_down(&mut self) {
         let current_line = self.get_current_line_index();
         if current_line + 1 < self.lines.len() {
-            let current_line_start = self.get_line_start_byte_position(current_line);
+            let _current_line_start = self.get_line_start_byte_position(current_line);
             let next_line_start = self.get_line_start_byte_position(current_line + 1);
             let current_col = self.get_cursor_column();
             let next_line_char_count = self.get_line_char_count(current_line + 1);
@@ -212,7 +212,6 @@ impl WritingDocument {
         let line_start_byte = self.get_line_start_byte_position(current_line);
         
         // Count characters from line start to cursor
-        let line_text = &self.lines[current_line];
         let prefix = &self.text[line_start_byte..self.cursor_position];
         
         // Count characters in the prefix
