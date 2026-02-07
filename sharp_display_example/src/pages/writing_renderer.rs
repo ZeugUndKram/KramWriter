@@ -16,6 +16,7 @@ pub struct WritingRenderer {
     font_char_height: usize,
     chars_per_row: usize,
     char_widths: Vec<usize>,
+    ascii_only: bool, // Flag to track if we only have ASCII font
 }
 
 impl WritingRenderer {
@@ -48,6 +49,7 @@ impl WritingRenderer {
             font_char_height: 30,
             chars_per_row: 19,
             char_widths,
+            ascii_only: true, // Assume ASCII only by default
         })
     }
     
@@ -140,14 +142,62 @@ impl WritingRenderer {
         widths
     }
     
-    fn get_char_index(c: char) -> usize {
+    fn get_char_index(c: char) -> Option<usize> {
         let printable_chars = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~";
-        printable_chars.find(c).unwrap_or(0)
+        
+        // Try to find the character in our printable set
+        if let Some(index) = printable_chars.find(c) {
+            return Some(index);
+        }
+        
+        // Handle common special characters by mapping them to similar ASCII characters
+        match c {
+            // German umlauts and special characters
+            'Ä' | 'ä' => Some(0), // Map to space or 'A' index
+            'Ö' | 'ö' => Some(0), // Map to space or 'O' index  
+            'Ü' | 'ü' => Some(0), // Map to space or 'U' index
+            'ß' => Some(0),       // Map to space
+            '€' => Some(0),       // Map to space
+            '£' => Some(0),       // Map to space
+            '¥' => Some(0),       // Map to space
+            '°' => Some(0),       // Map to degree symbol or space
+            
+            // French accents
+            'À' | 'à' => Some(0), // Map to space or 'A' index
+            'Â' | 'â' => Some(0), // Map to space or 'A' index
+            'Ç' | 'ç' => Some(0), // Map to space or 'C' index
+            'É' | 'é' => Some(0), // Map to space or 'E' index
+            'È' | 'è' => Some(0), // Map to space or 'E' index
+            'Ê' | 'ê' => Some(0), // Map to space or 'E' index
+            'Î' | 'î' => Some(0), // Map to space or 'I' index
+            'Ô' | 'ô' => Some(0), // Map to space or 'O' index
+            'Û' | 'û' => Some(0), // Map to space or 'U' index
+            
+            // Spanish characters
+            'Ñ' | 'ñ' => Some(0), // Map to space or 'N' index
+            '¿' => Some(0),       // Map to question mark
+            '¡' => Some(0),       // Map to exclamation
+            
+            // Scandinavian characters
+            'Å' | 'å' => Some(0), // Map to space or 'A' index
+            'Ø' | 'ø' => Some(0), // Map to space or 'O' index
+            'Æ' | 'æ' => Some(0), // Map to space
+            
+            // Default fallback - use space character
+            _ => Some(0),
+        }
     }
     
     fn draw_char_cropped(&self, display: &mut SharpDisplay, x: usize, y: usize, c: char) {
         if let Some((pixels, font_width, _)) = &self.font_bitmap {
-            let char_index = Self::get_char_index(c);
+            // Get character index with safe fallback
+            let char_index = Self::get_char_index(c).unwrap_or(0);
+            
+            // Check bounds
+            if char_index >= self.char_widths.len() {
+                return; // Skip drawing if character index is out of bounds
+            }
+            
             let chars_per_row = self.chars_per_row;
             let char_width = self.font_char_width;
             let char_height = self.font_char_height;
@@ -161,6 +211,7 @@ impl WritingRenderer {
             let mut leftmost = char_width;
             let mut rightmost = 0;
             
+            // Find the bounds of the character
             for dx in 0..char_width {
                 for dy in 0..char_height {
                     let src_pixel_x = src_x + dx;
@@ -174,6 +225,7 @@ impl WritingRenderer {
                 }
             }
             
+            // Draw the character if we found pixels
             if rightmost >= leftmost {
                 for dy in 0..char_height {
                     for dx in leftmost..=rightmost {
@@ -194,6 +246,29 @@ impl WritingRenderer {
                         }
                     }
                 }
+            } else {
+                // For characters we don't have (like 'Ä'), draw a placeholder box
+                self.draw_placeholder(display, x, y);
+            }
+        } else {
+            // No font loaded, draw simple placeholder
+            self.draw_placeholder(display, x, y);
+        }
+    }
+    
+    fn draw_placeholder(&self, display: &mut SharpDisplay, x: usize, y: usize) {
+        // Draw a simple box as placeholder for unsupported characters
+        for dy in 0..self.font_char_height {
+            for dx in 0..8 { // 8px wide placeholder
+                let screen_x = x + dx;
+                let screen_y = y + dy;
+                
+                if screen_x < 400 && screen_y < 240 {
+                    // Draw a simple X pattern
+                    if dx == dy || dx == 7 - dy {
+                        display.draw_pixel(screen_x, screen_y, rpi_memory_display::Pixel::Black);
+                    }
+                }
             }
         }
     }
@@ -201,10 +276,13 @@ impl WritingRenderer {
     fn draw_text_line(&self, display: &mut SharpDisplay, x: usize, y: usize, text: &str) {
         let mut current_x = x;
         for c in text.chars() {
-            let char_index = Self::get_char_index(c);
-            let char_width = if char_index < self.char_widths.len() { 
-                self.char_widths[char_index] 
-            } else { 
+            let char_width = if let Some(char_index) = Self::get_char_index(c) {
+                if char_index < self.char_widths.len() { 
+                    self.char_widths[char_index] 
+                } else { 
+                    8
+                }
+            } else {
                 8
             };
             
@@ -217,10 +295,13 @@ impl WritingRenderer {
     pub fn calculate_text_width(&self, text: &str) -> usize {
         let mut width = 0;
         for c in text.chars() {
-            let char_index = Self::get_char_index(c);
-            let char_width = if char_index < self.char_widths.len() { 
-                self.char_widths[char_index] 
-            } else { 
+            let char_width = if let Some(char_index) = Self::get_char_index(c) {
+                if char_index < self.char_widths.len() { 
+                    self.char_widths[char_index] 
+                } else { 
+                    8
+                }
+            } else {
                 8
             };
             width += char_width + LETTER_SPACING;
@@ -241,10 +322,13 @@ impl WritingRenderer {
         
         let mut chars = line.chars().peekable();
         while let Some(c) = chars.next() {
-            let char_index = Self::get_char_index(c);
-            let char_width = if char_index < self.char_widths.len() { 
-                self.char_widths[char_index] + LETTER_SPACING
-            } else { 
+            let char_width = if let Some(char_index) = Self::get_char_index(c) {
+                if char_index < self.char_widths.len() { 
+                    self.char_widths[char_index] + LETTER_SPACING
+                } else { 
+                    8 + LETTER_SPACING
+                }
+            } else {
                 8 + LETTER_SPACING
             };
             
@@ -308,11 +392,6 @@ impl WritingRenderer {
         
         // Cursor is drawn separately in the writing module
     }
-    
-    // Remove unused draw_cursor method
-    // fn draw_cursor(&self, _display: &mut SharpDisplay, _document: &WritingDocument) {
-    //     // Cursor drawing is handled in the writing module
-    // }
     
     pub fn draw_status_bar(&self, display: &mut SharpDisplay, document: &WritingDocument) {
         let status_y = 240 - self.font_char_height - 5;
