@@ -4,7 +4,7 @@ pub mod zeugtris_menu;
 pub mod zeugtris;
 pub mod writing_game;
 pub mod writing_renderer;
-pub mod writing_menu;
+pub mod writing;
 
 use crate::display::SharpDisplay;
 use anyhow::Result;
@@ -14,9 +14,9 @@ use termion::event::Key;
 pub enum PageId {
     Logo,
     Menu,
-    Writing,      // Replaces WriteMenu
     ZeugtrisMenu,
     Zeugtris,
+    Writing,
 }
 
 pub trait Page {
@@ -28,4 +28,4 @@ pub use logo::LogoPage;
 pub use menu::MenuPage;
 pub use zeugtris_menu::ZeugtrisMenuPage;
 pub use zeugtris::ZeugtrisPage;
-pub use writing_menu::WritingPage;  // Changed from WritingMenuPage to WritingPage
+pub use writing::WritingPage;

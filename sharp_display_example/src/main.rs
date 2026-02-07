@@ -1,12 +1,9 @@
 mod pages;
 mod display;
 mod game;
-mod writing_game;
-mod writing_renderer;
-mod writing_menu;
 
 use anyhow::Result;
-use pages::{PageId, LogoPage, MenuPage, ZeugtrisMenuPage, ZeugtrisPage, WritingPage};  // Updated
+use pages::{PageId, LogoPage, MenuPage, ZeugtrisMenuPage, ZeugtrisPage, WritingPage};
 use display::SharpDisplay;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -32,7 +29,7 @@ impl App {
         pages.insert(PageId::Menu, Box::new(MenuPage::new()?));
         pages.insert(PageId::ZeugtrisMenu, Box::new(ZeugtrisMenuPage::new()?));
         pages.insert(PageId::Zeugtris, Box::new(ZeugtrisPage::new()?));
-        pages.insert(PageId::Writing, Box::new(WritingPage::new()?));  // New
+        pages.insert(PageId::Writing, Box::new(WritingPage::new()?));
         
         Ok(Self {
             display,

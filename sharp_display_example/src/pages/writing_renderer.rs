@@ -1,5 +1,7 @@
 use rpi_memory_display::Pixel;
 use crate::display::SharpDisplay;
+use super::writing_game::WritingDocument;
+use anyhow::Result;
 
 const LETTER_SPACING: usize = 2;
 const LINE_SPACING: usize = 3;
@@ -283,13 +285,14 @@ impl WritingRenderer {
     }
     
     pub fn render_document(&self, display: &mut SharpDisplay, document: &WritingDocument) {
-        let visible_lines = MAX_VISIBLE_LINES.min(document.lines.len().saturating_sub(document.scroll_offset));
+        let visible_lines = MAX_VISIBLE_LINES.min(document.get_lines().len().saturating_sub(document.get_scroll_offset()));
         let mut current_y = TOP_MARGIN;
         
         for i in 0..visible_lines {
-            let line_idx = i + document.scroll_offset;
-            if line_idx < document.lines.len() {
-                let wrapped_lines = self.wrap_line(&document.lines[line_idx]);
+            let line_idx = i + document.get_scroll_offset();
+            let lines = document.get_lines();
+            if line_idx < lines.len() {
+                let wrapped_lines = self.wrap_line(&lines[line_idx]);
                 
                 for wrapped_line in wrapped_lines {
                     if current_y + self.font_char_height >= 240 {
@@ -307,47 +310,7 @@ impl WritingRenderer {
     }
     
     fn draw_cursor(&self, display: &mut SharpDisplay, document: &WritingDocument) {
-        let current_line = document.get_current_line_index();
-        let cursor_col = document.get_cursor_column();
-        
-        if current_line >= document.scroll_offset && current_line < document.scroll_offset + MAX_VISIBLE_LINES {
-            // Find wrapped line position
-            let mut wrapped_y = TOP_MARGIN;
-            let mut line_offset = document.scroll_offset;
-            
-            for line_idx in document.scroll_offset..=current_line {
-                if line_idx < document.lines.len() {
-                    let wrapped_lines = self.wrap_line(&document.lines[line_idx]);
-                    
-                    if line_idx == current_line {
-                        // This is the current line with cursor
-                        let mut current_col = cursor_col;
-                        for (wrapped_idx, wrapped_line) in wrapped_lines.iter().enumerate() {
-                            let wrapped_len = wrapped_line.len();
-                            
-                            if current_col <= wrapped_len {
-                                // Cursor is in this wrapped segment
-                                let before_cursor: String = wrapped_line.chars().take(current_col).collect();
-                                let cursor_x = LEFT_MARGIN + self.calculate_text_width(&before_cursor);
-                                let cursor_y = wrapped_y;
-                                
-                                // Draw vertical cursor line
-                                for dy in 0..self.font_char_height {
-                                    display.draw_pixel(cursor_x, cursor_y + dy, Pixel::Black);
-                                }
-                                break;
-                            } else {
-                                current_col -= wrapped_len;
-                                wrapped_y += self.font_char_height + LINE_SPACING;
-                            }
-                        }
-                        break;
-                    } else {
-                        wrapped_y += (self.font_char_height + LINE_SPACING) * wrapped_lines.len();
-                    }
-                }
-            }
-        }
+        // We'll implement cursor drawing in the main writing module
     }
     
     pub fn draw_status_bar(&self, display: &mut SharpDisplay, document: &WritingDocument) {
@@ -361,8 +324,9 @@ impl WritingRenderer {
         }
         
         // Draw status info
+        let lines = document.get_lines();
         let current_line = document.get_current_line_index() + 1;
-        let total_lines = document.lines.len();
+        let total_lines = lines.len();
         let cursor_col = document.get_cursor_column() + 1;
         let dirty_indicator = if document.is_dirty() { "* " } else { "  " };
         
@@ -382,5 +346,35 @@ impl WritingRenderer {
             let text_width = self.calculate_text_width(&file_text);
             self.draw_text_line(display, 400 - text_width - LEFT_MARGIN, status_y, &file_text);
         }
+    }
+    
+    // Helper methods for cursor drawing
+    pub fn get_font_height(&self) -> usize {
+        self.font_char_height
+    }
+    
+    pub fn get_line_spacing(&self) -> usize {
+        LINE_SPACING
+    }
+    
+    pub fn get_left_margin(&self) -> usize {
+        LEFT_MARGIN
+    }
+    
+    pub fn get_top_margin(&self) -> usize {
+        TOP_MARGIN
+    }
+    
+    pub fn calculate_wrapped_line_positions(&self, line: &str) -> Vec<(String, usize)> {
+        let wrapped = self.wrap_line(line);
+        let mut result = Vec::new();
+        let mut current_width = 0;
+        
+        for wrapped_line in wrapped {
+            result.push((wrapped_line.clone(), current_width));
+            current_width += self.calculate_text_width(&wrapped_line) + LETTER_SPACING;
+        }
+        
+        result
     }
 }

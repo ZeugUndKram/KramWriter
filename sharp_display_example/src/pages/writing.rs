@@ -2,8 +2,10 @@ use super::{Page, PageId};
 use crate::display::SharpDisplay;
 use anyhow::Result;
 use termion::event::Key;
-use crate::writing_game::WritingDocument;
-use crate::writing_renderer::WritingRenderer;
+use super::writing_game::WritingDocument;
+use super::writing_renderer::WritingRenderer;
+
+const MAX_VISIBLE_LINES: usize = 6;
 
 pub struct WritingPage {
     document: WritingDocument,
@@ -27,6 +29,45 @@ impl WritingPage {
         self.document.load_text(content);
         self.document.set_file_path(path.to_string());
         Ok(())
+    }
+    
+    fn draw_cursor(&self, display: &mut SharpDisplay) {
+        let current_line = self.document.get_current_line_index();
+        let cursor_col = self.document.get_cursor_column();
+        let scroll_offset = self.document.get_scroll_offset();
+        
+        if current_line >= scroll_offset && current_line < scroll_offset + MAX_VISIBLE_LINES {
+            let lines = self.document.get_lines();
+            let line_text = &lines[current_line];
+            
+            // Get wrapped segments for this line
+            let wrapped_segments = self.renderer.calculate_wrapped_line_positions(line_text);
+            
+            // Find which wrapped segment contains our cursor
+            let mut current_col = cursor_col;
+            let mut segment_y = self.renderer.get_top_margin() + 
+                (current_line - scroll_offset) * (self.renderer.get_font_height() + self.renderer.get_line_spacing());
+            
+            for (segment_text, _) in wrapped_segments {
+                let segment_len = segment_text.len();
+                
+                if current_col <= segment_len {
+                    // Cursor is in this segment
+                    let before_cursor: String = segment_text.chars().take(current_col).collect();
+                    let cursor_x = self.renderer.get_left_margin() + 
+                        self.renderer.calculate_text_width(&before_cursor);
+                    
+                    // Draw vertical cursor line
+                    for dy in 0..self.renderer.get_font_height() {
+                        display.draw_pixel(cursor_x, segment_y + dy, rpi_memory_display::Pixel::Black);
+                    }
+                    break;
+                } else {
+                    current_col -= segment_len;
+                    segment_y += self.renderer.get_font_height() + self.renderer.get_line_spacing();
+                }
+            }
+        }
     }
     
     fn handle_text_input(&mut self, key: Key) -> Result<Option<PageId>> {
@@ -73,11 +114,19 @@ impl WritingPage {
             }
             Key::PageUp => {
                 if self.document.get_scroll_offset() > 0 {
+                    let new_offset = self.document.get_scroll_offset().saturating_sub(MAX_VISIBLE_LINES);
+                    // We'll handle scroll offset differently
                     self.document.ensure_cursor_visible();
                 }
             }
             Key::PageDown => {
-                self.document.ensure_cursor_visible();
+                let lines = self.document.get_lines();
+                if self.document.get_scroll_offset() + MAX_VISIBLE_LINES < lines.len() {
+                    let new_offset = (self.document.get_scroll_offset() + MAX_VISIBLE_LINES)
+                        .min(lines.len().saturating_sub(1));
+                    // We'll handle scroll offset differently
+                    self.document.ensure_cursor_visible();
+                }
             }
             Key::Ctrl('s') => {
                 // Simple save functionality
@@ -117,6 +166,7 @@ impl Page for WritingPage {
         display.clear()?;
         
         self.renderer.render_document(display, &self.document);
+        self.draw_cursor(display);
         
         if self.show_status_bar {
             self.renderer.draw_status_bar(display, &self.document);
