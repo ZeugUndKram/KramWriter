@@ -4,6 +4,8 @@ use anyhow::Result;
 use termion::event::Key;
 use super::writing_game::WritingDocument;
 use super::writing_renderer::WritingRenderer;
+use super::file_browser::FileBrowser;
+use std::path::PathBuf;
 
 const MAX_VISIBLE_LINES: usize = 6;
 
@@ -12,6 +14,15 @@ pub struct WritingPage {
     renderer: WritingRenderer,
     show_status_bar: bool,
     last_frame_time: std::time::Instant,
+    mode: WritingMode,
+    file_browser: Option<FileBrowser>,
+}
+
+#[derive(PartialEq)]
+enum WritingMode {
+    Editing,
+    FileBrowser,
+    SaveAs,
 }
 
 impl WritingPage {
@@ -21,17 +32,16 @@ impl WritingPage {
             renderer: WritingRenderer::new()?,
             show_status_bar: true,
             last_frame_time: std::time::Instant::now(),
+            mode: WritingMode::Editing,
+            file_browser: None,
         })
     }
     
-    pub fn load_file(&mut self, path: &str) -> Result<()> {
-        let content = std::fs::read_to_string(path)?;
-        self.document.load_text(content);
-        self.document.set_file_path(path.to_string());
-        Ok(())
-    }
-    
     fn draw_cursor(&self, display: &mut SharpDisplay) {
+        if self.mode != WritingMode::Editing {
+            return;
+        }
+        
         let current_line = self.document.get_current_line_index();
         let cursor_col = self.document.get_cursor_column();
         let scroll_offset = self.document.get_scroll_offset();
@@ -70,7 +80,66 @@ impl WritingPage {
         }
     }
     
-    fn handle_text_input(&mut self, key: Key) -> Result<Option<PageId>> {
+    fn show_file_browser(&mut self, mode: WritingMode) -> Result<()> {
+        self.mode = mode;
+        let start_path = PathBuf::from("/home/kramwriter/KramWriter/documents");
+        
+        // Create directory if it doesn't exist
+        if !start_path.exists() {
+            std::fs::create_dir_all(&start_path)?;
+        }
+        
+        self.file_browser = Some(FileBrowser::new(&start_path)?);
+        Ok(())
+    }
+    
+    fn hide_file_browser(&mut self) {
+        self.mode = WritingMode::Editing;
+        self.file_browser = None;
+    }
+    
+    fn handle_file_browser_input(&mut self, key: Key) -> Result<Option<PageId>> {
+        if let Some(browser) = &mut self.file_browser {
+            match key {
+                Key::Up => {
+                    browser.move_selection_up();
+                }
+                Key::Down => {
+                    browser.move_selection_down();
+                }
+                Key::Char('\n') => {
+                    // Enter pressed
+                    if browser.navigate_into()? {
+                        // Navigated into directory
+                    } else {
+                        // File selected or couldn't navigate
+                        if let Some(item) = browser.get_selected_item() {
+                            match item {
+                                super::file_browser::FileItem::File(path) => {
+                                    // Load the file
+                                    let content = std::fs::read_to_string(path)?;
+                                    self.document.load_text(content);
+                                    self.document.set_file_path(path.to_string_lossy().to_string());
+                                    self.hide_file_browser();
+                                }
+                                _ => {
+                                    // Shouldn't happen, but just in case
+                                    self.hide_file_browser();
+                                }
+                            }
+                        }
+                    }
+                }
+                Key::Esc => {
+                    self.hide_file_browser();
+                }
+                _ => {}
+            }
+        }
+        Ok(None)
+    }
+    
+    fn handle_editing_input(&mut self, key: Key) -> Result<Option<PageId>> {
         match key {
             Key::Char('\n') => {
                 self.document.insert_newline();
@@ -129,9 +198,9 @@ impl WritingPage {
                 self.document.ensure_cursor_visible();
             }
             Key::Ctrl('s') => {
-                // Simple save functionality
+                // Save file
                 if let Some(path) = self.document.get_file_path() {
-                    let path_copy = path.to_string(); // Copy the path to avoid borrow issues
+                    let path_copy = path.to_string();
                     if let Err(e) = std::fs::write(&path_copy, self.document.get_text()) {
                         println!("Failed to save: {}", e);
                     } else {
@@ -139,14 +208,16 @@ impl WritingPage {
                         println!("Saved to {}", path_copy);
                     }
                 } else {
-                    println!("No file path set. Use Ctrl+Shift+S to save as.");
+                    // No file path - show save as dialog
+                    self.show_file_browser(WritingMode::SaveAs)?;
                 }
             }
             Key::Ctrl('o') => {
-                println!("Open file dialog would appear here");
-                // TODO: Implement file dialog
+                // Open file
+                self.show_file_browser(WritingMode::FileBrowser)?;
             }
             Key::Ctrl('n') => {
+                // New file
                 self.document = WritingDocument::new();
             }
             Key::Ctrl('q') => {
@@ -163,11 +234,42 @@ impl Page for WritingPage {
     fn draw(&mut self, display: &mut SharpDisplay) -> Result<()> {
         display.clear()?;
         
-        self.renderer.render_document(display, &self.document);
-        self.draw_cursor(display);
-        
-        if self.show_status_bar {
-            self.renderer.draw_status_bar(display, &self.document);
+        match self.mode {
+            WritingMode::Editing => {
+                self.renderer.render_document(display, &self.document);
+                self.draw_cursor(display);
+                
+                if self.show_status_bar {
+                    self.renderer.draw_status_bar(display, &self.document);
+                }
+            }
+            WritingMode::FileBrowser | WritingMode::SaveAs => {
+                if let Some(browser) = &self.file_browser {
+                    let _ = browser.draw(display);
+                    
+                    // Draw mode indicator
+                    let mode_text = match self.mode {
+                        WritingMode::SaveAs => "SAVE AS - Select file or press Enter for new file",
+                        _ => "OPEN FILE - Select file and press Enter",
+                    };
+                    
+                    // Simple text drawing for mode
+                    let mut x = 50;
+                    let y = 220;
+                    for c in mode_text.chars() {
+                        if x < 350 {
+                            if c != ' ' {
+                                for dy in 0..8 {
+                                    for dx in 0..6 {
+                                        display.draw_pixel(x + dx, y + dy, rpi_memory_display::Pixel::Black);
+                                    }
+                                }
+                            }
+                            x += 7;
+                        }
+                    }
+                }
+            }
         }
         
         display.update()?;
@@ -175,9 +277,16 @@ impl Page for WritingPage {
     }
     
     fn handle_key(&mut self, key: Key) -> Result<Option<PageId>> {
-        match key {
-            Key::Esc => Ok(Some(PageId::Menu)),
-            _ => self.handle_text_input(key),
+        match self.mode {
+            WritingMode::Editing => {
+                match key {
+                    Key::Esc => Ok(Some(PageId::Menu)),
+                    _ => self.handle_editing_input(key),
+                }
+            }
+            WritingMode::FileBrowser | WritingMode::SaveAs => {
+                self.handle_file_browser_input(key)
+            }
         }
     }
 }

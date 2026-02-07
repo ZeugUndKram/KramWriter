@@ -16,7 +16,6 @@ pub struct WritingRenderer {
     font_char_height: usize,
     chars_per_row: usize,
     char_widths: Vec<usize>,
-    ascii_only: bool, // Flag to track if we only have ASCII font
 }
 
 impl WritingRenderer {
@@ -49,7 +48,6 @@ impl WritingRenderer {
             font_char_height: 30,
             chars_per_row: 19,
             char_widths,
-            ascii_only: true, // Assume ASCII only by default
         })
     }
     
@@ -150,126 +148,75 @@ impl WritingRenderer {
             return Some(index);
         }
         
-        // Handle common special characters by mapping them to similar ASCII characters
-        match c {
-            // German umlauts and special characters
-            'Ä' | 'ä' => Some(0), // Map to space or 'A' index
-            'Ö' | 'ö' => Some(0), // Map to space or 'O' index  
-            'Ü' | 'ü' => Some(0), // Map to space or 'U' index
-            'ß' => Some(0),       // Map to space
-            '€' => Some(0),       // Map to space
-            '£' => Some(0),       // Map to space
-            '¥' => Some(0),       // Map to space
-            '°' => Some(0),       // Map to degree symbol or space
-            
-            // French accents
-            'À' | 'à' => Some(0), // Map to space or 'A' index
-            'Â' | 'â' => Some(0), // Map to space or 'A' index
-            'Ç' | 'ç' => Some(0), // Map to space or 'C' index
-            'É' | 'é' => Some(0), // Map to space or 'E' index
-            'È' | 'è' => Some(0), // Map to space or 'E' index
-            'Ê' | 'ê' => Some(0), // Map to space or 'E' index
-            'Î' | 'î' => Some(0), // Map to space or 'I' index
-            'Ô' | 'ô' => Some(0), // Map to space or 'O' index
-            'Û' | 'û' => Some(0), // Map to space or 'U' index
-            
-            // Spanish characters
-            'Ñ' | 'ñ' => Some(0), // Map to space or 'N' index
-            '¿' => Some(0),       // Map to question mark
-            '¡' => Some(0),       // Map to exclamation
-            
-            // Scandinavian characters
-            'Å' | 'å' => Some(0), // Map to space or 'A' index
-            'Ø' | 'ø' => Some(0), // Map to space or 'O' index
-            'Æ' | 'æ' => Some(0), // Map to space
-            
-            // Default fallback - use space character
-            _ => Some(0),
-        }
+        // For unknown characters, just return None - they won't be drawn
+        None
     }
     
     fn draw_char_cropped(&self, display: &mut SharpDisplay, x: usize, y: usize, c: char) {
+        // Space character - don't draw anything
+        if c == ' ' {
+            return;
+        }
+        
         if let Some((pixels, font_width, _)) = &self.font_bitmap {
             // Get character index with safe fallback
-            let char_index = Self::get_char_index(c).unwrap_or(0);
-            
-            // Check bounds
-            if char_index >= self.char_widths.len() {
-                return; // Skip drawing if character index is out of bounds
-            }
-            
-            let chars_per_row = self.chars_per_row;
-            let char_width = self.font_char_width;
-            let char_height = self.font_char_height;
-            
-            let grid_x = char_index % chars_per_row;
-            let grid_y = char_index / chars_per_row;
-            
-            let src_x = grid_x * char_width;
-            let src_y = grid_y * char_height;
-            
-            let mut leftmost = char_width;
-            let mut rightmost = 0;
-            
-            // Find the bounds of the character
-            for dx in 0..char_width {
-                for dy in 0..char_height {
-                    let src_pixel_x = src_x + dx;
-                    let src_pixel_y = src_y + dy;
-                    let pixel_index = src_pixel_y * font_width + src_pixel_x;
-                    
-                    if pixel_index < pixels.len() && pixels[pixel_index] == Pixel::Black {
-                        if dx < leftmost { leftmost = dx; }
-                        if dx > rightmost { rightmost = dx; }
-                    }
+            if let Some(char_index) = Self::get_char_index(c) {
+                // Check bounds
+                if char_index >= self.char_widths.len() {
+                    return; // Skip drawing if character index is out of bounds
                 }
-            }
-            
-            // Draw the character if we found pixels
-            if rightmost >= leftmost {
-                for dy in 0..char_height {
-                    for dx in leftmost..=rightmost {
+                
+                let chars_per_row = self.chars_per_row;
+                let char_width = self.font_char_width;
+                let char_height = self.font_char_height;
+                
+                let grid_x = char_index % chars_per_row;
+                let grid_y = char_index / chars_per_row;
+                
+                let src_x = grid_x * char_width;
+                let src_y = grid_y * char_height;
+                
+                let mut leftmost = char_width;
+                let mut rightmost = 0;
+                
+                // Find the bounds of the character
+                for dx in 0..char_width {
+                    for dy in 0..char_height {
                         let src_pixel_x = src_x + dx;
                         let src_pixel_y = src_y + dy;
                         let pixel_index = src_pixel_y * font_width + src_pixel_x;
                         
-                        if pixel_index < pixels.len() {
-                            let pixel = pixels[pixel_index];
-                            if pixel == Pixel::Black {
-                                let screen_x = x + dx - leftmost;
-                                let screen_y = y + dy;
-                                
-                                if screen_x < 400 && screen_y < 240 {
-                                    display.draw_pixel(screen_x, screen_y, pixel);
+                        if pixel_index < pixels.len() && pixels[pixel_index] == Pixel::Black {
+                            if dx < leftmost { leftmost = dx; }
+                            if dx > rightmost { rightmost = dx; }
+                        }
+                    }
+                }
+                
+                // Draw the character if we found pixels
+                if rightmost >= leftmost {
+                    for dy in 0..char_height {
+                        for dx in leftmost..=rightmost {
+                            let src_pixel_x = src_x + dx;
+                            let src_pixel_y = src_y + dy;
+                            let pixel_index = src_pixel_y * font_width + src_pixel_x;
+                            
+                            if pixel_index < pixels.len() {
+                                let pixel = pixels[pixel_index];
+                                if pixel == Pixel::Black {
+                                    let screen_x = x + dx - leftmost;
+                                    let screen_y = y + dy;
+                                    
+                                    if screen_x < 400 && screen_y < 240 {
+                                        display.draw_pixel(screen_x, screen_y, pixel);
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            } else {
-                // For characters we don't have (like 'Ä'), draw a placeholder box
-                self.draw_placeholder(display, x, y);
             }
-        } else {
-            // No font loaded, draw simple placeholder
-            self.draw_placeholder(display, x, y);
-        }
-    }
-    
-    fn draw_placeholder(&self, display: &mut SharpDisplay, x: usize, y: usize) {
-        // Draw a simple box as placeholder for unsupported characters
-        for dy in 0..self.font_char_height {
-            for dx in 0..8 { // 8px wide placeholder
-                let screen_x = x + dx;
-                let screen_y = y + dy;
-                
-                if screen_x < 400 && screen_y < 240 {
-                    // Draw a simple X pattern
-                    if dx == dy || dx == 7 - dy {
-                        display.draw_pixel(screen_x, screen_y, rpi_memory_display::Pixel::Black);
-                    }
-                }
-            }
+            // If char_index is None (unknown character), don't draw anything
         }
     }
     

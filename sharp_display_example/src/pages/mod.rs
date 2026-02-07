@@ -5,6 +5,7 @@ pub mod zeugtris;
 pub mod writing_game;
 pub mod writing_renderer;
 pub mod writing;
+pub mod file_browser;  // Add this
 
 use crate::display::SharpDisplay;
 use anyhow::Result;
