@@ -72,6 +72,18 @@ impl WritingPage {
     
     fn handle_text_input(&mut self, key: Key) -> Result<Option<PageId>> {
         match key {
+            Key::Char('\n') => {
+                self.document.insert_newline();
+                self.document.ensure_cursor_visible();
+            }
+            Key::Char('s') if self.show_status_bar => {
+                // Use 's' key to toggle status bar
+                self.show_status_bar = false;
+            }
+            Key::Char('S') if !self.show_status_bar => {
+                // Use 'S' key to toggle status bar back on
+                self.show_status_bar = true;
+            }
             Key::Char(c) => {
                 self.document.insert_char(c);
                 self.document.ensure_cursor_visible();
@@ -108,34 +120,23 @@ impl WritingPage {
                 self.document.move_cursor_end();
                 self.document.ensure_cursor_visible();
             }
-            Key::Char('\n') => {
-                self.document.insert_newline();
-                self.document.ensure_cursor_visible();
-            }
             Key::PageUp => {
                 if self.document.get_scroll_offset() > 0 {
-                    let new_offset = self.document.get_scroll_offset().saturating_sub(MAX_VISIBLE_LINES);
-                    // We'll handle scroll offset differently
                     self.document.ensure_cursor_visible();
                 }
             }
             Key::PageDown => {
-                let lines = self.document.get_lines();
-                if self.document.get_scroll_offset() + MAX_VISIBLE_LINES < lines.len() {
-                    let new_offset = (self.document.get_scroll_offset() + MAX_VISIBLE_LINES)
-                        .min(lines.len().saturating_sub(1));
-                    // We'll handle scroll offset differently
-                    self.document.ensure_cursor_visible();
-                }
+                self.document.ensure_cursor_visible();
             }
             Key::Ctrl('s') => {
                 // Simple save functionality
                 if let Some(path) = self.document.get_file_path() {
-                    if let Err(e) = std::fs::write(path, self.document.get_text()) {
+                    let path_copy = path.to_string(); // Copy the path to avoid borrow issues
+                    if let Err(e) = std::fs::write(&path_copy, self.document.get_text()) {
                         println!("Failed to save: {}", e);
                     } else {
                         self.document.mark_saved();
-                        println!("Saved to {}", path);
+                        println!("Saved to {}", path_copy);
                     }
                 } else {
                     println!("No file path set. Use Ctrl+Shift+S to save as.");
@@ -150,14 +151,6 @@ impl WritingPage {
             }
             Key::Ctrl('q') => {
                 return Ok(Some(PageId::Menu));
-            }
-            Key::Char('s') if self.show_status_bar => {
-                // Use 's' key to toggle status bar instead of F1
-                self.show_status_bar = false;
-            }
-            Key::Char('S') if !self.show_status_bar => {
-                // Use 'S' key to toggle status bar back on
-                self.show_status_bar = true;
             }
             _ => {}
         }
