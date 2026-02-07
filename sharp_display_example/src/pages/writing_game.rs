@@ -1,14 +1,14 @@
 #[derive(Debug, Clone)]
 pub struct WritingDocument {
-    // Document state
+    // Document state - store as String which handles UTF-8
     text: String,
-    cursor_position: usize,
+    cursor_position: usize, // Position in bytes, not characters!
     scroll_offset: usize,
     
     // Editing state
     dirty: bool,
     
-    // Display state
+    // Display state - lines store the actual text
     lines: Vec<String>,
     visible_lines: usize,
     
@@ -33,46 +33,95 @@ impl WritingDocument {
         if c == '\n' {
             self.insert_newline();
         } else {
-            self.text.insert(self.cursor_position, c);
-            self.cursor_position += 1;
+            // Convert char to string to ensure proper UTF-8 insertion
+            let char_str = c.to_string();
+            
+            // Insert at the current byte position
+            self.text.insert_str(self.cursor_position, &char_str);
+            
+            // Move cursor forward by the number of bytes in the character
+            self.cursor_position += char_str.len();
             self.dirty = true;
         }
         self.update_lines();
     }
     
     pub fn insert_newline(&mut self) {
-        self.text.insert(self.cursor_position, '\n');
-        self.cursor_position += 1;
+        // Insert newline character
+        self.text.insert_str(self.cursor_position, "\n");
+        self.cursor_position += 1; // Newline is 1 byte in UTF-8
         self.dirty = true;
         self.update_lines();
     }
     
     pub fn delete_char(&mut self) {
         if self.cursor_position > 0 {
-            self.text.remove(self.cursor_position - 1);
-            self.cursor_position -= 1;
-            self.dirty = true;
-            self.update_lines();
+            // Find the start of the previous character
+            let mut char_start = self.cursor_position;
+            
+            // Move back until we find a valid UTF-8 character boundary
+            while char_start > 0 && !self.text.is_char_boundary(char_start) {
+                char_start -= 1;
+            }
+            
+            // Now char_start is at the beginning of a character
+            if char_start < self.cursor_position {
+                // Remove the character
+                self.text.drain(char_start..self.cursor_position);
+                self.cursor_position = char_start;
+                self.dirty = true;
+                self.update_lines();
+            }
         }
     }
     
     pub fn delete_forward(&mut self) {
         if self.cursor_position < self.text.len() {
-            self.text.remove(self.cursor_position);
-            self.dirty = true;
-            self.update_lines();
+            // Find the end of the current character
+            let mut char_end = self.cursor_position;
+            
+            // Move forward until we find a valid UTF-8 character boundary
+            while char_end < self.text.len() && !self.text.is_char_boundary(char_end) {
+                char_end += 1;
+            }
+            
+            // Now find the end of this character
+            if char_end < self.text.len() {
+                // Find the start of the next character
+                let next_char_start = char_end + 1;
+                let mut next_char_boundary = next_char_start;
+                
+                while next_char_boundary < self.text.len() && !self.text.is_char_boundary(next_char_boundary) {
+                    next_char_boundary += 1;
+                }
+                
+                // Remove the character
+                self.text.drain(char_end..next_char_boundary);
+                self.dirty = true;
+                self.update_lines();
+            }
         }
     }
     
     pub fn move_cursor_left(&mut self) {
         if self.cursor_position > 0 {
-            self.cursor_position -= 1;
+            // Move back to the previous character boundary
+            let mut new_pos = self.cursor_position - 1;
+            while new_pos > 0 && !self.text.is_char_boundary(new_pos) {
+                new_pos -= 1;
+            }
+            self.cursor_position = new_pos;
         }
     }
     
     pub fn move_cursor_right(&mut self) {
         if self.cursor_position < self.text.len() {
-            self.cursor_position += 1;
+            // Move forward to the next character boundary
+            let mut new_pos = self.cursor_position + 1;
+            while new_pos < self.text.len() && !self.text.is_char_boundary(new_pos) {
+                new_pos += 1;
+            }
+            self.cursor_position = new_pos;
         }
     }
     
@@ -81,41 +130,76 @@ impl WritingDocument {
         if current_line > 0 {
             let prev_line_end = self.get_line_end_position(current_line - 1);
             let current_col = self.get_cursor_column();
-            let prev_line_len = self.lines[current_line - 1].len();
+            let prev_line_len = self.get_line_byte_length(current_line - 1);
             
-            self.cursor_position = prev_line_end.saturating_sub(prev_line_len) + current_col.min(prev_line_len);
+            // Calculate byte position in previous line
+            let prev_line_byte_pos = self.get_line_start_byte_position(current_line - 1);
+            let target_char_pos = current_col.min(self.get_line_char_count(current_line - 1));
+            
+            // Move to the target character position in previous line
+            self.cursor_position = prev_line_byte_pos + self.char_index_to_byte_offset(current_line - 1, target_char_pos);
         }
     }
     
     pub fn move_cursor_down(&mut self) {
         let current_line = self.get_current_line_index();
         if current_line + 1 < self.lines.len() {
-            let current_line_start = self.get_line_start_position(current_line);
-            let next_line_start = self.get_line_start_position(current_line + 1);
-            let current_col = self.cursor_position - current_line_start;
-            let next_line_len = self.lines[current_line + 1].len();
+            let current_line_start = self.get_line_start_byte_position(current_line);
+            let next_line_start = self.get_line_start_byte_position(current_line + 1);
+            let current_col = self.get_cursor_column();
+            let next_line_char_count = self.get_line_char_count(current_line + 1);
             
-            self.cursor_position = next_line_start + current_col.min(next_line_len);
+            let target_char_pos = current_col.min(next_line_char_count);
+            
+            // Move to the target character position in next line
+            self.cursor_position = next_line_start + self.char_index_to_byte_offset(current_line + 1, target_char_pos);
         }
     }
     
     pub fn move_cursor_home(&mut self) {
         let current_line = self.get_current_line_index();
-        let line_start = self.get_line_start_position(current_line);
+        let line_start = self.get_line_start_byte_position(current_line);
         self.cursor_position = line_start;
     }
     
     pub fn move_cursor_end(&mut self) {
         let current_line = self.get_current_line_index();
-        self.cursor_position = self.get_line_end_position(current_line);
+        self.cursor_position = self.get_line_end_byte_position(current_line);
+    }
+    
+    // Helper method to convert character index to byte offset within a line
+    fn char_index_to_byte_offset(&self, line_index: usize, char_index: usize) -> usize {
+        let line = &self.lines[line_index];
+        let mut byte_offset = 0;
+        let mut char_count = 0;
+        
+        for c in line.chars() {
+            if char_count >= char_index {
+                break;
+            }
+            byte_offset += c.len_utf8();
+            char_count += 1;
+        }
+        
+        byte_offset
+    }
+    
+    // Get number of characters in a line
+    fn get_line_char_count(&self, line_index: usize) -> usize {
+        self.lines[line_index].chars().count()
+    }
+    
+    // Get byte length of a line (including newline)
+    fn get_line_byte_length(&self, line_index: usize) -> usize {
+        self.lines[line_index].len() + 1 // +1 for newline
     }
     
     // Make these public
     pub fn get_current_line_index(&self) -> usize {
-        let mut pos = 0;
+        let mut byte_pos = 0;
         for (i, line) in self.lines.iter().enumerate() {
-            pos += line.len() + 1; // +1 for newline
-            if pos > self.cursor_position {
+            byte_pos += line.len() + 1; // +1 for newline
+            if byte_pos > self.cursor_position {
                 return i;
             }
         }
@@ -125,17 +209,24 @@ impl WritingDocument {
     // Make this public
     pub fn get_cursor_column(&self) -> usize {
         let current_line = self.get_current_line_index();
-        let line_start = self.get_line_start_position(current_line);
-        self.cursor_position - line_start
+        let line_start_byte = self.get_line_start_byte_position(current_line);
+        
+        // Count characters from line start to cursor
+        let line_text = &self.lines[current_line];
+        let prefix = &self.text[line_start_byte..self.cursor_position];
+        
+        // Count characters in the prefix
+        prefix.chars().count()
     }
     
-    // Keep these private since they're implementation details
-    fn get_line_start_position(&self, line_index: usize) -> usize {
+    // Get byte position of line start
+    fn get_line_start_byte_position(&self, line_index: usize) -> usize {
         self.lines.iter().take(line_index).map(|l| l.len() + 1).sum()
     }
     
-    fn get_line_end_position(&self, line_index: usize) -> usize {
-        self.get_line_start_position(line_index) + self.lines[line_index].len()
+    // Get byte position of line end (including newline)
+    fn get_line_end_byte_position(&self, line_index: usize) -> usize {
+        self.get_line_start_byte_position(line_index) + self.lines[line_index].len()
     }
     
     fn update_lines(&mut self) {
