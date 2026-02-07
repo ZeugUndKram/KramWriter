@@ -243,33 +243,49 @@ impl Page for WritingPage {
                     self.renderer.draw_status_bar(display, &self.document);
                 }
             }
-            WritingMode::FileBrowser | WritingMode::SaveAs => {
-                if let Some(browser) = &self.file_browser {
-                    let _ = browser.draw(display);
-                    
-                    // Draw mode indicator
-                    let mode_text = match self.mode {
-                        WritingMode::SaveAs => "SAVE AS - Select file or press Enter for new file",
-                        _ => "OPEN FILE - Select file and press Enter",
-                    };
-                    
-                    // Simple text drawing for mode
-                    let mut x = 50;
-                    let y = 220;
-                    for c in mode_text.chars() {
-                        if x < 350 {
-                            if c != ' ' {
-                                for dy in 0..8 {
-                                    for dx in 0..6 {
-                                        display.draw_pixel(x + dx, y + dy, rpi_memory_display::Pixel::Black);
-                                    }
-                                }
-                            }
-                            x += 7;
-                        }
-                    }
+            tingMode::FileBrowser | WritingMode::SaveAs => {
+    if let Some(browser) = &self.file_browser {
+        let _ = browser.draw(display);
+        
+        // Draw mode indicator at top
+        let mode_text = match self.mode {
+            WritingMode::SaveAs => "SAVE AS - Select file or press Enter for new file",
+            _ => "OPEN FILE - Select file and press Enter",
+        };
+        
+        // Draw mode text using a simple method
+        let y = 30;
+        let text_width = self.renderer.calculate_text_width(mode_text);
+        let x = (400 - text_width) / 2;
+        
+        // Clear area for mode text
+        for dy in 0..self.renderer.get_font_height() {
+            for dx in 0..text_width + 20 {
+                if x + dx < 400 && y + dy < 240 {
+                    display.draw_pixel(x + dx, y + dy, rpi_memory_display::Pixel::White);
                 }
             }
+        }
+        
+        // Draw mode text
+        let mut current_x = x;
+        for c in mode_text.chars() {
+            if current_x < 400 {
+                self.renderer.draw_char_cropped(display, current_x, y, c);
+                let char_width = if let Some(char_index) = crate::pages::writing_renderer::WritingRenderer::get_char_index(c) {
+                    if char_index < self.renderer.char_widths.len() { 
+                        self.renderer.char_widths[char_index] 
+                    } else { 
+                        8
+                    }
+                } else {
+                    8
+                };
+                current_x += char_width + 2;
+            }
+        }
+    }
+}
         }
         
         display.update()?;
