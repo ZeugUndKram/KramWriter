@@ -43,8 +43,8 @@ impl App {
             if let Some(Ok(key)) = keys.next() {
                 // 1. GLOBAL INTERCEPT: Ctrl+X to kill the app
                 if key == Key::Ctrl('x') {
-                    self.display.clear(); // Removed the ?
-                    self.display.update()?; // Keep this one, update returns Result
+                    self.display.clear(&self.ctx); // Add &self.ctx here
+                    self.display.update()?;
                     return Ok(());
                 }
 
@@ -80,16 +80,15 @@ impl App {
     }
 
     fn render(&mut self) -> Result<()> {
-    // Pass &self.ctx so the display knows what color to clear with
-    self.display.clear(&self.ctx); 
-    
-    if let Some(top_page) = self.stack.last() {
-        top_page.draw(&mut self.display, &self.ctx);
+        self.display.clear(&self.ctx); // Add &self.ctx here
+        
+        if let Some(top_page) = self.stack.last() {
+            top_page.draw(&mut self.display, &self.ctx);
+        }
+        
+        self.display.update()?;
+        Ok(())
     }
-    
-    self.display.update()?;
-    Ok(())
-}
 }
 
 fn main() -> Result<()> {

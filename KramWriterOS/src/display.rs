@@ -28,16 +28,17 @@ impl SharpDisplay {
     }
 
     pub fn clear(&mut self, ctx: &Context) {
-    // In Dark Mode, the "paper" is Black. In Light Mode, it's White.
-    let background_color = if ctx.dark_mode { 
-        Pixel::Black 
-    } else { 
-        Pixel::White 
-    };
-    
-    // Assuming your buffer has a fill or clear method
-    self.buffer.fill(background_color); 
-}
+        // If dark mode is on, we fill the background with Black.
+        // If dark mode is off, we fill with White.
+        let background_color = if ctx.dark_mode { 
+            Pixel::Black 
+        } else { 
+            Pixel::White 
+        };
+        
+        // This assumes your buffer is what actually holds the pixels
+        self.buffer.fill(background_color); 
+    }
 
     pub fn update(&mut self) -> Result<()> {
         self.inner.update(&self.buffer)?;
