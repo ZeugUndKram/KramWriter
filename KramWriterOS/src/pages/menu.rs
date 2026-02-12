@@ -24,7 +24,7 @@ impl MenuPage {
             for suffix in 0..3 {
                 let path = format!("/home/kramwriter/KramWriter/assets/Menu/{}_{}.bmp", option, suffix);
                 variants.push(Bitmap::load(&path).ok());
-            }
+            }//test
             images.push(variants);
         }
         Self { current_index: 0, images }
