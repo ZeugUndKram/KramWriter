@@ -41,12 +41,25 @@ impl App {
 
         loop {
             if let Some(Ok(key)) = keys.next() {
-                let action = if let Some(top_page) = self.stack.last_mut() {
-                    top_page.update(key, &mut self.ctx)
-                } else {
-                    Action::Exit
-                };
+                // 1. GLOBAL INTERCEPT: Check for Ctrl+X first
+                if key == Key::Ctrl('x') {
+                    println!("Exiting kramwriter...");
+                    // Clear the display before leaving (optional but clean)
+                    self.display.clear()?;
+                    self.display.update()?;
+                    return Ok(()); // This breaks the loop and exits the app
+                }
 
+                // 2. LOGIC HANDLING: Pass other keys to the current page
+                let action = current_page.update(key, &mut context);
+                
+                match action {
+                    Action::Replace(next_page) => {
+                        current_page = next_page;
+                    }
+                    Action::None => {}
+                }
+            }
                 match action {
                     Action::Push(new_page) => self.stack.push(new_page),
                     Action::Pop => { self.stack.pop(); },
