@@ -5,6 +5,7 @@ pub mod settings;
 pub mod timezone;
 pub mod write_menu;
 pub mod file_browser;
+pub mod name_entry;
 
 use crate::context::Context;
 use crate::display::SharpDisplay;

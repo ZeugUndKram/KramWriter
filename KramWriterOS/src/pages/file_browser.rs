@@ -7,6 +7,7 @@ use termion::event::Key;
 use rpi_memory_display::Pixel;
 use std::fs;
 use std::path::PathBuf;
+use crate::pages::name_entry::NameEntryPage;
 
 #[derive(PartialEq)]
 pub enum BrowserFocus {
