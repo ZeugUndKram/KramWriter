@@ -4,15 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+rppal = "0.11"                # Downgrade this to match rpi_memory_display
 rpi_memory_display = "0.1.2"
-rppal = "0.14"               # Raspberry Pi GPIO/SPI access
-embedded-graphics = "0.8"    # Standard Rust 2D graphics library
-anyhow = "1.0"               # Easy error handling
-
-# UI & Text
-ropey = "1.6"                # Efficient text editing (better than String)
-termion = "2.0"              # Keyboard input for the Pi console
-chrono = "0.4"               # Time and Timezone handling
-
-# System
-parking_lot = "0.12"         # Faster Mutexes for the background hardware thread
+embedded-graphics = "0.8"
+anyhow = "1.0"
+ropey = "1.6"
+termion = "2.0"
+chrono = "0.4"
+parking_lot = "0.12"

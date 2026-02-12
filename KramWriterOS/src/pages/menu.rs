@@ -2,7 +2,6 @@ use crate::pages::{Page, Action};
 use crate::context::Context;
 use crate::display::SharpDisplay;
 use termion::event::Key;
-use rpi_memory_display::Pixel;
 
 pub struct MenuPage {
     selected: usize,

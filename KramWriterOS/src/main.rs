@@ -5,7 +5,7 @@ mod pages;
 use crate::display::SharpDisplay;
 use crate::context::Context;
 use crate::pages::{Page, Action};
-use std::io::{stdin, stdout, Write};
+use std::io::{stdin, stdout};
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
 use anyhow::Result;

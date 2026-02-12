@@ -18,8 +18,7 @@ impl Page for LogoPage {
         }
     }
 
-    fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
-        // Add ', ctx' to the end of these calls
+   fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
         display.draw_text(150, 100, "LOGO SCREEN", ctx);
         display.draw_text(130, 130, "Press Enter to Start", ctx);
     }
