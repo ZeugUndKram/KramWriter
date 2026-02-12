@@ -22,8 +22,8 @@ impl LogoPage {
 impl Page for LogoPage {
     fn update(&mut self, key: Key, _ctx: &mut Context) -> Action {
         match key {
-            Key::Char('\n') => Action::Replace(Box::new(MenuPage::new())),
-            Key::Esc => Action::Exit,
+            // When Enter is pressed, swap the LogoPage for the MenuPage
+            Key::Char('\n') => Action::Replace(Box::new(crate::pages::menu::MenuPage::new())),
             _ => Action::None,
         }
     }
