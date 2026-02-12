@@ -61,7 +61,6 @@ impl Page for WriteMenuPage {
                 } else {
                     Action::None
                 }
-                Action::None
             }
             Key::Esc => Action::Pop,
             _ => Action::None,
