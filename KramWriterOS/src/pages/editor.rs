@@ -7,7 +7,10 @@ use termion::event::Key;
 use rpi_memory_display::Pixel;
 use std::path::PathBuf;
 use std::fs;
-use chrono::Local;
+
+// Timezone and Time imports
+use chrono::{Utc, TimeZone};
+use chrono_tz::Tz;
 
 // --- LAYOUT STRUCTURE ---
 #[derive(Debug, Clone)]
@@ -77,24 +80,19 @@ impl EditorPage {
         }
     }
 
-    // --- HELPER: CURSOR LOGIC ---
     fn cursor_is_on_this_line(&self, line: &VisualLine) -> bool {
         if self.cursor_pos >= line.start_index && self.cursor_pos < line.end_index() {
             true
         } else if self.cursor_pos == line.end_index() {
-            // It's at the boundary. Show on this line if it's a hard break, 
-            // an empty line, or the very end of the file.
             line.is_hard_break || line.len == 0 || self.cursor_pos == self.content.len()
         } else {
             false
         }
     }
 
-    // --- LAYOUT ENGINE ---
     fn build_layout(&self, max_width: f32) -> Vec<VisualLine> {
         let mut visual_lines = Vec::new();
         let mut current_abs_index = 0;
-
         let paragraphs: Vec<&str> = self.content.split('\n').collect();
         let total_paras = paragraphs.len();
 
@@ -190,18 +188,30 @@ impl EditorPage {
         let y_start = 218;
         let y_text = y_start as i32 + 18;
         for x in 0..400 { display.draw_pixel(x, y_start, Pixel::Black, ctx); }
+        
         let save_icon = if self.is_dirty { &self.save_icons[0] } else { &self.save_icons[1] };
         if let Some(bmp) = save_icon { self.draw_icon(display, bmp, 5, y_start + 3, ctx); }
+        
         let filename = self.path.file_name().map(|n| n.to_string_lossy().to_string().to_uppercase()).unwrap_or_else(|| "UNTITLED.TXT".to_string());
         self.renderer.draw_text_colored(display, &filename, 28, y_text, 18.0, Pixel::Black, ctx);
+        
         let w_count = format!("W:{}", self.get_word_count());
         self.renderer.draw_text_colored(display, &w_count, 180, y_text, 18.0, Pixel::Black, ctx);
+        
+        // --- TIMEZONE LOGIC ---
         let tz: Tz = ctx.timezone.parse().unwrap_or(chrono_tz::UTC);
         let now = Utc::now().with_timezone(&tz);
         let time_str = now.format("%H:%M").to_string();
         self.renderer.draw_text_colored(display, &time_str, 305, y_text, 18.0, Pixel::Black, ctx);
-        if let Some(bmp) = &self.weather_icons[0] { self.draw_icon(display, bmp, 348, y_start + 3, ctx); }
-        if let Some(bmp) = &self.wifi_icons[4] { self.draw_icon(display, bmp, 372, y_start + 3, ctx); }
+        
+        // WiFi & Weather from Context
+        if let Some(bmp) = &self.weather_icons[ctx.status.weather_icon as usize % 5] { 
+            self.draw_icon(display, bmp, 348, y_start + 3, ctx); 
+        }
+        let wifi_idx = (ctx.status.wifi_strength as usize).min(4);
+        if let Some(bmp) = &self.wifi_icons[wifi_idx] { 
+            self.draw_icon(display, bmp, 372, y_start + 3, ctx); 
+        }
     }
 
     fn draw_icon(&self, display: &mut SharpDisplay, bmp: &Bitmap, x_off: usize, y_off: usize, ctx: &Context) {
@@ -221,8 +231,7 @@ impl EditorPage {
         let track_top = self.top_margin;
         let track_bottom = 210;
         let track_h = track_bottom - track_top;
-        let thumb_h = ((visible_count as f32 / total_lines as f32) * track_h as f32) as i32;
-        let thumb_h = thumb_h.max(10);
+        let thumb_h = (((visible_count as f32 / total_lines as f32) * track_h as f32) as i32).max(10);
         let scrollable_dist = (total_lines - visible_count) as f32;
         let thumb_y = track_top + ((self.scroll_line_offset as f32 / scrollable_dist) * (track_h - thumb_h) as f32) as i32;
         for y in thumb_y..(thumb_y + thumb_h) {
@@ -285,11 +294,10 @@ impl Page for EditorPage {
 
         let mut draw_y = self.top_margin;
 
-        for (idx, line) in layout.iter().enumerate().skip(self.scroll_line_offset) {
+        for (_idx, line) in layout.iter().enumerate().skip(self.scroll_line_offset) {
             if draw_y + line_height > 218 { break; }
 
             if !line.text.is_empty() {
-                // Adjusting Y based on font size so it renders within the line_height block
                 self.renderer.draw_text_colored(display, &line.text, margin, draw_y + (self.font_size as i32), self.font_size, Pixel::Black, ctx);
             }
 
