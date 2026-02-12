@@ -51,12 +51,12 @@ impl FileBrowserPage {
 
         let mut page = Self {
             home_icon: Bitmap::load(&format!("{}/icon_home.bmp", asset_path)).ok(),
-            back_icon: Bitmap::load(&format!("{}/icon_back.bmp", asset_path)).ok(), // Ensure this file exists!
+            back_icon: Bitmap::load(&format!("{}/icon_back.bmp", asset_path)).ok(),
             folder_icon: Bitmap::load(&format!("{}/icon_folder.bmp", asset_path)).ok(),
             file_icon: Bitmap::load(&format!("{}/icon_file.bmp", asset_path)).ok(),
             footer_variants,
             renderer,
-            current_directory: PathBuf::from("/home/kramwriter/folder/"),
+            current_directory: PathBuf::from("/home/kramwriter/folder"),
             entries: Vec::new(),
             selected_index: 0,
             scroll_offset: 0,
@@ -70,10 +70,12 @@ impl FileBrowserPage {
 
     fn refresh_entries(&mut self) {
         self.entries.clear();
-        let home_base = PathBuf::from("/home/kramwriter/");
+        
+        // Canonicalize the home path to avoid slash mismatches
+        let home_base = PathBuf::from("/home/kramwriter");
 
-        // Add "Back" entry if we are deeper than home
-        if self.current_directory != home_base {
+        // Show "Back" if the current directory is NOT kramwriter home
+        if !self.current_directory.ends_with("kramwriter") && self.current_directory != PathBuf::from("/") {
             if let Some(parent) = self.current_directory.parent() {
                 self.entries.push(FileEntry {
                     name: String::from(".."),
@@ -96,10 +98,14 @@ impl FileBrowserPage {
                 }
             }
         }
-        self.entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+        // Directories first, then alphabetical
+        self.entries.sort_by(|a, b| {
+            if a.name == ".." { return std::cmp::Ordering::Less; }
+            if b.name == ".." { return std::cmp::Ordering::Greater; }
+            b.is_dir.cmp(&a.is_dir).then(a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        });
     }
 
-    /// Replaces /home/kramwriter/ with the Home Icon visually by stripping the prefix
     fn format_header_path(&self) -> String {
         let full_path = self.current_directory.to_string_lossy().to_string();
         let home_prefix = "/home/kramwriter";
@@ -111,7 +117,6 @@ impl FileBrowserPage {
         };
 
         if display_path.is_empty() { display_path = String::from("/"); }
-        
         display_path = display_path.to_uppercase();
 
         let max_chars = 30; 
@@ -149,7 +154,7 @@ impl FileBrowserPage {
             }
         }
 
-        // Logic for which icon to show
+        // Check if this is the "Back" entry
         let icon = if entry.name == ".." { 
             &self.back_icon 
         } else if entry.is_dir { 
@@ -162,10 +167,10 @@ impl FileBrowserPage {
             self.draw_icon_colored(display, bmp, 5, (y + 3) as usize, draw_color, ctx);
         }
 
-        let display_name = if entry.is_dir && entry.name != ".." {
-            format!("/ {} /", entry.name.to_uppercase())
-        } else if entry.name == ".." {
+        let display_name = if entry.name == ".." {
             String::from("/ ... /")
+        } else if entry.is_dir {
+            format!("/ {} /", entry.name.to_uppercase())
         } else {
             entry.name.clone()
         };
@@ -231,8 +236,8 @@ impl Page for FileBrowserPage {
                 Key::Char('\n') => {
                     match self.footer_index {
                         0 => Action::Pop,
-                        1 => Action::None, // TODO: New Folder
-                        2 => Action::None, // TODO: New File
+                        1 => Action::None,
+                        2 => Action::None,
                         _ => Action::None
                     }
                 }
@@ -242,16 +247,18 @@ impl Page for FileBrowserPage {
     }
 
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
-        // 1. Header
+        // 1. Header (22px high)
         for x in 0..400 { display.draw_pixel(x, 22, Pixel::Black, ctx); }
+        
+        // Home icon at 2px from left and top
         if let Some(bmp) = &self.home_icon {
-            self.draw_icon_colored(display, bmp, 5, 4, Pixel::Black, ctx);
+            self.draw_icon_colored(display, bmp, 2, 2, Pixel::Black, ctx);
         }
-        // stripped path logic
+        
         let header_path = self.format_header_path();
         self.renderer.draw_text_colored(display, &header_path, 35, 18, 20.0, Pixel::Black, ctx);
 
-        // 2. Visible List (Max 8 rows to leave room for the footer)
+        // 2. Visible List
         let start_y = 23;
         for i in 0..8 {
             let entry_idx = i + self.scroll_offset;
@@ -260,7 +267,7 @@ impl Page for FileBrowserPage {
             }
         }
 
-        // 3. Footer (Shifted up 2px to Y=216)
+        // 3. Footer (Drawn at Y=216)
         let footer_idx = if self.focus == BrowserFocus::List { 0 } else { self.footer_index + 1 };
         if let Some(bmp) = &self.footer_variants[footer_idx] {
             let y_start = 216; 
