@@ -15,19 +15,19 @@ pub struct WriteMenuPage {
 
 impl WriteMenuPage {
     pub fn new() -> Self {
-        let title = Bitmap::load("/home/kramwriter/KramWriter/assets/Write/title.bmp").ok();
+        let title = Bitmap::load("/home/kramwriter/KramWriter/assets/Writing/menu/title.bmp").ok();
         
         // Based on your list: 
         // new_file.bmp (_0 equivalent) is selected, new_file_1.bmp is unselected
         let new_file_variants = [
-            Bitmap::load("/home/kramwriter/KramWriter/assets/Write/new_file.bmp").ok(),
-            Bitmap::load("/home/kramwriter/KramWriter/assets/Write/new_file_1.bmp").ok(),
+            Bitmap::load("/home/kramwriter/KramWriter/assets/Writing/menu/new_file.bmp").ok(),
+            Bitmap::load("/home/kramwriter/KramWriter/assets/Writing/menu/new_file_1.bmp").ok(),
         ];
 
         // open_file_0.bmp is selected, open_file_1.bmp is unselected
         let open_file_variants = [
-            Bitmap::load("/home/kramwriter/KramWriter/assets/Write/open_file_0.bmp").ok(),
-            Bitmap::load("/home/kramwriter/KramWriter/assets/Write/open_file_1.bmp").ok(),
+            Bitmap::load("/home/kramwriter/KramWriter/assets/Writing/menu/open_file_0.bmp").ok(),
+            Bitmap::load("/home/kramwriter/KramWriter/assets/Writing/menu/open_file_1.bmp").ok(),
         ];
 
         Self {
