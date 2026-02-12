@@ -80,15 +80,16 @@ impl App {
     }
 
     fn render(&mut self) -> Result<()> {
-        self.display.clear(); // Removed the ?
-        
-        if let Some(top_page) = self.stack.last() {
-            top_page.draw(&mut self.display, &self.ctx);
-        }
-        
-        self.display.update()?;
-        Ok(())
+    // Pass &self.ctx so the display knows what color to clear with
+    self.display.clear(&self.ctx); 
+    
+    if let Some(top_page) = self.stack.last() {
+        top_page.draw(&mut self.display, &self.ctx);
     }
+    
+    self.display.update()?;
+    Ok(())
+}
 }
 
 fn main() -> Result<()> {

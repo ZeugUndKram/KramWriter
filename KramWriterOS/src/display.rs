@@ -27,11 +27,17 @@ impl SharpDisplay {
         Ok(Self { inner, buffer })
     }
 
-    pub fn clear(&mut self) {
-        // We always fill with White (the "Off" state)
-        // Dark mode inversion happens at the draw_pixel level
-        self.buffer.fill(Pixel::White);
-    }
+    pub fn clear(&mut self, ctx: &Context) {
+    // In Dark Mode, the "paper" is Black. In Light Mode, it's White.
+    let background_color = if ctx.dark_mode { 
+        Pixel::Black 
+    } else { 
+        Pixel::White 
+    };
+    
+    // Assuming your buffer has a fill or clear method
+    self.buffer.fill(background_color); 
+}
 
     pub fn update(&mut self) -> Result<()> {
         self.inner.update(&self.buffer)?;
