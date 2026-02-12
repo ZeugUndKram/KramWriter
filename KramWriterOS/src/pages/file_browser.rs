@@ -38,31 +38,36 @@ impl Page for FileBrowserPage {
     }
 
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
-        // 1. Draw the Top Divider Line
-        // Positioned at Y=22 to provide space for the header content
+        // 1. Draw the Top Divider Line FIRST
+        // This ensures the icon and text sit "on top" of it visually
         for x in 0..400 {
             display.draw_pixel(x, 22, Pixel::Black, ctx);
         }
 
-        // 2. Draw Home Icon
-        // Positioned at (5, 4) to give it some padding from the edges
+        // 2. Draw Home Icon 
         if let Some(bmp) = &self.home_icon {
-            self.draw_icon(display, bmp, 5, 4, ctx);
+            // We'll move it slightly to (4, 2) to ensure it's not touching the divider
+            // unless it's intended to.
+            self.draw_icon(display, bmp, 4, 2, ctx);
+        } else {
+            // Debug: If the icon fails to load, draw a small square so you know it's missing
+            for y in 2..15 {
+                for x in 4..15 {
+                    display.draw_pixel(x, y, Pixel::Black, ctx);
+                }
+            }
         }
 
         // 3. Draw Path Text
-        // X=35 gives enough room for the icon (~20px) plus padding
-        // Y=18 is the baseline for the 20.0pt font
+        // If the icon is 20px wide, 35 is a good X offset.
         self.renderer.draw_text(
             display, 
             &self.current_path, 
             35, 
-            18, 
+            19, // Adjusted slightly for the font's baseline
             20.0, 
             ctx
         );
-
-        // TODO: Implement drawing of the directory/file list here
     }
 }
 
