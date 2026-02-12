@@ -6,7 +6,7 @@ use crate::ui::fonts::FontRenderer;
 use termion::event::Key;
 use rpi_memory_display::Pixel;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[derive(Clone)]
 pub struct FileEntry {
@@ -25,14 +25,13 @@ pub struct FileBrowserPage {
     current_directory: PathBuf,
     entries: Vec<FileEntry>,
     selected_index: usize,
+    scroll_offset: usize, // New: Tracks the first visible index
 }
 
 impl FileBrowserPage {
     pub fn new() -> Self {
         let renderer = FontRenderer::new("/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf");
         let icon_path = "/home/kramwriter/KramWriter/assets/FileBrowser";
-        
-        // Starting path
         let start_dir = PathBuf::from("/home/kramwriter/folder/");
         
         let mut page = Self {
@@ -44,6 +43,7 @@ impl FileBrowserPage {
             current_directory: start_dir,
             entries: Vec::new(),
             selected_index: 0,
+            scroll_offset: 0,
         };
 
         page.refresh_entries();
@@ -52,9 +52,7 @@ impl FileBrowserPage {
 
     fn refresh_entries(&mut self) {
         self.entries.clear();
-        
-        // 1. Add "Back" entry if not at base folder
-        if self.current_directory != PathBuf::from("/home/kramwriter/") {
+        if self.current_directory != PathBuf::from("/") {
             if let Some(parent) = self.current_directory.parent() {
                 self.entries.push(FileEntry {
                     name: String::from(".."),
@@ -65,7 +63,6 @@ impl FileBrowserPage {
             }
         }
 
-        // 2. Read actual files from disk
         if let Ok(read_dir) = fs::read_dir(&self.current_directory) {
             for entry in read_dir.flatten() {
                 if let Ok(metadata) = entry.metadata() {
@@ -78,62 +75,17 @@ impl FileBrowserPage {
                 }
             }
         }
-
-        // 3. Sort: Directories first, then alphabetical
         self.entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.to_lowercase().cmp(&b.name.to_lowercase())));
     }
 
-    fn draw_list_row(&self, display: &mut SharpDisplay, ctx: &Context, index: usize, y: i32, entry: &FileEntry) {
-        let is_selected = self.selected_index == index;
-        let row_height = 22;
-        
-        // 1. Draw Selection Background
-        if is_selected {
-            for sy in y..(y + row_height) {
-                for sx in 0..400 {
-                    display.draw_pixel(sx as usize, sy as usize, Pixel::Black, ctx);
-                }
-            }
-        }
-
-        // 2. Determine Icon and Color
-        // If selected, we draw pixels as WHITE to show up against the black bar
-        let draw_color = if is_selected { Pixel::White } else { Pixel::Black };
-        
-        let icon = if entry.name == ".." {
-            &self.back_icon
-        } else if entry.is_dir {
-            &self.folder_icon
+    /// Truncates path from the left if it's too long
+    fn format_header_path(&self) -> String {
+        let path_str = self.current_directory.to_string_lossy().to_uppercase();
+        let max_chars = 35; // Adjust based on font size/screen width
+        if path_str.len() > max_chars {
+            format!("...{}", &path_str[path_str.len() - max_chars..])
         } else {
-            &self.file_icon
-        };
-
-        if let Some(bmp) = icon {
-            self.draw_icon_colored(display, bmp, 5, (y + 3) as usize, draw_color, ctx);
-        }
-
-        // 3. Draw Filename
-        let display_name = if entry.is_dir && entry.name != ".." {
-            format!("/ {} /", entry.name.to_uppercase())
-        } else if entry.name == ".." {
-            String::from("/ ... /")
-        } else {
-            entry.name.clone()
-        };
-
-        self.renderer.draw_text_colored(display, &display_name, 35, y + 17, 18.0, draw_color, ctx);
-
-        // 4. Draw Size (for files)
-        if !entry.is_dir {
-            let size_str = format!("{}KB", entry.size_kb);
-            self.renderer.draw_text_colored(display, &size_str, 340, y + 17, 16.0, draw_color, ctx);
-        }
-
-        // 5. Bottom Separator Line (only if not selected, or it disappears)
-        if !is_selected {
-            for x in 0..400 {
-                display.draw_pixel(x, (y + row_height - 1) as usize, Pixel::Black, ctx);
-            }
+            path_str
         }
     }
 
@@ -150,17 +102,66 @@ impl FileBrowserPage {
             }
         }
     }
+
+    fn draw_list_row(&self, display: &mut SharpDisplay, ctx: &Context, index: usize, y: i32, entry: &FileEntry) {
+        let is_selected = self.selected_index == index;
+        let row_height = 22;
+        let draw_color = if is_selected { Pixel::White } else { Pixel::Black };
+        
+        if is_selected {
+            for sy in y..(y + row_height) {
+                for sx in 0..400 {
+                    display.draw_pixel(sx as usize, sy as usize, Pixel::Black, ctx);
+                }
+            }
+        }
+
+        let icon = if entry.name == ".." { &self.back_icon } 
+                   else if entry.is_dir { &self.folder_icon } 
+                   else { &self.file_icon };
+
+        if let Some(bmp) = icon {
+            self.draw_icon_colored(display, bmp, 5, (y + 3) as usize, draw_color, ctx);
+        }
+
+        let display_name = if entry.is_dir && entry.name != ".." {
+            format!("/ {} /", entry.name.to_uppercase())
+        } else if entry.name == ".." {
+            String::from("/ ... /")
+        } else {
+            entry.name.clone()
+        };
+
+        self.renderer.draw_text_colored(display, &display_name, 35, y + 17, 18.0, draw_color, ctx);
+
+        if !entry.is_dir {
+            let size_str = format!("{}KB", entry.size_kb);
+            self.renderer.draw_text_colored(display, &size_str, 340, y + 17, 16.0, draw_color, ctx);
+        }
+    }
 }
 
 impl Page for FileBrowserPage {
     fn update(&mut self, key: Key, _ctx: &mut Context) -> Action {
         match key {
             Key::Up => {
-                if self.selected_index > 0 { self.selected_index -= 1; }
+                if self.selected_index > 0 {
+                    self.selected_index -= 1;
+                    // Scroll up if selection goes above visible area
+                    if self.selected_index < self.scroll_offset {
+                        self.scroll_offset = self.selected_index;
+                    }
+                }
                 Action::None
             }
             Key::Down => {
-                if self.selected_index < self.entries.len() - 1 { self.selected_index += 1; }
+                if self.selected_index < self.entries.len() - 1 {
+                    self.selected_index += 1;
+                    // Scroll down if selection goes below visible area (8 rows visible)
+                    if self.selected_index >= self.scroll_offset + 8 {
+                        self.scroll_offset = self.selected_index - 7;
+                    }
+                }
                 Action::None
             }
             Key::Char('\n') => {
@@ -169,9 +170,10 @@ impl Page for FileBrowserPage {
                     self.current_directory = selected.path;
                     self.refresh_entries();
                     self.selected_index = 0;
+                    self.scroll_offset = 0;
                     Action::None
                 } else {
-                    println!("FILE SELECTED: {:?}", selected.path);
+                    println!("Opening: {:?}", selected.path);
                     Action::None
                 }
             }
@@ -181,23 +183,26 @@ impl Page for FileBrowserPage {
     }
 
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
-        // Header line
+        // 1. Header Line
         for x in 0..400 { display.draw_pixel(x, 22, Pixel::Black, ctx); }
         
-        // Header Icon & Path
+        // 2. Path Header with Truncation
         if let Some(bmp) = &self.home_icon {
             self.draw_icon_colored(display, bmp, 5, 4, Pixel::Black, ctx);
         }
-        let path_display = self.current_directory.to_string_lossy().to_uppercase();
-        self.renderer.draw_text_colored(display, &path_display, 35, 18, 20.0, Pixel::Black, ctx);
+        let header_path = self.format_header_path();
+        self.renderer.draw_text_colored(display, &header_path, 35, 18, 20.0, Pixel::Black, ctx);
 
-        // List entries
+        // 3. Draw Visible Entries
         let start_y = 23;
         let row_h = 22;
-        for (i, entry) in self.entries.iter().enumerate() {
-            let y_pos = start_y + (i as i32 * row_h);
-            if y_pos < 220 { // Keep some space for the bottom bar
-                self.draw_list_row(display, ctx, i, y_pos, entry);
+        let max_visible = 8; // Adjust based on your bottom bar height
+
+        for i in 0..max_visible {
+            let entry_idx = i + self.scroll_offset;
+            if entry_idx < self.entries.len() {
+                let y_pos = start_y + (i as i32 * row_h);
+                self.draw_list_row(display, ctx, entry_idx, y_pos, &self.entries[entry_idx]);
             }
         }
     }
