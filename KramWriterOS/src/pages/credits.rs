@@ -22,8 +22,10 @@ impl CreditsPage {
 impl Page for CreditsPage {
     fn update(&mut self, key: Key, _ctx: &mut Context) -> Action {
         match key {
-            // Any key or Esc takes you back to the Menu
-            Key::Esc | Key::Char(_) => Action::Replace(Box::new(crate::pages::menu::MenuPage::new())),
+            // Only Esc triggers the return (Pop)
+            Key::Esc => Action::Pop,
+            
+            // Ignore everything else so the user stays on the page
             _ => Action::None,
         }
     }
