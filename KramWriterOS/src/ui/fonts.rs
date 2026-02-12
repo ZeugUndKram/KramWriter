@@ -36,4 +36,23 @@ impl FontRenderer {
             x_cursor += metrics.advance_width;
         }
     }
+
+    pub fn draw_text_colored(&self, display: &mut SharpDisplay, text: &str, x: i32, y: i32, size: f32, color: Pixel, ctx: &Context) {
+    let mut x_cursor = x as f32;
+        for char in text.chars() {
+            let (metrics, bitmap) = self.font.rasterize(char, size);
+            for row in 0..metrics.height {
+                for col in 0..metrics.width {
+                    if bitmap[row * metrics.width + col] > 128 {
+                        let px = (x_cursor + col as f32 + metrics.xmin as f32) as i32;
+                        let py = (y as f32 + row as f32 - metrics.ymin as f32 - metrics.height as f32) as i32;
+                        if px >= 0 && px < 400 && py >= 0 && py < 240 {
+                            display.draw_pixel(px as usize, py as usize, color, ctx);
+                        }
+                    }
+                }
+            }
+            x_cursor += metrics.advance_width;
+        }
+    }
 }
