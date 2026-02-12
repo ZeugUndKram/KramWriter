@@ -63,7 +63,7 @@ impl Page for MenuPage {
             // Handle the selection (Enter key)
             Key::Char('\n') => {
                 match self.current_index {
-                    0 => Action::None, // Write (Add later)
+                    0 => Action::Push(Box::new(WriteMenuPage::new())),
                     1 => Action::None, // Learn (Add later)
                     2 => Action::None, // Zeugtris (Add later)
                     3 => Action::Push(Box::new(crate::pages::settings::SettingsPage::new())),
