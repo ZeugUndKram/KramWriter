@@ -240,10 +240,12 @@ impl Page for FileBrowserPage {
                     if self.footer_index < 2 { self.footer_index += 1; }
                     Action::None
                 }
+                // Inside FileBrowserPage::update(), specifically in the Footer branch:
                 Key::Char('\n') => {
                     match self.footer_index {
-                        0 => Action::Pop,
-                        1 | 2 => Action::None,
+                        0 => Action::Pop, // Cancel
+                        1 => Action::Push(Box::new(NameEntryPage::new(self.current_directory.clone(), true))), // New Folder
+                        2 => Action::None, // New File (we can add this later)
                         _ => Action::None
                     }
                 }
