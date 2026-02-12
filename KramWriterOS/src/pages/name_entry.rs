@@ -7,7 +7,6 @@ use termion::event::Key;
 use rpi_memory_display::Pixel;
 use std::fs;
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(PartialEq)]
 enum EntryFocus {
@@ -16,7 +15,8 @@ enum EntryFocus {
 }
 
 pub struct NameEntryPage {
-    title_bmp: Option<Bitmap>,
+    title_folder_bmp: Option<Bitmap>,
+    title_file_bmp: Option<Bitmap>,
     footer_variants: [Option<Bitmap>; 3],
     renderer: FontRenderer,
     parent_path: PathBuf,
@@ -34,7 +34,8 @@ impl NameEntryPage {
         let asset_path = "/home/kramwriter/KramWriter/assets/NameEntry";
         
         Self {
-            title_bmp: Bitmap::load(&format!("{}/title.bmp", asset_path)).ok(),
+            title_folder_bmp: Bitmap::load(&format!("{}/title.bmp", asset_path)).ok(),
+            title_file_bmp: Bitmap::load(&format!("{}/title_file.bmp", asset_path)).ok(),
             footer_variants: [
                 Bitmap::load(&format!("{}/bottom_bar_0.bmp", asset_path)).ok(),
                 Bitmap::load(&format!("{}/bottom_bar_1.bmp", asset_path)).ok(),
@@ -52,13 +53,18 @@ impl NameEntryPage {
     }
 
     fn try_save(&mut self) -> Action {
-        let name = self.input_text.trim();
-        if name.is_empty() {
+        let mut final_name = self.input_text.trim().to_string();
+        if final_name.is_empty() {
             self.error_msg = Some("NAME CANNOT BE EMPTY".to_string());
             return Action::None;
         }
 
-        let new_path = self.parent_path.join(name);
+        // Add extension if it's a file
+        if !self.is_folder {
+            final_name.push_str(".txt");
+        }
+
+        let new_path = self.parent_path.join(&final_name);
         if new_path.exists() {
             self.error_msg = Some("NAME ALREADY EXISTS".to_string());
             Action::None
@@ -69,7 +75,15 @@ impl NameEntryPage {
                 fs::File::create(&new_path).is_ok()
             };
 
-            if success { Action::Pop } else {
+            if success {
+                if !self.is_folder {
+                    // Placeholder for when we build the EditorPage
+                    // Action::Push(Box::new(EditorPage::new(new_path)))
+                    Action::Pop
+                } else {
+                    Action::Pop
+                }
+            } else {
                 self.error_msg = Some("SYSTEM ERROR".to_string());
                 Action::None
             }
@@ -93,7 +107,8 @@ impl Page for NameEntryPage {
                 }
                 Key::Down | Key::Char('\n') => { self.focus = EntryFocus::BottomBar; Action::None }
                 Key::Char(c) => {
-                    if self.input_text.len() < 24 {
+                    // Limit length so it doesn't run off screen
+                    if self.input_text.len() < 20 {
                         self.input_text.insert(self.cursor_pos, c.to_ascii_uppercase());
                         self.cursor_pos += 1;
                         self.error_msg = None;
@@ -115,8 +130,9 @@ impl Page for NameEntryPage {
     }
 
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
-        // 1. Center Title
-        if let Some(bmp) = &self.title_bmp {
+        // 1. Draw correct Title
+        let title = if self.is_folder { &self.title_folder_bmp } else { &self.title_file_bmp };
+        if let Some(bmp) = title {
             let x_off = (400 - bmp.width as i32) / 2;
             for y in 0..bmp.height {
                 for x in 0..bmp.width {
@@ -127,22 +143,26 @@ impl Page for NameEntryPage {
             }
         }
 
-        // 2. Center Text using actual width
+        // 2. Prepare Display String
         let font_size = 32.0;
-        let full_width = self.renderer.calculate_width(&self.input_text, font_size);
+        let display_text = if self.is_folder { 
+            self.input_text.clone() 
+        } else { 
+            format!("{}.TXT", self.input_text) 
+        };
+
+        let full_width = self.renderer.calculate_width(&display_text, font_size);
         let start_x = 200 - (full_width / 2);
         let text_y = 120;
         
-        self.renderer.draw_text(display, &self.input_text, start_x, text_y, font_size, ctx);
+        self.renderer.draw_text(display, &display_text, start_x, text_y, font_size, ctx);
 
-        // 3. Precise Blinking Cursor
+        // 3. Draw Cursor (Positioned only within input_text part)
         if self.focus == EntryFocus::TextInput {
-            // Calculate width of text BEFORE the cursor
             let substring = &self.input_text[0..self.cursor_pos];
             let sub_width = self.renderer.calculate_width(substring, font_size);
-            let cursor_x = start_x + sub_width + 2; 
+            let cursor_x = start_x + sub_width; 
 
-            // Draw a solid 2px wide cursor
             for cy in (text_y - 28)..(text_y + 2) {
                 if cy > 0 && cy < 240 {
                     display.draw_pixel(cursor_x as usize, cy as usize, Pixel::Black, ctx);

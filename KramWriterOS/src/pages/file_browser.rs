@@ -36,7 +36,7 @@ pub struct FileBrowserPage {
     scroll_offset: usize,
     focus: BrowserFocus,
     footer_index: usize,
-    needs_refresh: bool, // Flag to trigger instant reload after saving
+    needs_refresh: bool,
 }
 
 impl FileBrowserPage {
@@ -73,11 +73,9 @@ impl FileBrowserPage {
 
     fn refresh_entries(&mut self) {
         self.entries.clear();
-        
         let home_base = "/home/kramwriter";
         let current_str = self.current_directory.to_string_lossy().to_string();
 
-        // Show "Back" if we are deeper than the home directory
         if current_str.len() > home_base.len() {
             if let Some(parent) = self.current_directory.parent() {
                 self.entries.push(FileEntry {
@@ -102,7 +100,6 @@ impl FileBrowserPage {
             }
         }
 
-        // Sort: ".." always first, then Folders, then alphabetical
         self.entries.sort_by(|a, b| {
             if a.name == ".." { return std::cmp::Ordering::Less; }
             if b.name == ".." { return std::cmp::Ordering::Greater; }
@@ -113,17 +110,13 @@ impl FileBrowserPage {
     fn format_header_path(&self) -> String {
         let full_path = self.current_directory.to_string_lossy().to_string();
         let home_prefix = "/home/kramwriter";
-        
         let mut display_path = if full_path.starts_with(home_prefix) {
             full_path.replacen(home_prefix, "", 1)
         } else {
             full_path
         };
 
-        if display_path.is_empty() || display_path == "/" { 
-            display_path = String::from(""); 
-        }
-        
+        if display_path.is_empty() || display_path == "/" { display_path = String::from(""); }
         display_path = display_path.to_uppercase();
 
         let max_chars = 30; 
@@ -161,25 +154,17 @@ impl FileBrowserPage {
             }
         }
 
-        let icon = if entry.name == ".." { 
-            &self.back_icon 
-        } else if entry.is_dir { 
-            &self.folder_icon 
-        } else { 
-            &self.file_icon 
-        };
+        let icon = if entry.name == ".." { &self.back_icon } 
+                   else if entry.is_dir { &self.folder_icon } 
+                   else { &self.file_icon };
 
         if let Some(bmp) = icon {
             self.draw_icon_colored(display, bmp, 5, (y + 3) as usize, draw_color, ctx);
         }
 
-        let display_name = if entry.name == ".." {
-            String::from("/ ... /")
-        } else if entry.is_dir {
-            format!("/ {} /", entry.name.to_uppercase())
-        } else {
-            entry.name.clone()
-        };
+        let display_name = if entry.name == ".." { String::from("/ ... /") } 
+                           else if entry.is_dir { format!("/ {} /", entry.name.to_uppercase()) } 
+                           else { entry.name.clone() };
 
         self.renderer.draw_text_colored(display, &display_name, 35, y + 17, 18.0, draw_color, ctx);
 
@@ -192,7 +177,6 @@ impl FileBrowserPage {
 
 impl Page for FileBrowserPage {
     fn update(&mut self, key: Key, _ctx: &mut Context) -> Action {
-        // Automatically refresh if we just returned from NameEntryPage
         if self.needs_refresh {
             self.refresh_entries();
             self.needs_refresh = false;
@@ -235,26 +219,20 @@ impl Page for FileBrowserPage {
                 _ => Action::None,
             },
             BrowserFocus::Footer => match key {
-                Key::Up | Key::Down => {
-                    self.focus = BrowserFocus::List;
-                    Action::None
-                }
-                Key::Left => {
-                    if self.footer_index > 0 { self.footer_index -= 1; }
-                    Action::None
-                }
-                Key::Right => {
-                    if self.footer_index < 2 { self.footer_index += 1; }
-                    Action::None
-                }
+                Key::Up | Key::Down => { self.focus = BrowserFocus::List; Action::None }
+                Key::Left => { if self.footer_index > 0 { self.footer_index -= 1; } Action::None }
+                Key::Right => { if self.footer_index < 2 { self.footer_index += 1; } Action::None }
                 Key::Char('\n') => {
                     match self.footer_index {
                         0 => Action::Pop, 
                         1 => {
-                            self.needs_refresh = true; // Refresh when we come back
+                            self.needs_refresh = true;
                             Action::Push(Box::new(NameEntryPage::new(self.current_directory.clone(), true)))
                         },
-                        2 => Action::None, // Placeholder for New File
+                        2 => {
+                            self.needs_refresh = true;
+                            Action::Push(Box::new(NameEntryPage::new(self.current_directory.clone(), false)))
+                        },
                         _ => Action::None
                     }
                 }
@@ -264,18 +242,11 @@ impl Page for FileBrowserPage {
     }
 
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
-        // 1. Header Line
         for x in 0..400 { display.draw_pixel(x, 22, Pixel::Black, ctx); }
-        
-        // Home icon at 2px from left and top
-        if let Some(bmp) = &self.home_icon {
-            self.draw_icon_colored(display, bmp, 2, 2, Pixel::Black, ctx);
-        }
-        
+        if let Some(bmp) = &self.home_icon { self.draw_icon_colored(display, bmp, 2, 2, Pixel::Black, ctx); }
         let header_path = self.format_header_path();
         self.renderer.draw_text_colored(display, &header_path, 35, 18, 20.0, Pixel::Black, ctx);
 
-        // 2. Visible List
         let start_y = 23;
         for i in 0..8 {
             let entry_idx = i + self.scroll_offset;
@@ -284,7 +255,6 @@ impl Page for FileBrowserPage {
             }
         }
 
-        // 3. Footer 
         let footer_idx = if self.focus == BrowserFocus::List { 0 } else { self.footer_index + 1 };
         if let Some(bmp) = &self.footer_variants[footer_idx] {
             let y_start = 216; 
