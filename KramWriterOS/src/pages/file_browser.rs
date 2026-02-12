@@ -8,6 +8,12 @@ use rpi_memory_display::Pixel;
 use std::fs;
 use std::path::PathBuf;
 
+#[derive(PartialEq)]
+pub enum BrowserFocus {
+    List,
+    Footer,
+}
+
 #[derive(Clone)]
 pub struct FileEntry {
     pub name: String,
@@ -21,29 +27,41 @@ pub struct FileBrowserPage {
     back_icon: Option<Bitmap>,
     folder_icon: Option<Bitmap>,
     file_icon: Option<Bitmap>,
+    footer_variants: [Option<Bitmap>; 4], // _3 (none), _4 (cancel), _5 (folder), _6 (file)
     renderer: FontRenderer,
     current_directory: PathBuf,
     entries: Vec<FileEntry>,
     selected_index: usize,
-    scroll_offset: usize, // New: Tracks the first visible index
+    scroll_offset: usize,
+    focus: BrowserFocus,
+    footer_index: usize, // 0: Cancel, 1: New Folder, 2: New File
 }
 
 impl FileBrowserPage {
     pub fn new() -> Self {
         let renderer = FontRenderer::new("/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf");
-        let icon_path = "/home/kramwriter/KramWriter/assets/FileBrowser";
-        let start_dir = PathBuf::from("/home/kramwriter/folder/");
+        let asset_path = "/home/kramwriter/KramWriter/assets/FileBrowser";
         
+        let footer_variants = [
+            Bitmap::load(&format!("{}/bottom_bar_3.bmp", asset_path)).ok(),
+            Bitmap::load(&format!("{}/bottom_bar_4.bmp", asset_path)).ok(),
+            Bitmap::load(&format!("{}/bottom_bar_5.bmp", asset_path)).ok(),
+            Bitmap::load(&format!("{}/bottom_bar_6.bmp", asset_path)).ok(),
+        ];
+
         let mut page = Self {
-            home_icon: Bitmap::load(&format!("{}/icon_home.bmp", icon_path)).ok(),
-            back_icon: Bitmap::load(&format!("{}/icon_back.bmp", icon_path)).ok(),
-            folder_icon: Bitmap::load(&format!("{}/icon_folder.bmp", icon_path)).ok(),
-            file_icon: Bitmap::load(&format!("{}/icon_file.bmp", icon_path)).ok(),
+            home_icon: Bitmap::load(&format!("{}/icon_home.bmp", asset_path)).ok(),
+            back_icon: Bitmap::load(&format!("{}/icon_back.bmp", asset_path)).ok(),
+            folder_icon: Bitmap::load(&format!("{}/icon_folder.bmp", asset_path)).ok(),
+            file_icon: Bitmap::load(&format!("{}/icon_file.bmp", asset_path)).ok(),
+            footer_variants,
             renderer,
-            current_directory: start_dir,
+            current_directory: PathBuf::from("/home/kramwriter/folder/"),
             entries: Vec::new(),
             selected_index: 0,
             scroll_offset: 0,
+            focus: BrowserFocus::List,
+            footer_index: 0,
         };
 
         page.refresh_entries();
@@ -52,8 +70,8 @@ impl FileBrowserPage {
 
     fn refresh_entries(&mut self) {
         self.entries.clear();
-        if self.current_directory != PathBuf::from("/") {
-            if let Some(parent) = self.current_directory.parent() {
+        if let Some(parent) = self.current_directory.parent() {
+            if self.current_directory != PathBuf::from("/home/kramwriter/") {
                 self.entries.push(FileEntry {
                     name: String::from(".."),
                     is_dir: true,
@@ -78,10 +96,9 @@ impl FileBrowserPage {
         self.entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.to_lowercase().cmp(&b.name.to_lowercase())));
     }
 
-    /// Truncates path from the left if it's too long
     fn format_header_path(&self) -> String {
         let path_str = self.current_directory.to_string_lossy().to_uppercase();
-        let max_chars = 35; // Adjust based on font size/screen width
+        let max_chars = 30; 
         if path_str.len() > max_chars {
             format!("...{}", &path_str[path_str.len() - max_chars..])
         } else {
@@ -104,7 +121,8 @@ impl FileBrowserPage {
     }
 
     fn draw_list_row(&self, display: &mut SharpDisplay, ctx: &Context, index: usize, y: i32, entry: &FileEntry) {
-        let is_selected = self.selected_index == index;
+        // Only show row selection if the focus is on the List
+        let is_selected = self.focus == BrowserFocus::List && self.selected_index == index;
         let row_height = 22;
         let draw_color = if is_selected { Pixel::White } else { Pixel::Black };
         
@@ -126,8 +144,6 @@ impl FileBrowserPage {
 
         let display_name = if entry.is_dir && entry.name != ".." {
             format!("/ {} /", entry.name.to_uppercase())
-        } else if entry.name == ".." {
-            String::from("/ ... /")
         } else {
             entry.name.clone()
         };
@@ -143,66 +159,102 @@ impl FileBrowserPage {
 
 impl Page for FileBrowserPage {
     fn update(&mut self, key: Key, _ctx: &mut Context) -> Action {
-        match key {
-            Key::Up => {
-                if self.selected_index > 0 {
-                    self.selected_index -= 1;
-                    // Scroll up if selection goes above visible area
-                    if self.selected_index < self.scroll_offset {
-                        self.scroll_offset = self.selected_index;
+        match self.focus {
+            BrowserFocus::List => match key {
+                Key::Up => {
+                    if self.selected_index > 0 {
+                        self.selected_index -= 1;
+                        if self.selected_index < self.scroll_offset { self.scroll_offset = self.selected_index; }
                     }
-                }
-                Action::None
-            }
-            Key::Down => {
-                if self.selected_index < self.entries.len() - 1 {
-                    self.selected_index += 1;
-                    // Scroll down if selection goes below visible area (8 rows visible)
-                    if self.selected_index >= self.scroll_offset + 8 {
-                        self.scroll_offset = self.selected_index - 7;
-                    }
-                }
-                Action::None
-            }
-            Key::Char('\n') => {
-                let selected = self.entries[self.selected_index].clone();
-                if selected.is_dir {
-                    self.current_directory = selected.path;
-                    self.refresh_entries();
-                    self.selected_index = 0;
-                    self.scroll_offset = 0;
-                    Action::None
-                } else {
-                    println!("Opening: {:?}", selected.path);
                     Action::None
                 }
+                Key::Down => {
+                    if self.selected_index < self.entries.len() - 1 {
+                        self.selected_index += 1;
+                        if self.selected_index >= self.scroll_offset + 8 { self.scroll_offset = self.selected_index - 7; }
+                    }
+                    Action::None
+                }
+                Key::Left => {
+                    self.focus = BrowserFocus::Footer;
+                    self.footer_index = 0; // Select "Cancel"
+                    Action::None
+                }
+                Key::Right => {
+                    self.focus = BrowserFocus::Footer;
+                    self.footer_index = 1; // Select "New Folder"
+                    Action::None
+                }
+                Key::Char('\n') => {
+                    let selected = self.entries[self.selected_index].clone();
+                    if selected.is_dir {
+                        self.current_directory = selected.path;
+                        self.refresh_entries();
+                        self.selected_index = 0;
+                        self.scroll_offset = 0;
+                    }
+                    Action::None
+                }
+                Key::Esc => Action::Pop,
+                _ => Action::None,
+            },
+            BrowserFocus::Footer => match key {
+                Key::Up | Key::Down => {
+                    self.focus = BrowserFocus::List;
+                    Action::None
+                }
+                Key::Left => {
+                    if self.footer_index > 0 { self.footer_index -= 1; }
+                    Action::None
+                }
+                Key::Right => {
+                    if self.footer_index < 2 { self.footer_index += 1; }
+                    Action::None
+                }
+                Key::Char('\n') => {
+                    match self.footer_index {
+                        0 => Action::Pop, // Cancel
+                        1 => { /* New Folder Logic */ Action::None },
+                        2 => { /* New File Logic */ Action::None },
+                        _ => Action::None
+                    }
+                }
+                _ => Action::None,
             }
-            Key::Esc => Action::Pop,
-            _ => Action::None,
         }
     }
 
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
-        // 1. Header Line
+        // 1. Header
         for x in 0..400 { display.draw_pixel(x, 22, Pixel::Black, ctx); }
-        
-        // 2. Path Header with Truncation
         if let Some(bmp) = &self.home_icon {
             self.draw_icon_colored(display, bmp, 5, 4, Pixel::Black, ctx);
         }
         let header_path = self.format_header_path();
         self.renderer.draw_text_colored(display, &header_path, 35, 18, 20.0, Pixel::Black, ctx);
 
-        // 3. Draw Visible Entries
+        // 2. Visible List
         let start_y = 23;
-        let row_h = 22;
-        let max_visible = 8; // Adjust based on your bottom bar height
-
-        for i in 0..max_visible {
+        for i in 0..8 {
             let entry_idx = i + self.scroll_offset;
             if entry_idx < self.entries.len() {
-                let y_pos = start_y + (i as i32 * row_h);
-                self.draw_list_row(display, ctx, entry_idx, y_pos, &self.entries[entry_idx]);
+                self.draw_list_row(display, ctx, entry_idx, start_y + (i as i32 * 22), &self.entries[entry_idx]);
+            }
+        }
+
+        // 3. Footer
+        let footer_idx = if self.focus == BrowserFocus::List { 0 } else { self.footer_index + 1 };
+        if let Some(bmp) = &self.footer_variants[footer_idx] {
+            // Drawn at Y=218 (Bottom of 240px screen)
+            for y in 0..bmp.height {
+                let sy = y as i32 + 218;
+                if sy < 240 {
+                    for x in 0..bmp.width.min(400) {
+                        if bmp.pixels[y * bmp.width + x] == Pixel::Black {
+                            display.draw_pixel(x, sy as usize, Pixel::Black, ctx);
+                        }
+                    }
+                }
             }
         }
     }
