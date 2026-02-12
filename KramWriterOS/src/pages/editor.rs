@@ -7,6 +7,7 @@ use termion::event::Key;
 use rpi_memory_display::Pixel;
 use std::path::PathBuf;
 use std::fs;
+use chrono::Local; // ADD THIS to Cargo.toml
 
 pub struct EditorPage {
     path: PathBuf,
@@ -91,7 +92,6 @@ impl EditorPage {
 
             for word in paragraph.split_inclusive(' ') {
                 let test_line = format!("{}{}", current_line, word);
-                // FIXED: Explicit cast to f32 for the width comparison
                 if (self.renderer.calculate_width(&test_line, self.font_size) as f32) > max_width && !current_line.is_empty() {
                     lines.push((current_line.clone(), line_start_pos));
                     line_start_pos += current_line.len();
@@ -129,13 +129,20 @@ impl EditorPage {
         let y_start = 218;
         let y_text = y_start as i32 + 18;
         for x in 0..400 { display.draw_pixel(x, y_start, Pixel::Black, ctx); }
+        
         let save_icon = if self.is_dirty { &self.save_icons[0] } else { &self.save_icons[1] };
         if let Some(bmp) = save_icon { self.draw_icon(display, bmp, 5, y_start + 3, ctx); }
+        
         let filename = self.path.file_name().map(|n| n.to_string_lossy().to_string().to_uppercase()).unwrap_or_else(|| "UNTITLED.TXT".to_string());
         self.renderer.draw_text_colored(display, &filename, 28, y_text, 18.0, Pixel::Black, ctx);
+        
         let w_count = format!("W:{}", self.get_word_count());
         self.renderer.draw_text_colored(display, &w_count, 180, y_text, 18.0, Pixel::Black, ctx);
-        self.renderer.draw_text_colored(display, "12:32", 305, y_text, 18.0, Pixel::Black, ctx);
+        
+        // --- REAL TIME CLOCK ---
+        let time_str = Local::now().format("%H:%M").to_string();
+        self.renderer.draw_text_colored(display, &time_str, 305, y_text, 18.0, Pixel::Black, ctx);
+        
         if let Some(bmp) = &self.weather_icons[0] { self.draw_icon(display, bmp, 348, y_start + 3, ctx); }
         if let Some(bmp) = &self.wifi_icons[4] { self.draw_icon(display, bmp, 372, y_start + 3, ctx); }
     }
@@ -143,7 +150,7 @@ impl EditorPage {
 
 impl Page for EditorPage {
     fn update(&mut self, key: Key, _ctx: &mut Context) -> Action {
-        let max_width = 370.0; // Reduced to give scrollbar room
+        let max_width = 370.0;
         let lines = self.get_wrapped_lines(max_width);
         
         match key {
@@ -184,7 +191,6 @@ impl Page for EditorPage {
             _ => {}
         }
 
-        // Logic to update scroll_line_offset based on cursor position
         let line_height = (self.font_size * 1.2) as i32;
         let visible_lines = 180 / line_height;
         if let Some(cursor_line) = lines.iter().position(|l| self.cursor_pos >= l.1 && self.cursor_pos <= l.1 + l.0.len()) {
@@ -205,7 +211,7 @@ impl Page for EditorPage {
         let lines = self.get_wrapped_lines(max_width);
         let visible_lines = 180 / line_height;
 
-        let mut cursor_line_idx = 99999; // Default out of range
+        let mut cursor_line_idx = 99999;
         for (idx, line) in lines.iter().enumerate() {
             if self.cursor_pos >= line.1 && self.cursor_pos <= line.1 + line.0.len() {
                 cursor_line_idx = idx;
@@ -216,12 +222,16 @@ impl Page for EditorPage {
         let mut draw_y = 30;
         for (idx, (text, start_pos)) in lines.iter().enumerate().skip(self.scroll_line_offset) {
             if draw_y > 210 { break; }
-            self.renderer.draw_text_colored(display, text, margin, draw_y, self.font_size, Pixel::Black, ctx);
+            
+            // --- TOFU FIX: Remove \n from string before drawing ---
+            let clean_text = text.replace('\n', "");
+            self.renderer.draw_text_colored(display, &clean_text, margin, draw_y, self.font_size, Pixel::Black, ctx);
 
             if idx == cursor_line_idx {
                 let relative_pos = self.cursor_pos - start_pos;
-                let text_before = &text[..relative_pos.min(text.len())];
-                let cursor_x = margin + self.renderer.calculate_width(text_before, self.font_size) as i32;
+                // Ensure we don't slice out of bounds if \n was removed
+                let text_for_width = &text[..relative_pos.min(text.len())];
+                let cursor_x = margin + self.renderer.calculate_width(text_for_width, self.font_size) as i32;
                 let cursor_top = draw_y - (self.font_size * 0.8) as i32;
                 for cy in cursor_top..draw_y {
                     if cy > 0 && cy < 218 && cursor_x < 400 { 
