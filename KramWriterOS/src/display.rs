@@ -63,10 +63,10 @@ impl SharpDisplay {
     }
 
     fn draw_char(&mut self, x: usize, y: usize, _c: char, ctx: &Context) {
-    // Just draw a small 4x4 square for every character for now
+    // Temporary: Draw a 4x4 square for each character
     for i in 0..4 {
         for j in 0..4 {
-            self.draw_pixel(x + i, y + j, Pixel::Black, ctx);
+            self.draw_pixel(x + i, y + j, rpi_memory_display::Pixel::Black, ctx);
             }
         }
     }

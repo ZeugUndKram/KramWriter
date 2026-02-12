@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# Hardware & Display
+rpi_memory_display = "0.1.2"
 rppal = "0.14"               # Raspberry Pi GPIO/SPI access
 embedded-graphics = "0.8"    # Standard Rust 2D graphics library
 anyhow = "1.0"               # Easy error handling
