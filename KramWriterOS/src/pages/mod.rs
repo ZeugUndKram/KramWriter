@@ -1,6 +1,7 @@
 pub mod startup;
 pub mod menu;
 pub mod credits;
+pub mod settings;
 
 use crate::context::Context;
 use crate::display::SharpDisplay;

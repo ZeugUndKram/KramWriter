@@ -66,7 +66,7 @@ impl Page for MenuPage {
                     0 => Action::None, // Write (Add later)
                     1 => Action::None, // Learn (Add later)
                     2 => Action::None, // Zeugtris (Add later)
-                    3 => Action::None, // Settings (Add later)
+                    3 => Action::Push(Box::new(crate::pages::settings::SettingsPage::new())),
                     4 => Action::Push(Box::new(crate::pages::credits::CreditsPage::new())), // Credits
                     _ => Action::None,
                 }
