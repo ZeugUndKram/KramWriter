@@ -196,7 +196,9 @@ impl EditorPage {
         self.renderer.draw_text_colored(display, &filename, 28, y_text, 18.0, Pixel::Black, ctx);
         let w_count = format!("W:{}", self.get_word_count());
         self.renderer.draw_text_colored(display, &w_count, 180, y_text, 18.0, Pixel::Black, ctx);
-        let time_str = Local::now().format("%H:%M").to_string();
+        let tz: Tz = ctx.timezone.parse().unwrap_or(chrono_tz::UTC);
+        let now = Utc::now().with_timezone(&tz);
+        let time_str = now.format("%H:%M").to_string();
         self.renderer.draw_text_colored(display, &time_str, 305, y_text, 18.0, Pixel::Black, ctx);
         if let Some(bmp) = &self.weather_icons[0] { self.draw_icon(display, bmp, 348, y_start + 3, ctx); }
         if let Some(bmp) = &self.wifi_icons[4] { self.draw_icon(display, bmp, 372, y_start + 3, ctx); }
