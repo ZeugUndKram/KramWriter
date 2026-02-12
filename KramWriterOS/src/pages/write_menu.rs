@@ -33,6 +33,7 @@ impl WriteMenuPage {
         }
     }
 
+    // Helper to draw bitmaps with vertical offsets
     fn draw_layer(&self, display: &mut SharpDisplay, bmp: &Bitmap, y_offset: i32, ctx: &Context) {
         for y in 0..bmp.height {
             let screen_y = y as i32 + y_offset;
@@ -71,32 +72,21 @@ impl Page for WriteMenuPage {
     }
 
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
-        if let Some(bmp) = &self.title { self.draw_layer(display, bmp, 0, ctx); }
+        // 1. Title
+        if let Some(bmp) = &self.title { 
+            self.draw_layer(display, bmp, 0, ctx); 
+        }
 
+        // 2. New File Selection
         let new_idx = if self.current_index == 0 { 0 } else { 1 };
         if let Some(bmp) = &self.new_file_variants[new_idx] {
             self.draw_layer(display, bmp, NEW_FILE_Y, ctx);
         }
 
+        // 3. Open File Selection
         let open_idx = if self.current_index == 1 { 0 } else { 1 };
         if let Some(bmp) = &self.open_file_variants[open_idx] {
             self.draw_layer(display, bmp, OPEN_FILE_Y, ctx);
-        }
-    }
-}
-
-impl WriteMenuPage {
-    fn draw_layer(&self, display: &mut SharpDisplay, bmp: &Bitmap, y_offset: i32, ctx: &Context) {
-        for y in 0..bmp.height {
-            let screen_y = y as i32 + y_offset;
-            if screen_y >= 0 && screen_y < 240 {
-                for x in 0..bmp.width.min(400) {
-                    let pixel = bmp.pixels[y * bmp.width + x];
-                    if pixel == Pixel::Black {
-                        display.draw_pixel(x, screen_y as usize, pixel, ctx);
-                    }
-                }
-            }
         }
     }
 }
