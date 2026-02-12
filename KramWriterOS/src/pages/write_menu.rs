@@ -57,9 +57,9 @@ impl Page for WriteMenuPage {
             }
             Key::Char('\n') => {
                 if self.current_index == 0 {
-                    // Logic for "New File" will go here
+                    Action::Push(Box::new(crate::pages::file_browser::FileBrowserPage::new()))
                 } else {
-                    // Logic for "Open File" will go here
+                    Action::None
                 }
                 Action::None
             }
