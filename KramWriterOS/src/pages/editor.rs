@@ -77,6 +77,7 @@ impl EditorPage {
 
     fn draw_bottom_bar(&self, display: &mut SharpDisplay, ctx: &Context) {
         let y_start = 218;
+        let y_text = y_start as i32 + 18;
 
         // Divider Line
         for x in 0..400 { display.draw_pixel(x, y_start, Pixel::Black, ctx); }
