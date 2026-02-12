@@ -27,14 +27,14 @@ pub struct FileBrowserPage {
     back_icon: Option<Bitmap>,
     folder_icon: Option<Bitmap>,
     file_icon: Option<Bitmap>,
-    footer_variants: [Option<Bitmap>; 4], // _3 (none), _4 (cancel), _5 (folder), _6 (file)
+    footer_variants: [Option<Bitmap>; 4],
     renderer: FontRenderer,
     current_directory: PathBuf,
     entries: Vec<FileEntry>,
     selected_index: usize,
     scroll_offset: usize,
     focus: BrowserFocus,
-    footer_index: usize, // 0: Cancel, 1: New Folder, 2: New File
+    footer_index: usize,
 }
 
 impl FileBrowserPage {
@@ -51,7 +51,7 @@ impl FileBrowserPage {
 
         let mut page = Self {
             home_icon: Bitmap::load(&format!("{}/icon_home.bmp", asset_path)).ok(),
-            back_icon: Bitmap::load(&format!("{}/icon_back.bmp", asset_path)).ok(),
+            back_icon: Bitmap::load(&format!("{}/icon_back.bmp", asset_path)).ok(), // Ensure this file exists!
             folder_icon: Bitmap::load(&format!("{}/icon_folder.bmp", asset_path)).ok(),
             file_icon: Bitmap::load(&format!("{}/icon_file.bmp", asset_path)).ok(),
             footer_variants,
@@ -70,8 +70,11 @@ impl FileBrowserPage {
 
     fn refresh_entries(&mut self) {
         self.entries.clear();
-        if let Some(parent) = self.current_directory.parent() {
-            if self.current_directory != PathBuf::from("/home/kramwriter/") {
+        let home_base = PathBuf::from("/home/kramwriter/");
+
+        // Add "Back" entry if we are deeper than home
+        if self.current_directory != home_base {
+            if let Some(parent) = self.current_directory.parent() {
                 self.entries.push(FileEntry {
                     name: String::from(".."),
                     is_dir: true,
@@ -96,13 +99,26 @@ impl FileBrowserPage {
         self.entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.to_lowercase().cmp(&b.name.to_lowercase())));
     }
 
+    /// Replaces /home/kramwriter/ with the Home Icon visually by stripping the prefix
     fn format_header_path(&self) -> String {
-        let path_str = self.current_directory.to_string_lossy().to_uppercase();
-        let max_chars = 30; 
-        if path_str.len() > max_chars {
-            format!("...{}", &path_str[path_str.len() - max_chars..])
+        let full_path = self.current_directory.to_string_lossy().to_string();
+        let home_prefix = "/home/kramwriter";
+        
+        let mut display_path = if full_path.starts_with(home_prefix) {
+            full_path.replacen(home_prefix, "", 1)
         } else {
-            path_str
+            full_path
+        };
+
+        if display_path.is_empty() { display_path = String::from("/"); }
+        
+        display_path = display_path.to_uppercase();
+
+        let max_chars = 30; 
+        if display_path.len() > max_chars {
+            format!("...{}", &display_path[display_path.len() - max_chars..])
+        } else {
+            display_path
         }
     }
 
@@ -121,7 +137,6 @@ impl FileBrowserPage {
     }
 
     fn draw_list_row(&self, display: &mut SharpDisplay, ctx: &Context, index: usize, y: i32, entry: &FileEntry) {
-        // Only show row selection if the focus is on the List
         let is_selected = self.focus == BrowserFocus::List && self.selected_index == index;
         let row_height = 22;
         let draw_color = if is_selected { Pixel::White } else { Pixel::Black };
@@ -134,9 +149,14 @@ impl FileBrowserPage {
             }
         }
 
-        let icon = if entry.name == ".." { &self.back_icon } 
-                   else if entry.is_dir { &self.folder_icon } 
-                   else { &self.file_icon };
+        // Logic for which icon to show
+        let icon = if entry.name == ".." { 
+            &self.back_icon 
+        } else if entry.is_dir { 
+            &self.folder_icon 
+        } else { 
+            &self.file_icon 
+        };
 
         if let Some(bmp) = icon {
             self.draw_icon_colored(display, bmp, 5, (y + 3) as usize, draw_color, ctx);
@@ -144,6 +164,8 @@ impl FileBrowserPage {
 
         let display_name = if entry.is_dir && entry.name != ".." {
             format!("/ {} /", entry.name.to_uppercase())
+        } else if entry.name == ".." {
+            String::from("/ ... /")
         } else {
             entry.name.clone()
         };
@@ -175,14 +197,9 @@ impl Page for FileBrowserPage {
                     }
                     Action::None
                 }
-                Key::Left => {
+                Key::Left | Key::Right => {
                     self.focus = BrowserFocus::Footer;
-                    self.footer_index = 0; // Select "Cancel"
-                    Action::None
-                }
-                Key::Right => {
-                    self.focus = BrowserFocus::Footer;
-                    self.footer_index = 1; // Select "New Folder"
+                    self.footer_index = if key == Key::Left { 0 } else { 1 };
                     Action::None
                 }
                 Key::Char('\n') => {
@@ -213,9 +230,9 @@ impl Page for FileBrowserPage {
                 }
                 Key::Char('\n') => {
                     match self.footer_index {
-                        0 => Action::Pop, // Cancel
-                        1 => { /* New Folder Logic */ Action::None },
-                        2 => { /* New File Logic */ Action::None },
+                        0 => Action::Pop,
+                        1 => Action::None, // TODO: New Folder
+                        2 => Action::None, // TODO: New File
                         _ => Action::None
                     }
                 }
@@ -230,10 +247,11 @@ impl Page for FileBrowserPage {
         if let Some(bmp) = &self.home_icon {
             self.draw_icon_colored(display, bmp, 5, 4, Pixel::Black, ctx);
         }
+        // stripped path logic
         let header_path = self.format_header_path();
         self.renderer.draw_text_colored(display, &header_path, 35, 18, 20.0, Pixel::Black, ctx);
 
-        // 2. Visible List
+        // 2. Visible List (Max 8 rows to leave room for the footer)
         let start_y = 23;
         for i in 0..8 {
             let entry_idx = i + self.scroll_offset;
@@ -242,12 +260,12 @@ impl Page for FileBrowserPage {
             }
         }
 
-        // 3. Footer
+        // 3. Footer (Shifted up 2px to Y=216)
         let footer_idx = if self.focus == BrowserFocus::List { 0 } else { self.footer_index + 1 };
         if let Some(bmp) = &self.footer_variants[footer_idx] {
-            // Drawn at Y=218 (Bottom of 240px screen)
+            let y_start = 216; 
             for y in 0..bmp.height {
-                let sy = y as i32 + 218;
+                let sy = y as i32 + y_start;
                 if sy < 240 {
                     for x in 0..bmp.width.min(400) {
                         if bmp.pixels[y * bmp.width + x] == Pixel::Black {
