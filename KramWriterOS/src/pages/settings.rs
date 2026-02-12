@@ -3,6 +3,7 @@ use crate::context::Context;
 use crate::display::SharpDisplay;
 use crate::ui::bitmap::Bitmap;
 use termion::event::Key;
+use rpi_memory_display::Pixel;
 
 const SETTINGS_OPTIONS: [&str; 5] = ["timezone", "location", "darkmode", "drive", "keyboard"];
 
@@ -17,19 +18,19 @@ impl SettingsPage {
 
         for option in SETTINGS_OPTIONS.iter() {
             let path_0 = format!("/home/kramwriter/KramWriter/assets/Settings/{}_0.bmp", option);
-            let path_1 = format!("/home/kramwriter/KramWriter/assets/Settings/{}_1.bmp", option);
+            
+            // Handle the unique naming for the keyboard selected state
+            let suffix_selected = if *option == "keyboard" { "3" } else { "1" };
+            let path_selected = format!("/home/kramwriter/KramWriter/assets/Settings/{}_{}.bmp", option, suffix_selected);
             
             let img_0 = Bitmap::load(&path_0).ok();
-            let img_1 = Bitmap::load(&path_1).ok();
+            let img_selected = Bitmap::load(&path_selected).ok();
 
-            // Terminal Debug: Check the size of loaded images
-            if let Some(ref b) = img_0 {
-                println!("✅ Loaded {}: {}x{}", option, b.width, b.height);
-            } else {
-                println!("❌ Failed to load: {}", path_0);
+            if img_selected.is_none() {
+                println!("❌ Failed to load selected state: {}", path_selected);
             }
 
-            images.push([img_0, img_1]);
+            images.push([img_0, img_selected]);
         }
 
         Self { current_index: 0, images }
@@ -53,27 +54,22 @@ impl Page for SettingsPage {
     }
 
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
-        // We no longer use a moving current_y because 
-        // each BMP is already a full-screen 400x240 map.
-        let start_y = 0;
-        let start_x = 0;
-
+        // Draw every image at (0,0) so their internal transparency 
+        // allows them to stack on top of each other.
         for (i, variants) in self.images.iter().enumerate() {
             let selection_index = if i == self.current_index { 1 } else { 0 };
 
             if let Some(bmp) = &variants[selection_index] {
                 for y in 0..bmp.height {
-                    let screen_y = start_y + y as i32;
-                    if screen_y >= 0 && screen_y < 240 {
+                    if y < 240 {
                         for x in 0..bmp.width {
-                            let pixel = bmp.pixels[y * bmp.width + x];
-                            
-                            // TRANSPARENCY LOGIC:
-                            // Only draw the pixel if it is Black. 
-                            // This prevents the "white" background of the top image
-                            // from erasing the "black" text of the image underneath.
-                            if pixel == rpi_memory_display::Pixel::Black {
-                                display.draw_pixel(start_x + x, screen_y as usize, pixel, ctx);
+                            if x < 400 {
+                                let pixel = bmp.pixels[y * bmp.width + x];
+                                
+                                // Only draw Black pixels to treat White as transparent
+                                if pixel == Pixel::Black {
+                                    display.draw_pixel(x, y, pixel, ctx);
+                                }
                             }
                         }
                     }
