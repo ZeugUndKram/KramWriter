@@ -77,7 +77,7 @@ impl EditorPage {
 
     fn draw_bottom_bar(&self, display: &mut SharpDisplay, ctx: &Context) {
         let y_start = 218;
-        let y_text = y_start as i32 + 18;
+        let y_text = y_start as i32 + 18; // Cast it once here to save space
 
         // Divider Line
         for x in 0..400 { display.draw_pixel(x, y_start, Pixel::Black, ctx); }
@@ -90,15 +90,14 @@ impl EditorPage {
         let filename = self.path.file_name()
             .map(|n| n.to_string_lossy().to_string().to_uppercase())
             .unwrap_or_else(|| "UNTITLED.TXT".to_string());
-        self.renderer.draw_text_colored(display, &filename, 28, y_start + 18, 18.0, Pixel::Black, ctx);
+        self.renderer.draw_text_colored(display, &filename, 28, y_text, 18.0, Pixel::Black, ctx);
 
         // 3. Word Count
         let w_count = format!("W:{}", self.get_word_count());
-        self.renderer.draw_text_colored(display, &w_count, 180, y_start + 18, 18.0, Pixel::Black, ctx);
+        self.renderer.draw_text_colored(display, &w_count, 180, y_text, 18.0, Pixel::Black, ctx);
 
-        // 4. Time (Static for now)
-        self.renderer.draw_text_colored(display, "12:32", 305, y_start + 18, 18.0, Pixel::Black, ctx);
-
+        // 4. Time
+        self.renderer.draw_text_colored(display, "12:32", 305, y_text, 18.0, Pixel::Black, ctx);
         // 5. Weather (Sunny)
         if let Some(bmp) = &self.weather_icons[0] { self.draw_icon(display, bmp, 348, y_start + 3, ctx); }
 
