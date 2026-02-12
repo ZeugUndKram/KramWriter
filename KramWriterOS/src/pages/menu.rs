@@ -5,7 +5,7 @@ use crate::ui::bitmap::Bitmap;
 use termion::event::Key;
 
 // Ensure these match your actual filenames (lowercase)
-const MENU_OPTIONS: [&str; 5] = ["write", "learn", "zeugtris", "settings", "credits"];
+const MENU_OPTIONS: [&str; 5] = ["Write", "Learn", "Zeugtris", "Settings", "Credits"];
 
 const SPACING_TOP_TO_MAIN: i32 = -10;
 const SPACING_MAIN_TO_BOTTOM: i32 = 10;
@@ -24,7 +24,8 @@ impl MenuPage {
         for option in MENU_OPTIONS.iter() {
             let mut variants = Vec::new();
             for suffix in 0..3 {
-                let path = format!("/home/kramwriter/KramWriter/assets/menu/{}_{}.bmp", option.to_lowercase(), suffix);
+                // 2. Remove .to_lowercase() so it uses "Write", "Learn", etc.
+                let path = format!("/home/kramwriter/KramWriter/assets/menu/{}_{}.bmp", option, suffix);
                 
                 match Bitmap::load(&path) {
                     Ok(bmp) => variants.push(Some(bmp)),
