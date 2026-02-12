@@ -22,7 +22,7 @@ impl MenuPage {
         for option in MENU_OPTIONS.iter() {
             let mut variants = Vec::new();
             for suffix in 0..3 {
-                let path = format!("/home/kramwriter/KramWriter/assets/menu/{}_{}.bmp", option, suffix);
+                let path = format!("/home/kramwriter/KramWriter/assets/Menu/{}_{}.bmp", option, suffix);
                 variants.push(Bitmap::load(&path).ok());
             }
             images.push(variants);
@@ -47,6 +47,17 @@ impl MenuPage {
 impl Page for MenuPage {
     fn update(&mut self, key: Key, _ctx: &mut Context) -> Action {
         match key {
+            Key::Char('\n') => {
+                match self.current_index {
+                    0 => Action::None, // Write
+                    1 => Action::None, // Learn
+                    2 => Action::None, // Zeugtris
+                    3 => Action::None, // Settings
+                    4 => Action::Replace(Box::new(crate::pages::credits::CreditsPage::new())), // Credits is index 4
+                    _ => Action::None,
+                }
+            }
+            // ... (keep your Up/Down/Esc logic here)
             Key::Up => { if self.current_index > 0 { self.current_index -= 1; } Action::None },
             Key::Down => { if self.current_index < MENU_OPTIONS.len() - 1 { self.current_index += 1; } Action::None },
             Key::Esc => Action::Replace(Box::new(crate::pages::startup::LogoPage::new())),
