@@ -32,15 +32,14 @@ impl Bitmap {
                     for x in 0..width {
                         let byte = data[row_start + (x / 8)];
                         let bit = 7 - (x % 8);
-                        pixels.push(if (byte >> bit) & 1 == 1 { Pixel::White } else { Pixel::Black });
+                        // MATCH OLD VERSION: 1 is Black, 0 is White
+                        pixels.push(if (byte >> bit) & 1 == 1 { Pixel::Black } else { Pixel::White });
                     }
                 }
             }
             24 | 32 => {
                 let bytes_per_pixel = (bpp / 8) as usize;
-                let row_size = width * bytes_per_pixel;
-                let row_padded = (row_size + 3) & !3; // Align to 4 bytes
-
+                let row_padded = (width * bytes_per_pixel + 3) & !3;
                 for y in (0..height).rev() {
                     let row_start = pixel_offset + y * row_padded;
                     for x in 0..width {
@@ -48,20 +47,14 @@ impl Bitmap {
                         let b = data[px_start] as u32;
                         let g = data[px_start + 1] as u32;
                         let r = data[px_start + 2] as u32;
-                        
-                        // Simple brightness threshold: 
-                        // If average is > 128, it's white.
-                        let brightness = (r + g + b) / 3;
-                        pixels.push(if brightness > 127 { Pixel::White } else { Pixel::Black });
+                        // MATCH OLD VERSION: Bright pixels are White, Dark are Black
+                        let avg = (r + g + b) / 3;
+                        pixels.push(if avg > 127 { Pixel::White } else { Pixel::Black });
                     }
                 }
             }
-            _ => {
-                println!("Still unsupported BMP bpp: {}", bpp);
-                return None;
-            }
+            _ => return None,
         }
-
         Some(Self { width, height, pixels })
     }
 }
