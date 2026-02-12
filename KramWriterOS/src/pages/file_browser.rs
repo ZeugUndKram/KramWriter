@@ -17,8 +17,8 @@ pub enum BrowserFocus {
 
 #[derive(PartialEq)]
 pub enum BrowserMode {
-    Full,     // Normal browsing (New Folder, New File, etc.)
-    OpenFile, // Triggered from Write Menu (Cancel, Open)
+    Full,     
+    OpenFile, 
 }
 
 #[derive(Clone)]
@@ -34,9 +34,7 @@ pub struct FileBrowserPage {
     back_icon: Option<Bitmap>, 
     folder_icon: Option<Bitmap>,
     file_icon: Option<Bitmap>,
-    // Normal footer variants
     footer_full: [Option<Bitmap>; 4],
-    // Open file footer variants
     footer_open: [Option<Bitmap>; 3],
     renderer: FontRenderer,
     current_directory: PathBuf,
@@ -125,42 +123,9 @@ impl FileBrowserPage {
         });
     }
 
-    fn format_header_path(&self) -> String {
-        let full_path = self.current_directory.to_string_lossy().to_string();
-        let home_prefix = "/home/kramwriter";
-        let mut display_path = if full_path.starts_with(home_prefix) {
-            full_path.replacen(home_prefix, "", 1)
-        } else {
-            full_path
-        };
-
-        if display_path.is_empty() || display_path == "/" { display_path = String::from(""); }
-        display_path = display_path.to_uppercase();
-
-        let max_chars = 30; 
-        if display_path.len() > max_chars {
-            format!("...{}", &display_path[display_path.len() - max_chars..])
-        } else {
-            display_path
-        }
-    }
-
-    fn draw_icon_colored(&self, display: &mut SharpDisplay, bmp: &Bitmap, x_off: usize, y_off: usize, color: Pixel, ctx: &Context) {
-        for y in 0..bmp.height {
-            for x in 0..bmp.width {
-                if bmp.pixels[y * bmp.width + x] == Pixel::Black {
-                    let sx = x + x_off;
-                    let sy = y + y_off;
-                    if sx < 400 && sy < 240 {
-                        display.draw_pixel(sx, sy, color, ctx);
-                    }
-                }
-            }
-        }
-    }
-
     fn draw_list_row(&self, display: &mut SharpDisplay, ctx: &Context, index: usize, y: i32, entry: &FileEntry) {
-        let is_selected = self.focus == BrowserFocus::List && self.selected_index == index;
+        // CHANGED: The row stays highlighted based strictly on selection, not focus
+        let is_selected = self.selected_index == index;
         let row_height = 22;
         let draw_color = if is_selected { Pixel::White } else { Pixel::Black };
         
@@ -191,6 +156,32 @@ impl FileBrowserPage {
             self.renderer.draw_text_colored(display, &size_str, 340, y + 17, 16.0, draw_color, ctx);
         }
     }
+
+    fn draw_icon_colored(&self, display: &mut SharpDisplay, bmp: &Bitmap, x_off: usize, y_off: usize, color: Pixel, ctx: &Context) {
+        for y in 0..bmp.height {
+            for x in 0..bmp.width {
+                if bmp.pixels[y * bmp.width + x] == Pixel::Black {
+                    let sx = x + x_off;
+                    let sy = y + y_off;
+                    if sx < 400 && sy < 240 {
+                        display.draw_pixel(sx, sy, color, ctx);
+                    }
+                }
+            }
+        }
+    }
+
+    fn format_header_path(&self) -> String {
+        let full_path = self.current_directory.to_string_lossy().to_string();
+        let mut display_path = full_path.replacen("/home/kramwriter", "", 1);
+        if display_path.is_empty() || display_path == "/" { display_path = String::from(""); }
+        display_path = display_path.to_uppercase();
+        if display_path.len() > 30 {
+            format!("...{}", &display_path[display_path.len() - 30..])
+        } else {
+            display_path
+        }
+    }
 }
 
 impl Page for FileBrowserPage {
@@ -213,6 +204,10 @@ impl Page for FileBrowserPage {
                     if self.selected_index < self.entries.len() - 1 {
                         self.selected_index += 1;
                         if self.selected_index >= self.scroll_offset + 8 { self.scroll_offset = self.selected_index - 7; }
+                    } else {
+                        // Optional: Pressing Down at the bottom of the list moves to footer
+                        self.focus = BrowserFocus::Footer;
+                        self.footer_index = 1; 
                     }
                     Action::None
                 }
@@ -230,8 +225,6 @@ impl Page for FileBrowserPage {
                             self.selected_index = 0;
                             self.scroll_offset = 0;
                         } else if self.mode == BrowserMode::OpenFile {
-                            // Logic: If in Open mode and user hits Enter on a file, open it
-                            // Action::Push(Box::new(EditorPage::new(selected.path)))
                             return Action::Pop; 
                         }
                     }
@@ -263,15 +256,11 @@ impl Page for FileBrowserPage {
                             _ => Action::None
                         }
                     } else {
-                        // OpenFile mode footer logic
                         match self.footer_index {
-                            0 => Action::Pop, // Cancel
-                            1 => { // Open
+                            0 => Action::Pop, 
+                            1 => { 
                                 if let Some(entry) = self.entries.get(self.selected_index) {
-                                    if !entry.is_dir {
-                                        // Action::Push(Box::new(EditorPage::new(entry.path.clone())))
-                                        return Action::Pop;
-                                    }
+                                    if !entry.is_dir { return Action::Pop; }
                                 }
                                 Action::None
                             },
@@ -285,7 +274,6 @@ impl Page for FileBrowserPage {
     }
 
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
-        // ... (Header and List drawing same as before) ...
         for x in 0..400 { display.draw_pixel(x, 22, Pixel::Black, ctx); }
         if let Some(bmp) = &self.home_icon { self.draw_icon_colored(display, bmp, 2, 2, Pixel::Black, ctx); }
         let header_path = self.format_header_path();
@@ -299,7 +287,6 @@ impl Page for FileBrowserPage {
             }
         }
 
-        // Logic for Footer Variants
         let footer_bmp = if self.mode == BrowserMode::Full {
             let idx = if self.focus == BrowserFocus::List { 0 } else { self.footer_index + 1 };
             &self.footer_full[idx]
