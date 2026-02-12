@@ -74,18 +74,19 @@ impl Page for FileBrowserPage {
 impl FileBrowserPage {
     /// Helper to draw small icons with transparency (skipping white pixels)
     fn draw_icon(&self, display: &mut SharpDisplay, bmp: &Bitmap, x_offset: usize, y_offset: usize, ctx: &Context) {
-        for y in 0..bmp.height {
-            for x in 0..bmp.width {
-                let pixel = bmp.pixels[y * bmp.width + x];
-                // Only draw the black pixels of the icon
-                if pixel == Pixel::Black {
-                    let screen_x = x + x_offset;
-                    let screen_y = y + y_offset;
-                    if screen_x < 400 && screen_y < 240 {
-                        display.draw_pixel(screen_x, screen_y, pixel, ctx);
-                    }
+    for y in 0..bmp.height {
+        for x in 0..bmp.width {
+            let pixel = bmp.pixels[y * bmp.width + x];
+            // CRITICAL: Only call draw_pixel for Black pixels.
+            // This treats White in the BMP as "transparent".
+            if pixel == Pixel::Black {
+                let screen_x = x + x_offset;
+                let screen_y = y + y_offset;
+                if screen_x < 400 && screen_y < 240 {
+                    display.draw_pixel(screen_x, screen_y, pixel, ctx);
                 }
             }
         }
     }
+}
 }
