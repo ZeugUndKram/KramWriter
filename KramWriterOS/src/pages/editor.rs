@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::fs;
 
 // Timezone and Time imports
-use chrono::{Utc, TimeZone};
+use chrono::{Utc, FixedOffset}; // Add FixedOffset to your imports
 use chrono_tz::Tz;
 
 // --- LAYOUT STRUCTURE ---
@@ -184,30 +184,52 @@ impl EditorPage {
         self.content.split_whitespace().count()
     }
 
-    fn draw_bottom_bar(&self, display: &mut SharpDisplay, ctx: &Context) {
+   fn draw_bottom_bar(&self, display: &mut SharpDisplay, ctx: &Context) {
         let y_start = 218;
         let y_text = y_start as i32 + 18;
-        for x in 0..400 { display.draw_pixel(x, y_start, Pixel::Black, ctx); }
+
+        // Draw the separator line
+        for x in 0..400 { 
+            display.draw_pixel(x, y_start, Pixel::Black, ctx); 
+        }
         
+        // 1. Save Icon (Left)
         let save_icon = if self.is_dirty { &self.save_icons[0] } else { &self.save_icons[1] };
-        if let Some(bmp) = save_icon { self.draw_icon(display, bmp, 5, y_start + 3, ctx); }
+        if let Some(bmp) = save_icon { 
+            self.draw_icon(display, bmp, 5, y_start + 3, ctx); 
+        }
         
-        let filename = self.path.file_name().map(|n| n.to_string_lossy().to_string().to_uppercase()).unwrap_or_else(|| "UNTITLED.TXT".to_string());
+        // 2. Filename (Upper Case)
+        let filename = self.path.file_name()
+            .map(|n| n.to_string_lossy().to_string().to_uppercase())
+            .unwrap_or_else(|| "UNTITLED.TXT".to_string());
         self.renderer.draw_text_colored(display, &filename, 28, y_text, 18.0, Pixel::Black, ctx);
         
+        // 3. Word Count (Center-ish)
         let w_count = format!("W:{}", self.get_word_count());
         self.renderer.draw_text_colored(display, &w_count, 180, y_text, 18.0, Pixel::Black, ctx);
         
-        // --- TIMEZONE LOGIC ---
-        let tz: Tz = ctx.timezone.parse().unwrap_or(chrono_tz::UTC);
-        let now = Utc::now().with_timezone(&tz);
-        let time_str = now.format("%H:%M").to_string();
+        // 4. --- DYNAMIC TIMEZONE LOGIC ---
+        // Parse offset string (e.g. "-5" or "3.5") to seconds
+        let offset_hours = ctx.timezone.parse::<f32>().unwrap_or(0.0);
+        let offset_seconds = (offset_hours * 3600.0) as i32;
+        
+        let time_str = if let Some(offset) = FixedOffset::east_opt(offset_seconds) {
+            let now = Utc::now().with_timezone(&offset);
+            now.format("%H:%M").to_string()
+        } else {
+            Utc::now().format("%H:%M").to_string()
+        };
+        
         self.renderer.draw_text_colored(display, &time_str, 305, y_text, 18.0, Pixel::Black, ctx);
         
-        // WiFi & Weather from Context
-        if let Some(bmp) = &self.weather_icons[ctx.status.weather_icon as usize % 5] { 
+        // 5. Weather Icon
+        let weather_idx = (ctx.status.weather_icon as usize).min(self.weather_icons.len() - 1);
+        if let Some(bmp) = &self.weather_icons[weather_idx] { 
             self.draw_icon(display, bmp, 348, y_start + 3, ctx); 
         }
+
+        // 6. WiFi Strength Icon
         let wifi_idx = (ctx.status.wifi_strength as usize).min(4);
         if let Some(bmp) = &self.wifi_icons[wifi_idx] { 
             self.draw_icon(display, bmp, 372, y_start + 3, ctx); 
