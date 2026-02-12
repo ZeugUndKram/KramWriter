@@ -24,7 +24,7 @@ pub struct FileEntry {
 
 pub struct FileBrowserPage {
     home_icon: Option<Bitmap>,
-    back_icon: Option<Bitmap>,
+    back_icon: Option<Bitmap>, // This will now correctly load icon_up.bmp
     folder_icon: Option<Bitmap>,
     file_icon: Option<Bitmap>,
     footer_variants: [Option<Bitmap>; 4],
@@ -51,8 +51,8 @@ impl FileBrowserPage {
 
         let mut page = Self {
             home_icon: Bitmap::load(&format!("{}/icon_home.bmp", asset_path)).ok(),
-            // CRITICAL: Ensure this filename is exactly icon_back.bmp on your Pi
-            back_icon: Bitmap::load(&format!("{}/icon_back.bmp", asset_path)).ok(),
+            // FIXED: Changed filename to match your 'ls' output
+            back_icon: Bitmap::load(&format!("{}/icon_up.bmp", asset_path)).ok(),
             folder_icon: Bitmap::load(&format!("{}/icon_folder.bmp", asset_path)).ok(),
             file_icon: Bitmap::load(&format!("{}/icon_file.bmp", asset_path)).ok(),
             footer_variants,
@@ -72,14 +72,11 @@ impl FileBrowserPage {
     fn refresh_entries(&mut self) {
         self.entries.clear();
         
-        // Convert to absolute string for reliable comparison
+        let home_base = "/home/kramwriter";
         let current_str = self.current_directory.to_string_lossy().to_string();
-        
-        // DEBUG: Check your terminal for this output!
-        println!("Current Directory: {}", current_str);
 
-        // Logic: If we are NOT in the base home dir, add the ".." entry
-        if current_str != "/home/kramwriter" && current_str != "/home/kramwriter/" {
+        // Show "Back" if we are deeper than the home directory
+        if current_str.len() > home_base.len() {
             if let Some(parent) = self.current_directory.parent() {
                 self.entries.push(FileEntry {
                     name: String::from(".."),
@@ -103,7 +100,7 @@ impl FileBrowserPage {
             }
         }
 
-        // FORCE ".." to the top
+        // Sort: ".." always first, then Folders, then alphabetical
         self.entries.sort_by(|a, b| {
             if a.name == ".." { return std::cmp::Ordering::Less; }
             if b.name == ".." { return std::cmp::Ordering::Greater; }
@@ -121,8 +118,9 @@ impl FileBrowserPage {
             full_path
         };
 
+        // If at home, the string is empty, so we just show the Home icon
         if display_path.is_empty() || display_path == "/" { 
-            display_path = String::from(""); // Just show icon if at home
+            display_path = String::from(""); 
         }
         
         display_path = display_path.to_uppercase();
@@ -162,9 +160,13 @@ impl FileBrowserPage {
             }
         }
 
-        let icon = if entry.name == ".." { &self.back_icon } 
-                   else if entry.is_dir { &self.folder_icon } 
-                   else { &self.file_icon };
+        let icon = if entry.name == ".." { 
+            &self.back_icon 
+        } else if entry.is_dir { 
+            &self.folder_icon 
+        } else { 
+            &self.file_icon 
+        };
 
         if let Some(bmp) = icon {
             self.draw_icon_colored(display, bmp, 5, (y + 3) as usize, draw_color, ctx);
@@ -211,12 +213,14 @@ impl Page for FileBrowserPage {
                     Action::None
                 }
                 Key::Char('\n') => {
-                    let selected = self.entries[self.selected_index].clone();
-                    if selected.is_dir {
-                        self.current_directory = selected.path;
-                        self.refresh_entries();
-                        self.selected_index = 0;
-                        self.scroll_offset = 0;
+                    if let Some(entry) = self.entries.get(self.selected_index) {
+                        let selected = entry.clone();
+                        if selected.is_dir {
+                            self.current_directory = selected.path;
+                            self.refresh_entries();
+                            self.selected_index = 0;
+                            self.scroll_offset = 0;
+                        }
                     }
                     Action::None
                 }
@@ -249,7 +253,7 @@ impl Page for FileBrowserPage {
     }
 
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
-        // 1. Header (22px high)
+        // 1. Header (Black line separator)
         for x in 0..400 { display.draw_pixel(x, 22, Pixel::Black, ctx); }
         
         // Home icon at 2px from left and top
@@ -258,6 +262,7 @@ impl Page for FileBrowserPage {
         }
         
         let header_path = self.format_header_path();
+        // Path starts after the home icon area
         self.renderer.draw_text_colored(display, &header_path, 35, 18, 20.0, Pixel::Black, ctx);
 
         // 2. Visible List
@@ -269,7 +274,7 @@ impl Page for FileBrowserPage {
             }
         }
 
-        // 3. Footer (Y=216)
+        // 3. Footer (Aligned to bottom)
         let footer_idx = if self.focus == BrowserFocus::List { 0 } else { self.footer_index + 1 };
         if let Some(bmp) = &self.footer_variants[footer_idx] {
             let y_start = 216; 
