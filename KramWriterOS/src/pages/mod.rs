@@ -2,6 +2,7 @@ pub mod startup;
 pub mod menu;
 pub mod credits;
 pub mod settings;
+pub mod timezone;
 
 use crate::context::Context;
 use crate::display::SharpDisplay;

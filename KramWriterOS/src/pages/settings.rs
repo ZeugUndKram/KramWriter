@@ -38,21 +38,42 @@ impl SettingsPage {
 }
 
 impl Page for SettingsPage {
-    fn update(&mut self, key: Key, _ctx: &mut Context) -> Action {
+    fn update(&mut self, key: Key, ctx: &mut Context) -> Action {
         match key {
+            // 1. Move selection up
             Key::Up => {
-                if self.current_index > 0 { self.current_index -= 1; }
+                if self.current_index > 0 {
+                    self.current_index -= 1;
+                }
                 Action::None
             }
+            // 2. Move selection down
             Key::Down => {
-                if self.current_index < SETTINGS_OPTIONS.len() - 1 { self.current_index += 1; }
+                if self.current_index < SETTINGS_OPTIONS.len() - 1 {
+                    self.current_index += 1;
+                }
                 Action::None
             }
+            // 3. Handle the ENTER key
+            Key::Char('\n') => {
+                match self.current_index {
+                    0 => {
+                        // If "timezone" (index 0) is selected, Push the Timezone page
+                        Action::Push(Box::new(crate::pages::timezone::TimezonePage::new()))
+                    }
+                    2 => {
+                        // If "darkmode" (index 2) is selected, toggle the context variable
+                        ctx.dark_mode = !ctx.dark_mode;
+                        Action::None
+                    }
+                    _ => Action::None,
+                }
+            }
+            // 4. Go back to main menu
             Key::Esc => Action::Pop,
             _ => Action::None,
         }
     }
-
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
         // Draw every image at (0,0) so their internal transparency 
         // allows them to stack on top of each other.
