@@ -43,8 +43,8 @@ impl App {
             if let Some(Ok(key)) = keys.next() {
                 // 1. GLOBAL INTERCEPT: Ctrl+X to kill the app
                 if key == Key::Ctrl('x') {
-                    self.display.clear()?;
-                    self.display.update()?;
+                    self.display.clear(); // Removed the ?
+                    self.display.update()?; // Keep this one, update returns Result
                     return Ok(());
                 }
 
@@ -80,7 +80,7 @@ impl App {
     }
 
     fn render(&mut self) -> Result<()> {
-        self.display.clear()?; // Added ? for Result handling
+        self.display.clear(); // Removed the ?
         
         if let Some(top_page) = self.stack.last() {
             top_page.draw(&mut self.display, &self.ctx);
