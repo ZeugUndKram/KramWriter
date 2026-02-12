@@ -215,12 +215,11 @@ impl Page for EditorPage {
             
             self.renderer.draw_text_colored(display, line, margin, draw_y, self.font_size, Pixel::Black, ctx);
 
-            // Draw Cursor
-            if idx == cursor_line_idx {
-                for cy in (draw_y - (self.font_size as i32 * 0.8) as i32)..(draw_y + 2) {
-                    if cy > 0 && cy < 218 {
-                        display.draw_pixel(cursor_x_pos as usize, cy as usize, Pixel::Black, ctx);
-                    }
+            let cursor_top = draw_y - (self.font_size * 0.8) as i32;
+
+            for cy in cursor_top..(draw_y + 2) {
+                if cy > 0 && cy < 218 {
+                    display.draw_pixel(cursor_x_pos as usize, cy as usize, Pixel::Black, ctx);
                 }
             }
             draw_y += line_height;
