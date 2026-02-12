@@ -2,6 +2,7 @@ use crate::pages::{Page, Action};
 use crate::context::Context;
 use crate::display::SharpDisplay;
 use crate::ui::bitmap::Bitmap;
+
 use termion::event::Key;
 
 const MENU_OPTIONS: [&str; 5] = ["Write", "Learn", "Zeugtris", "Settings", "Credits"];
@@ -63,7 +64,7 @@ impl Page for MenuPage {
             // Handle the selection (Enter key)
             Key::Char('\n') => {
                 match self.current_index {
-                    0 => Action::Push(Box::new(WriteMenuPage::new())),
+                    0 => Action::Push(Box::new(crate::pages::write_menu::WriteMenuPage::new())),
                     1 => Action::None, // Learn (Add later)
                     2 => Action::None, // Zeugtris (Add later)
                     3 => Action::Push(Box::new(crate::pages::settings::SettingsPage::new())),
