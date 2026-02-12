@@ -32,7 +32,7 @@ impl Bitmap {
                     for x in 0..width {
                         let byte = data[row_start + (x / 8)];
                         let bit = 7 - (x % 8);
-                        // MATCH OLD VERSION: 1 is Black, 0 is White
+                        // Standard: 1 is Black (ink), 0 is White (paper)
                         pixels.push(if (byte >> bit) & 1 == 1 { Pixel::Black } else { Pixel::White });
                     }
                 }
@@ -40,6 +40,7 @@ impl Bitmap {
             24 | 32 => {
                 let bytes_per_pixel = (bpp / 8) as usize;
                 let row_padded = (width * bytes_per_pixel + 3) & !3;
+
                 for y in (0..height).rev() {
                     let row_start = pixel_offset + y * row_padded;
                     for x in 0..width {
@@ -47,9 +48,15 @@ impl Bitmap {
                         let b = data[px_start] as u32;
                         let g = data[px_start + 1] as u32;
                         let r = data[px_start + 2] as u32;
-                        // MATCH OLD VERSION: Bright pixels are White, Dark are Black
-                        let avg = (r + g + b) / 3;
-                        pixels.push(if avg > 127 { Pixel::White } else { Pixel::Black });
+                        
+                        // Check Alpha channel for 32-bit images. 
+                        // If alpha is 0 (transparent), treat as White (background).
+                        if bpp == 32 && data[px_start + 3] == 0 {
+                            pixels.push(Pixel::White);
+                        } else {
+                            let brightness = (r + g + b) / 3;
+                            pixels.push(if brightness > 127 { Pixel::White } else { Pixel::Black });
+                        }
                     }
                 }
             }

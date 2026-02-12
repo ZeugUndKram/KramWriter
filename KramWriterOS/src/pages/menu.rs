@@ -6,7 +6,6 @@ use termion::event::Key;
 
 const MENU_OPTIONS: [&str; 5] = ["Write", "Learn", "Zeugtris", "Settings", "Credits"];
 
-// Original spacing constants
 const SPACING_TOP_TO_MAIN: i32 = -10;
 const SPACING_MAIN_TO_BOTTOM: i32 = 10;
 const SPACING_TOP_TO_FARTOP: i32 = 30;
@@ -48,7 +47,6 @@ impl MenuPage {
 impl Page for MenuPage {
     fn update(&mut self, key: Key, _ctx: &mut Context) -> Action {
         match key {
-            Key::Char('\n') => Action::None,
             Key::Up => { if self.current_index > 0 { self.current_index -= 1; } Action::None },
             Key::Down => { if self.current_index < MENU_OPTIONS.len() - 1 { self.current_index += 1; } Action::None },
             Key::Esc => Action::Replace(Box::new(crate::pages::startup::LogoPage::new())),
@@ -57,20 +55,19 @@ impl Page for MenuPage {
     }
 
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
-        // CENTER: Suffix _1 (Index 1)
-        if let Some(main_bmp) = self.images[self.current_index][1].as_ref() {
+        // CENTER: Suffix _0 (Variant index 0)
+        if let Some(main_bmp) = self.images[self.current_index][0].as_ref() {
             let cy = (240i32 - main_bmp.height as i32) / 2;
             self.draw_bitmap_at(display, main_bmp, cy, ctx);
-
             let h = main_bmp.height as i32;
 
-            // TOP: Suffix _0 (Index 0)
+            // TOP: Suffix _1 (Variant index 1)
             if self.current_index > 0 {
-                if let Some(img) = self.images[self.current_index - 1][0].as_ref() {
+                if let Some(img) = self.images[self.current_index - 1][1].as_ref() {
                     let y = cy - img.height as i32 + SPACING_TOP_TO_MAIN;
                     self.draw_bitmap_at(display, img, y, ctx);
 
-                    // FAR TOP: Suffix _2 (Index 2)
+                    // FAR TOP: Suffix _2 (Variant index 2)
                     if self.current_index > 1 {
                         if let Some(far_img) = self.images[self.current_index - 2][2].as_ref() {
                             let far_y = y - far_img.height as i32 - SPACING_TOP_TO_FARTOP;
@@ -80,13 +77,13 @@ impl Page for MenuPage {
                 }
             }
 
-            // BOTTOM: Suffix _0 (Index 0)
+            // BOTTOM: Suffix _1 (Variant index 1)
             if self.current_index < MENU_OPTIONS.len() - 1 {
-                if let Some(img) = self.images[self.current_index + 1][0].as_ref() {
+                if let Some(img) = self.images[self.current_index + 1][1].as_ref() {
                     let y = cy + h + SPACING_MAIN_TO_BOTTOM;
                     self.draw_bitmap_at(display, img, y, ctx);
 
-                    // FAR BOTTOM: Suffix _2 (Index 2)
+                    // FAR BOTTOM: Suffix _2 (Variant index 2)
                     if self.current_index < MENU_OPTIONS.len() - 2 {
                         if let Some(far_img) = self.images[self.current_index + 2][2].as_ref() {
                             let far_y = y + img.height as i32 + SPACING_BOTTOM_TO_FARBOTTOM;
