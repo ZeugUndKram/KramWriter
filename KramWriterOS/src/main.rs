@@ -9,6 +9,7 @@ use crate::pages::{Page, Action};
 use std::io::{stdin, stdout};
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
+use termion::event::Key; // Added this import
 use anyhow::Result;
 
 struct App {
@@ -19,9 +20,9 @@ struct App {
 
 impl App {
     fn new() -> Result<Self> {
+        // Using your CS pin 6
         let display = SharpDisplay::new(6)?;
         let ctx = Context::new();
-        // Start with the Logo page
         let startup_page = Box::new(pages::startup::LogoPage::new());
 
         Ok(Self {
@@ -32,34 +33,29 @@ impl App {
     }
 
     fn run(&mut self) -> Result<()> {
-        // Raw mode is necessary to catch individual keypresses without Enter
         let _stdout = stdout().into_raw_mode()?;
         let stdin = stdin();
         let mut keys = stdin.keys();
 
-        self.render()?; // Initial frame
+        self.render()?;
 
         loop {
             if let Some(Ok(key)) = keys.next() {
-                // 1. GLOBAL INTERCEPT: Check for Ctrl+X first
+                // 1. GLOBAL INTERCEPT: Ctrl+X to kill the app
                 if key == Key::Ctrl('x') {
-                    println!("Exiting kramwriter...");
-                    // Clear the display before leaving (optional but clean)
                     self.display.clear()?;
                     self.display.update()?;
-                    return Ok(()); // This breaks the loop and exits the app
+                    return Ok(());
                 }
 
-                // 2. LOGIC HANDLING: Pass other keys to the current page
-                let action = current_page.update(key, &mut context);
-                
-                match action {
-                    Action::Replace(next_page) => {
-                        current_page = next_page;
-                    }
-                    Action::None => {}
-                }
-            }
+                // 2. GET ACTION: Pass key to the top page of the stack
+                let action = if let Some(top_page) = self.stack.last_mut() {
+                    top_page.update(key, &mut self.ctx)
+                } else {
+                    Action::Exit
+                };
+
+                // 3. PROCESS ACTION
                 match action {
                     Action::Push(new_page) => self.stack.push(new_page),
                     Action::Pop => { self.stack.pop(); },
@@ -71,7 +67,12 @@ impl App {
                     Action::None => {},
                 }
 
-                if self.stack.is_empty() { break; }
+                // If we popped everything, exit the app
+                if self.stack.is_empty() { 
+                    break; 
+                }
+
+                // 4. RENDER the new state
                 self.render()?;
             }
         }
@@ -79,7 +80,7 @@ impl App {
     }
 
     fn render(&mut self) -> Result<()> {
-        self.display.clear();
+        self.display.clear()?; // Added ? for Result handling
         
         if let Some(top_page) = self.stack.last() {
             top_page.draw(&mut self.display, &self.ctx);
