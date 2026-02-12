@@ -137,14 +137,14 @@ impl Page for NameEntryPage {
 
         // 3. Precise Blinking Cursor
         if self.focus == EntryFocus::TextInput {
-            let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
-            if (now / 500) % 2 == 0 { // Blink every 500ms
-                // Calculate width of text BEFORE the cursor
-                let substring = &self.input_text[0..self.cursor_pos];
-                let sub_width = self.renderer.calculate_width(substring, font_size);
-                let cursor_x = start_x + sub_width + 2; // +2 for a tiny bit of breathing room
+            // Calculate width of text BEFORE the cursor
+            let substring = &self.input_text[0..self.cursor_pos];
+            let sub_width = self.renderer.calculate_width(substring, font_size);
+            let cursor_x = start_x + sub_width + 2; 
 
-                for cy in (text_y - 28)..(text_y + 2) {
+            // Draw a solid 2px wide cursor
+            for cy in (text_y - 28)..(text_y + 2) {
+                if cy > 0 && cy < 240 {
                     display.draw_pixel(cursor_x as usize, cy as usize, Pixel::Black, ctx);
                     display.draw_pixel((cursor_x + 1) as usize, cy as usize, Pixel::Black, ctx);
                 }
