@@ -25,7 +25,7 @@ pub struct FileEntry {
 
 pub struct FileBrowserPage {
     home_icon: Option<Bitmap>,
-    back_icon: Option<Bitmap>, // This will now correctly load icon_up.bmp
+    back_icon: Option<Bitmap>, 
     folder_icon: Option<Bitmap>,
     file_icon: Option<Bitmap>,
     footer_variants: [Option<Bitmap>; 4],
@@ -36,6 +36,7 @@ pub struct FileBrowserPage {
     scroll_offset: usize,
     focus: BrowserFocus,
     footer_index: usize,
+    needs_refresh: bool, // Flag to trigger instant reload after saving
 }
 
 impl FileBrowserPage {
@@ -52,7 +53,6 @@ impl FileBrowserPage {
 
         let mut page = Self {
             home_icon: Bitmap::load(&format!("{}/icon_home.bmp", asset_path)).ok(),
-            // FIXED: Changed filename to match your 'ls' output
             back_icon: Bitmap::load(&format!("{}/icon_up.bmp", asset_path)).ok(),
             folder_icon: Bitmap::load(&format!("{}/icon_folder.bmp", asset_path)).ok(),
             file_icon: Bitmap::load(&format!("{}/icon_file.bmp", asset_path)).ok(),
@@ -64,6 +64,7 @@ impl FileBrowserPage {
             scroll_offset: 0,
             focus: BrowserFocus::List,
             footer_index: 0,
+            needs_refresh: false,
         };
 
         page.refresh_entries();
@@ -119,7 +120,6 @@ impl FileBrowserPage {
             full_path
         };
 
-        // If at home, the string is empty, so we just show the Home icon
         if display_path.is_empty() || display_path == "/" { 
             display_path = String::from(""); 
         }
@@ -192,6 +192,12 @@ impl FileBrowserPage {
 
 impl Page for FileBrowserPage {
     fn update(&mut self, key: Key, _ctx: &mut Context) -> Action {
+        // Automatically refresh if we just returned from NameEntryPage
+        if self.needs_refresh {
+            self.refresh_entries();
+            self.needs_refresh = false;
+        }
+
         match self.focus {
             BrowserFocus::List => match key {
                 Key::Up => {
@@ -241,12 +247,14 @@ impl Page for FileBrowserPage {
                     if self.footer_index < 2 { self.footer_index += 1; }
                     Action::None
                 }
-                // Inside FileBrowserPage::update(), specifically in the Footer branch:
                 Key::Char('\n') => {
                     match self.footer_index {
-                        0 => Action::Pop, // Cancel
-                        1 => Action::Push(Box::new(NameEntryPage::new(self.current_directory.clone(), true))), // New Folder
-                        2 => Action::None, // New File (we can add this later)
+                        0 => Action::Pop, 
+                        1 => {
+                            self.needs_refresh = true; // Refresh when we come back
+                            Action::Push(Box::new(NameEntryPage::new(self.current_directory.clone(), true)))
+                        },
+                        2 => Action::None, // Placeholder for New File
                         _ => Action::None
                     }
                 }
@@ -256,7 +264,7 @@ impl Page for FileBrowserPage {
     }
 
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
-        // 1. Header (Black line separator)
+        // 1. Header Line
         for x in 0..400 { display.draw_pixel(x, 22, Pixel::Black, ctx); }
         
         // Home icon at 2px from left and top
@@ -265,7 +273,6 @@ impl Page for FileBrowserPage {
         }
         
         let header_path = self.format_header_path();
-        // Path starts after the home icon area
         self.renderer.draw_text_colored(display, &header_path, 35, 18, 20.0, Pixel::Black, ctx);
 
         // 2. Visible List
@@ -277,7 +284,7 @@ impl Page for FileBrowserPage {
             }
         }
 
-        // 3. Footer (Aligned to bottom)
+        // 3. Footer 
         let footer_idx = if self.focus == BrowserFocus::List { 0 } else { self.footer_index + 1 };
         if let Some(bmp) = &self.footer_variants[footer_idx] {
             let y_start = 216; 
