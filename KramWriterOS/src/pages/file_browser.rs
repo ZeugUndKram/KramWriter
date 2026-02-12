@@ -8,6 +8,7 @@ use rpi_memory_display::Pixel;
 use std::fs;
 use std::path::PathBuf;
 use crate::pages::name_entry::NameEntryPage;
+use crate::pages::editor::EditorPage; // ADDED: Import the Editor
 
 #[derive(PartialEq)]
 pub enum BrowserFocus {
@@ -124,7 +125,6 @@ impl FileBrowserPage {
     }
 
     fn draw_list_row(&self, display: &mut SharpDisplay, ctx: &Context, index: usize, y: i32, entry: &FileEntry) {
-        // CHANGED: The row stays highlighted based strictly on selection, not focus
         let is_selected = self.selected_index == index;
         let row_height = 22;
         let draw_color = if is_selected { Pixel::White } else { Pixel::Black };
@@ -205,7 +205,6 @@ impl Page for FileBrowserPage {
                         self.selected_index += 1;
                         if self.selected_index >= self.scroll_offset + 8 { self.scroll_offset = self.selected_index - 7; }
                     } else {
-                        // Optional: Pressing Down at the bottom of the list moves to footer
                         self.focus = BrowserFocus::Footer;
                         self.footer_index = 1; 
                     }
@@ -224,11 +223,14 @@ impl Page for FileBrowserPage {
                             self.refresh_entries();
                             self.selected_index = 0;
                             self.scroll_offset = 0;
-                        } else if self.mode == BrowserMode::OpenFile {
-                            return Action::Pop; 
+                            Action::None
+                        } else {
+                            // CHANGED: Pushes the EditorPage when a file is selected in the list
+                            Action::Push(Box::new(EditorPage::new(selected.path)))
                         }
+                    } else {
+                        Action::None
                     }
-                    Action::None
                 }
                 Key::Esc => Action::Pop,
                 _ => Action::None,
@@ -247,11 +249,11 @@ impl Page for FileBrowserPage {
                             0 => Action::Pop, 
                             1 => {
                                 self.needs_refresh = true;
-                                Action::Push(Box::new(NameEntryPage::new(self.current_directory.clone(), true)))
+                                Action::Push(Box::new(NameEntryPage::new(self.current_directory.clone(), false)))
                             },
                             2 => {
                                 self.needs_refresh = true;
-                                Action::Push(Box::new(NameEntryPage::new(self.current_directory.clone(), false)))
+                                Action::Push(Box::new(NameEntryPage::new(self.current_directory.clone(), true)))
                             },
                             _ => Action::None
                         }
@@ -259,8 +261,11 @@ impl Page for FileBrowserPage {
                         match self.footer_index {
                             0 => Action::Pop, 
                             1 => { 
+                                // CHANGED: Pushes EditorPage if the currently selected list item is a file
                                 if let Some(entry) = self.entries.get(self.selected_index) {
-                                    if !entry.is_dir { return Action::Pop; }
+                                    if !entry.is_dir { 
+                                        return Action::Push(Box::new(EditorPage::new(entry.path.clone()))); 
+                                    }
                                 }
                                 Action::None
                             },
