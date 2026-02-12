@@ -46,17 +46,14 @@ impl FontRenderer {
         }
     }
     pub fn calculate_width(&self, text: &str, size: f32) -> i32 {
-        let scale = rusttype::Scale::scaled(size);
-        let v_metrics = self.font.v_metrics(scale);
-        let glyphs: Vec<_> = self.font.layout(text, scale, rusttype::point(0.0, v_metrics.ascent)).collect();
+        let mut total_width = 0.0;
         
-        if glyphs.is_empty() {
-            return 0;
+        for c in text.chars() {
+            // fontdue uses metrics() to get character dimensions
+            let metrics = self.font.metrics(c, size);
+            total_width += metrics.advance_width;
         }
 
-        let min_x = glyphs.first().map(|g| g.pixel_bounding_box().map(|b| b.min.x).unwrap_or(0)).unwrap_or(0);
-        let max_x = glyphs.last().map(|g| g.pixel_bounding_box().map(|b| b.max.x).unwrap_or(0)).unwrap_or(0);
-
-        (max_x - min_x).abs()
+        total_width as i32
     }
 }
