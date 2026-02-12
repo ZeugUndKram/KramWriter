@@ -16,14 +16,14 @@ enum EntryFocus {
 
 pub struct NameEntryPage {
     title_bmp: Option<Bitmap>,
-    footer_variants: [Option<Bitmap>; 3], // 0: none, 1: cancel, 2: save
+    footer_variants: [Option<Bitmap>; 3],
     renderer: FontRenderer,
     parent_path: PathBuf,
     is_folder: bool,
     input_text: String,
     cursor_pos: usize,
     focus: EntryFocus,
-    footer_index: usize, // 0: Cancel, 1: Save
+    footer_index: usize,
     error_msg: Option<String>,
 }
 
@@ -45,7 +45,7 @@ impl NameEntryPage {
             input_text: String::new(),
             cursor_pos: 0,
             focus: EntryFocus::TextInput,
-            footer_index: 1, // Default highlight on SAVE
+            footer_index: 1, 
             error_msg: None,
         }
     }
@@ -76,19 +76,6 @@ impl NameEntryPage {
             }
         }
     }
-
-    fn draw_layer(&self, display: &mut SharpDisplay, bmp: &Bitmap, y_offset: i32, ctx: &Context) {
-        for y in 0..bmp.height {
-            let sy = y as i32 + y_offset;
-            if sy >= 0 && sy < 240 {
-                for x in 0..bmp.width.min(400) {
-                    if bmp.pixels[y * bmp.width + x] == Pixel::Black {
-                        display.draw_pixel(x, sy as usize, Pixel::Black, ctx);
-                    }
-                }
-            }
-        }
-    }
 }
 
 impl Page for NameEntryPage {
@@ -116,8 +103,7 @@ impl Page for NameEntryPage {
                     Action::None
                 }
                 Key::Char(c) => {
-                    // Filter for valid filename characters
-                    if c.is_alphanumeric() || c == '_' || c == '-' || c == ' ' {
+                    if self.input_text.len() < 20 { // Prevent overflow
                         self.input_text.insert(self.cursor_pos, c.to_ascii_uppercase());
                         self.cursor_pos += 1;
                         self.error_msg = None;
@@ -131,14 +117,8 @@ impl Page for NameEntryPage {
                     self.focus = EntryFocus::TextInput;
                     Action::None
                 }
-                Key::Left => {
-                    self.footer_index = 0; // Cancel
-                    Action::None
-                }
-                Key::Right => {
-                    self.footer_index = 1; // Save
-                    Action::None
-                }
+                Key::Left => { self.footer_index = 0; Action::None }
+                Key::Right => { self.footer_index = 1; Action::None }
                 Key::Char('\n') => {
                     if self.footer_index == 0 { Action::Pop } else { self.try_save() }
                 }
@@ -148,41 +128,51 @@ impl Page for NameEntryPage {
     }
 
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
-        // 1. Title (title.bmp)
+        // 1. Center Title Bitmap
         if let Some(bmp) = &self.title_bmp {
-            self.draw_layer(display, bmp, 40, ctx);
+            let x_centered = (400 - bmp.width as i32) / 2;
+            for y in 0..bmp.height {
+                for x in 0..bmp.width {
+                    if bmp.pixels[y * bmp.width + x] == Pixel::Black {
+                        display.draw_pixel((x as i32 + x_centered) as usize, (y + 40) as usize, Pixel::Black, ctx);
+                    }
+                }
+            }
         }
 
-        // 2. Input Field
-        let text_y = 110;
-        let char_width = 14; // Bebas Neue approximate width at size 32
-        let total_w = self.input_text.len() as i32 * char_width;
-        let start_x = 200 - (total_w / 2); // Center text
+        // 2. Center Text and Cursor
+        let char_w = 18; // Adjusted BebasNeue width for size 32
+        let text_y = 120;
+        let total_text_w = self.input_text.len() as i32 * char_w;
+        let start_x = 200 - (total_text_w / 2);
         
         self.renderer.draw_text(display, &self.input_text, start_x, text_y, 32.0, ctx);
 
-        // 3. Cursor
+        // 3. Draw Cursor
         if self.focus == EntryFocus::TextInput {
-            let cursor_x = start_x + (self.cursor_pos as i32 * char_width);
-            // Draw a 2px wide cursor
-            for cy in (text_y - 26)..(text_y + 4) {
-                if cy > 0 && cy < 240 {
-                    display.draw_pixel(cursor_x as usize, cy as usize, Pixel::Black, ctx);
-                    display.draw_pixel((cursor_x + 1) as usize, cy as usize, Pixel::Black, ctx);
-                }
+            let cursor_x = start_x + (self.cursor_pos as i32 * char_w);
+            for cy in (text_y - 28)..(text_y + 2) {
+                display.draw_pixel(cursor_x as usize, cy as usize, Pixel::Black, ctx);
+                display.draw_pixel((cursor_x + 1) as usize, cy as usize, Pixel::Black, ctx);
             }
         }
 
         // 4. Error Message
         if let Some(err) = &self.error_msg {
-            let err_w = err.len() as i32 * 8;
-            self.renderer.draw_text(display, err, 200 - (err_w / 2), 160, 18.0, ctx);
+            self.renderer.draw_text(display, err, 80, 165, 20.0, ctx);
         }
 
-        // 5. Footer (bottom_bar_0, 1, 2)
+        // 5. Footer
         let footer_idx = if self.focus == EntryFocus::TextInput { 0 } else { self.footer_index + 1 };
         if let Some(bmp) = &self.footer_variants[footer_idx] {
-            self.draw_layer(display, bmp, 216, ctx);
+            // Drawn at 216 to match the browser
+            for y in 0..bmp.height {
+                for x in 0..bmp.width {
+                    if bmp.pixels[y * bmp.width + x] == Pixel::Black {
+                        display.draw_pixel(x, (y + 216) as usize, Pixel::Black, ctx);
+                    }
+                }
+            }
         }
     }
 }
