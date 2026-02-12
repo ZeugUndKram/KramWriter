@@ -33,9 +33,7 @@ pub struct EditorPage {
     is_dirty: bool,
     renderer: FontRenderer,
     font_size: f32,
-    line_height: i32,
     top_margin: i32,
-    // Assets
     save_icons: [Option<Bitmap>; 2],
     wifi_icons: [Option<Bitmap>; 5],
     weather_icons: Vec<Option<Bitmap>>,
@@ -57,8 +55,6 @@ impl EditorPage {
             is_dirty: false,
             renderer,
             font_size: 22.0,
-            // Optimization: Tighter spacing to fit 8 lines
-            line_height: 24, 
             top_margin: 25,
             save_icons: [
                 Bitmap::load(&format!("{}/save_0.bmp", asset_path)).ok(),
@@ -81,20 +77,30 @@ impl EditorPage {
         }
     }
 
+    // --- HELPER: CURSOR LOGIC ---
+    fn cursor_is_on_this_line(&self, line: &VisualLine) -> bool {
+        if self.cursor_pos >= line.start_index && self.cursor_pos < line.end_index() {
+            true
+        } else if self.cursor_pos == line.end_index() {
+            // It's at the boundary. Show on this line if it's a hard break, 
+            // an empty line, or the very end of the file.
+            line.is_hard_break || line.len == 0 || self.cursor_pos == self.content.len()
+        } else {
+            false
+        }
+    }
+
     // --- LAYOUT ENGINE ---
     fn build_layout(&self, max_width: f32) -> Vec<VisualLine> {
         let mut visual_lines = Vec::new();
         let mut current_abs_index = 0;
 
-        // Split by logical paragraphs. 
-        // Note: split('\n') removes the newline char, so we must account for it in indexing.
         let paragraphs: Vec<&str> = self.content.split('\n').collect();
         let total_paras = paragraphs.len();
 
         for (i, para) in paragraphs.iter().enumerate() {
             let is_last_para = i == total_paras - 1;
             
-            // Handle Empty Paragraphs (Empty lines)
             if para.is_empty() {
                 visual_lines.push(VisualLine {
                     text: String::new(),
@@ -102,11 +108,10 @@ impl EditorPage {
                     len: 0,
                     is_hard_break: !is_last_para,
                 });
-                current_abs_index += 1; // +1 for the \n we skipped
+                current_abs_index += 1;
                 continue;
             }
 
-            // Word Wrap Logic
             let mut current_line = String::new();
             let mut line_start_rel = 0;
             
@@ -115,13 +120,12 @@ impl EditorPage {
                 let w = self.renderer.calculate_width(&test_line, self.font_size);
                 
                 if (w as f32) > max_width && !current_line.is_empty() {
-                    // Soft Wrap
                     let len = current_line.len();
                     visual_lines.push(VisualLine {
                         text: current_line,
                         start_index: current_abs_index + line_start_rel,
                         len,
-                        is_hard_break: false, // FALSE because it continues on next line
+                        is_hard_break: false,
                     });
                     line_start_rel += len;
                     current_line = word.to_string();
@@ -130,39 +134,22 @@ impl EditorPage {
                 }
             }
 
-            // Push remainder (Hard Break)
             let len = current_line.len();
             visual_lines.push(VisualLine {
                 text: current_line,
                 start_index: current_abs_index + line_start_rel,
                 len,
-                is_hard_break: !is_last_para, // TRUE if there is a newline after this
+                is_hard_break: !is_last_para,
             });
 
             current_abs_index += para.len();
             if !is_last_para { current_abs_index += 1; }
         }
-
         visual_lines
     }
 
     fn move_cursor_vertical(&mut self, direction: i32, layout: &[VisualLine]) {
-        let current_line_idx = layout.iter().position(|l| {
-            // Find the line that *contains* the cursor.
-            // Special logic: If cursor is at end of Soft Wrap, it belongs to NEXT line.
-            // If cursor is at end of Hard Break, it belongs to THIS line.
-            if self.cursor_pos >= l.start_index && self.cursor_pos < l.end_index() {
-                return true;
-            }
-            if self.cursor_pos == l.end_index() && (l.is_hard_break || l.len == 0) {
-                return true;
-            }
-            // Catch-all for EOF
-            if self.cursor_pos == self.content.len() && self.cursor_pos == l.end_index() {
-                return true;
-            }
-            false
-        });
+        let current_line_idx = layout.iter().position(|l| self.cursor_is_on_this_line(l));
 
         if let Some(idx) = current_line_idx {
             let next_idx = idx as i32 + direction;
@@ -174,18 +161,13 @@ impl EditorPage {
                     tx
                 } else {
                     let offset = self.cursor_pos.saturating_sub(current_line.start_index);
-                    let safe_offset = offset.min(current_line.text.len());
-                    let text_before = &current_line.text[..safe_offset];
+                    let text_before = &current_line.text[..offset.min(current_line.text.len())];
                     self.renderer.calculate_width(text_before, self.font_size) as i32
                 };
 
-                // Find closest character in target line
                 let mut best_offset = 0;
                 let mut min_diff = i32::MAX;
-
-                // Optimization: Scan characters to find closest X match
-                let scan_len = target_line.text.len();
-                for i in 0..=scan_len {
+                for i in 0..=target_line.text.len() {
                     let sub = &target_line.text[..i];
                     let w = self.renderer.calculate_width(sub, self.font_size) as i32;
                     let diff = (w - target_x).abs();
@@ -194,7 +176,6 @@ impl EditorPage {
                         best_offset = i;
                     }
                 }
-
                 self.cursor_pos = target_line.start_index + best_offset;
                 self.target_cursor_x = Some(target_x);
             }
@@ -209,19 +190,14 @@ impl EditorPage {
         let y_start = 218;
         let y_text = y_start as i32 + 18;
         for x in 0..400 { display.draw_pixel(x, y_start, Pixel::Black, ctx); }
-        
         let save_icon = if self.is_dirty { &self.save_icons[0] } else { &self.save_icons[1] };
         if let Some(bmp) = save_icon { self.draw_icon(display, bmp, 5, y_start + 3, ctx); }
-        
         let filename = self.path.file_name().map(|n| n.to_string_lossy().to_string().to_uppercase()).unwrap_or_else(|| "UNTITLED.TXT".to_string());
         self.renderer.draw_text_colored(display, &filename, 28, y_text, 18.0, Pixel::Black, ctx);
-        
         let w_count = format!("W:{}", self.get_word_count());
         self.renderer.draw_text_colored(display, &w_count, 180, y_text, 18.0, Pixel::Black, ctx);
-        
         let time_str = Local::now().format("%H:%M").to_string();
         self.renderer.draw_text_colored(display, &time_str, 305, y_text, 18.0, Pixel::Black, ctx);
-        
         if let Some(bmp) = &self.weather_icons[0] { self.draw_icon(display, bmp, 348, y_start + 3, ctx); }
         if let Some(bmp) = &self.wifi_icons[4] { self.draw_icon(display, bmp, 372, y_start + 3, ctx); }
     }
@@ -232,9 +208,7 @@ impl EditorPage {
                 if bmp.pixels[y * bmp.width + x] == Pixel::Black {
                     let sx = x + x_off;
                     let sy = y + y_off;
-                    if sx < 400 && sy < 240 {
-                        display.draw_pixel(sx, sy, Pixel::Black, ctx);
-                    }
+                    if sx < 400 && sy < 240 { display.draw_pixel(sx, sy, Pixel::Black, ctx); }
                 }
             }
         }
@@ -259,25 +233,18 @@ impl Page for EditorPage {
     fn update(&mut self, key: Key, _ctx: &mut Context) -> Action {
         let max_width = 370.0;
         let layout = self.build_layout(max_width);
-        
-        // --- DYNAMIC MEASUREMENTS ---
         let line_height = (self.font_size * 1.2) as i32;
-        let available_height = 218 - self.top_margin;
-        let visible_lines = (available_height / line_height) as usize;
+        let visible_lines = ((218 - self.top_margin) / line_height) as usize;
 
         match key {
             Key::Esc => return Action::Pop,
             Key::Ctrl('s') => { let _ = fs::write(&self.path, &self.content); self.is_dirty = false; }
-            
-            // Font scaling now feels snappier because the rest of the UI adapts
             Key::Ctrl('+') | Key::Ctrl('=') => { if self.font_size < 60.0 { self.font_size += 2.0; } }
             Key::Ctrl('-') => { if self.font_size > 10.0 { self.font_size -= 2.0; } }
-
             Key::Left => { if self.cursor_pos > 0 { self.cursor_pos -= 1; } self.target_cursor_x = None; }
             Key::Right => { if self.cursor_pos < self.content.len() { self.cursor_pos += 1; } self.target_cursor_x = None; }
             Key::Up => self.move_cursor_vertical(-1, &layout),
             Key::Down => self.move_cursor_vertical(1, &layout),
-
             Key::Char(c) => {
                 self.content.insert(self.cursor_pos, c);
                 self.cursor_pos += 1;
@@ -295,13 +262,8 @@ impl Page for EditorPage {
             _ => {}
         }
 
-        // --- DYNAMIC SCROLLING ---
-        let current_line_idx = layout.iter().position(|l| {
-            if self.cursor_pos >= l.start_index && self.cursor_pos < l.end_index() { return true; }
-            if self.cursor_pos == l.end_index() && (l.is_hard_break || l.len == 0) { return true; }
-            if self.cursor_pos == self.content.len() && self.cursor_pos == l.end_index() { return true; }
-            false
-        }).unwrap_or(layout.len().saturating_sub(1));
+        let layout = self.build_layout(max_width); 
+        let current_line_idx = layout.iter().position(|l| self.cursor_is_on_this_line(l)).unwrap_or(0);
 
         if current_line_idx < self.scroll_line_offset {
             self.scroll_line_offset = current_line_idx;
@@ -316,29 +278,24 @@ impl Page for EditorPage {
         let margin = 10;
         let max_width = 370.0;
         let layout = self.build_layout(max_width);
-        
-        // Recalculate based on current font_size
         let line_height = (self.font_size * 1.2) as i32;
-        let available_height = 218 - self.top_margin;
-        let visible_lines = (available_height / line_height) as usize;
+        let visible_lines = ((218 - self.top_margin) / line_height) as usize;
 
         let mut draw_y = self.top_margin;
 
         for (idx, line) in layout.iter().enumerate().skip(self.scroll_line_offset) {
-            // Safety check: stop drawing if the next line would overlap the bottom bar
             if draw_y + line_height > 218 { break; }
 
             if !line.text.is_empty() {
+                // Adjusting Y based on font size so it renders within the line_height block
                 self.renderer.draw_text_colored(display, &line.text, margin, draw_y + (self.font_size as i32), self.font_size, Pixel::Black, ctx);
             }
 
-            // Cursor logic
             if self.cursor_is_on_this_line(line) {
                 let offset = self.cursor_pos.saturating_sub(line.start_index);
                 let sub_text = &line.text[..offset.min(line.text.len())];
                 let cursor_x = margin + self.renderer.calculate_width(sub_text, self.font_size) as i32;
                 
-                // Cursor scales with font height
                 let cursor_height = self.font_size as i32;
                 for cy in draw_y..(draw_y + cursor_height) {
                     if cy < 218 && cursor_x < 398 {
