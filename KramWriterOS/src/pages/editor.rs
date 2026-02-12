@@ -61,6 +61,12 @@ impl EditorPage {
         self.content.split_whitespace().count()
     }
 
+    fn save_file(&mut self) {
+        if fs::write(&self.path, &self.content).is_ok() {
+            self.is_dirty = false;
+        }
+    }
+
     fn draw_icon(&self, display: &mut SharpDisplay, bmp: &Bitmap, x_off: usize, y_off: usize, ctx: &Context) {
         for y in 0..bmp.height {
             for x in 0..bmp.width {
@@ -85,7 +91,8 @@ impl EditorPage {
 
             for word in paragraph.split_inclusive(' ') {
                 let test_line = format!("{}{}", current_line, word);
-                if self.renderer.calculate_width(&test_line, self.font_size) > max_width && !current_line.is_empty() {
+                // FIXED: Explicit cast to f32 for the width comparison
+                if (self.renderer.calculate_width(&test_line, self.font_size) as f32) > max_width && !current_line.is_empty() {
                     lines.push((current_line.clone(), line_start_pos));
                     line_start_pos += current_line.len();
                     current_line = word.to_string();
@@ -136,29 +143,29 @@ impl EditorPage {
 
 impl Page for EditorPage {
     fn update(&mut self, key: Key, _ctx: &mut Context) -> Action {
-        let max_width = 380.0;
+        let max_width = 370.0; // Reduced to give scrollbar room
         let lines = self.get_wrapped_lines(max_width);
         
         match key {
             Key::Esc => return Action::Pop,
-            Key::Ctrl('s') => { let _ = fs::write(&self.path, &self.content); self.is_dirty = false; }
+            Key::Ctrl('s') => { self.save_file(); }
             Key::Left => { if self.cursor_pos > 0 { self.cursor_pos -= 1; } }
             Key::Right => { if self.cursor_pos < self.content.len() { self.cursor_pos += 1; } }
             Key::Up => {
-                if let Some(current_line_idx) = lines.iter().position(|l| self.cursor_pos >= l.1 && self.cursor_pos <= l.1 + l.0.len()) {
-                    if current_line_idx > 0 {
-                        let offset_in_line = self.cursor_pos - lines[current_line_idx].1;
-                        let prev_line = &lines[current_line_idx - 1];
-                        self.cursor_pos = prev_line.1 + offset_in_line.min(prev_line.0.len().saturating_sub(1));
+                if let Some(curr_idx) = lines.iter().position(|l| self.cursor_pos >= l.1 && self.cursor_pos <= l.1 + l.0.len()) {
+                    if curr_idx > 0 {
+                        let offset = self.cursor_pos - lines[curr_idx].1;
+                        let prev = &lines[curr_idx - 1];
+                        self.cursor_pos = prev.1 + offset.min(prev.0.len().saturating_sub(1));
                     }
                 }
             }
             Key::Down => {
-                if let Some(current_line_idx) = lines.iter().position(|l| self.cursor_pos >= l.1 && self.cursor_pos <= l.1 + l.0.len()) {
-                    if current_line_idx < lines.len() - 1 {
-                        let offset_in_line = self.cursor_pos - lines[current_line_idx].1;
-                        let next_line = &lines[current_line_idx + 1];
-                        self.cursor_pos = next_line.1 + offset_in_line.min(next_line.0.len().saturating_sub(1));
+                if let Some(curr_idx) = lines.iter().position(|l| self.cursor_pos >= l.1 && self.cursor_pos <= l.1 + l.0.len()) {
+                    if curr_idx < lines.len() - 1 {
+                        let offset = self.cursor_pos - lines[curr_idx].1;
+                        let next = &lines[curr_idx + 1];
+                        self.cursor_pos = next.1 + offset.min(next.0.len().saturating_sub(1));
                     }
                 }
             }
@@ -176,18 +183,29 @@ impl Page for EditorPage {
             }
             _ => {}
         }
+
+        // Logic to update scroll_line_offset based on cursor position
+        let line_height = (self.font_size * 1.2) as i32;
+        let visible_lines = 180 / line_height;
+        if let Some(cursor_line) = lines.iter().position(|l| self.cursor_pos >= l.1 && self.cursor_pos <= l.1 + l.0.len()) {
+            if cursor_line < self.scroll_line_offset {
+                self.scroll_line_offset = cursor_line;
+            } else if cursor_line >= self.scroll_line_offset + visible_lines as usize {
+                self.scroll_line_offset = cursor_line - (visible_lines as usize - 1);
+            }
+        }
+
         Action::None
     }
 
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
         let margin = 10;
-        let max_width = 380.0;
+        let max_width = 370.0;
         let line_height = (self.font_size * 1.2) as i32;
         let lines = self.get_wrapped_lines(max_width);
         let visible_lines = 180 / line_height;
 
-        // Auto-scroll viewport logic
-        let mut cursor_line_idx = 0;
+        let mut cursor_line_idx = 99999; // Default out of range
         for (idx, line) in lines.iter().enumerate() {
             if self.cursor_pos >= line.1 && self.cursor_pos <= line.1 + line.0.len() {
                 cursor_line_idx = idx;
@@ -195,27 +213,20 @@ impl Page for EditorPage {
             }
         }
 
-        let mut scroll_offset = self.scroll_line_offset;
-        if cursor_line_idx < scroll_offset {
-            scroll_offset = cursor_line_idx;
-        } else if cursor_line_idx >= scroll_offset + visible_lines as usize {
-            scroll_offset = cursor_line_idx - (visible_lines as usize - 1);
-        }
-
-        // Draw visible lines
         let mut draw_y = 30;
-        for (idx, (text, start_pos)) in lines.iter().enumerate().skip(scroll_offset) {
+        for (idx, (text, start_pos)) in lines.iter().enumerate().skip(self.scroll_line_offset) {
             if draw_y > 210 { break; }
             self.renderer.draw_text_colored(display, text, margin, draw_y, self.font_size, Pixel::Black, ctx);
 
-            // Draw cursor only on the specific line
             if idx == cursor_line_idx {
                 let relative_pos = self.cursor_pos - start_pos;
                 let text_before = &text[..relative_pos.min(text.len())];
                 let cursor_x = margin + self.renderer.calculate_width(text_before, self.font_size) as i32;
                 let cursor_top = draw_y - (self.font_size * 0.8) as i32;
                 for cy in cursor_top..draw_y {
-                    if cy > 0 && cy < 218 { display.draw_pixel(cursor_x as usize, cy as usize, Pixel::Black, ctx); }
+                    if cy > 0 && cy < 218 && cursor_x < 400 { 
+                        display.draw_pixel(cursor_x as usize, cy as usize, Pixel::Black, ctx); 
+                    }
                 }
             }
             draw_y += line_height;
