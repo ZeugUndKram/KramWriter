@@ -81,3 +81,4 @@ impl Page for SettingsPage {
             }
         }
     }
+}
