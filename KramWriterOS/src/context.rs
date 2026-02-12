@@ -11,6 +11,7 @@ pub struct SystemStatus {
 
 pub struct Context {
     pub dark_mode: bool,
+    pub timezone: String,   // Added field
     pub layout: KeyboardLayout,
     pub status: SystemStatus,
 }
@@ -19,6 +20,7 @@ impl Context {
     pub fn new() -> Self {
         Self {
             dark_mode: false,
+            timezone: String::from("UTC"), // Initialize with default
             layout: KeyboardLayout::Qwerty,
             status: SystemStatus {
                 wifi_strength: 0,

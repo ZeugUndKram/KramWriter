@@ -42,15 +42,13 @@ impl TimezonePage {
 }
 
 impl Page for TimezonePage {
-    fn update(&mut self, key: Key, _ctx: &mut Context) -> Action {
+    fn update(&mut self, key: Key, ctx: &mut Context) -> Action {
         match key {
             Key::Right => {
-                // Loop: 12 -> -11
                 self.current_index = (self.current_index + 1) % OFFSETS.len();
                 Action::None
             }
             Key::Left => {
-                // Loop: -11 -> 12
                 if self.current_index == 0 {
                     self.current_index = OFFSETS.len() - 1;
                 } else {
@@ -58,10 +56,21 @@ impl Page for TimezonePage {
                 }
                 Action::None
             }
-            Key::Esc => Action::Pop, // Back to Settings
+            // Pressing ENTER saves the selection
+            Key::Char('\n') => {
+                let selected_tz = OFFSETS[self.current_index].to_string();
+                ctx.timezone = selected_tz; // Save to global context
+                
+                println!("Timezone saved: {}", ctx.timezone); // Debug print
+                Action::Pop // Return to Settings
+            }
+            Key::Esc => Action::Pop, // Return without saving (optional)
             _ => Action::None,
         }
     }
+    
+    // ... draw function stays the same ...
+
 
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
         // Draw the static map first
