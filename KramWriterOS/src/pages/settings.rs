@@ -90,7 +90,7 @@ impl Page for SettingsPage {
                 // If context is currently Dark: Unselected=2, Selected=3
                 // If context is currently Light: Unselected=0, Selected=1
                 variant_idx = if ctx.dark_mode {
-                    if i == self.current_index { 3 } else { 2 }
+                    if i == self.current_index { 2 } else { 3 }
                 } else {
                     if i == self.current_index { 1 } else { 0 }
                 };
