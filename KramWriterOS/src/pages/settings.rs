@@ -53,31 +53,31 @@ impl Page for SettingsPage {
     }
 
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
-        let mut current_y = 5; // Start very close to the top
+        // We no longer use a moving current_y because 
+        // each BMP is already a full-screen 400x240 map.
+        let start_y = 0;
+        let start_x = 0;
 
         for (i, variants) in self.images.iter().enumerate() {
             let selection_index = if i == self.current_index { 1 } else { 0 };
 
             if let Some(bmp) = &variants[selection_index] {
-                let start_x = (400usize.saturating_sub(bmp.width)) / 2;
-                
                 for y in 0..bmp.height {
-                    let screen_y = current_y + y as i32;
-                    // Only draw if the pixel is actually on the screen
+                    let screen_y = start_y + y as i32;
                     if screen_y >= 0 && screen_y < 240 {
                         for x in 0..bmp.width {
                             let pixel = bmp.pixels[y * bmp.width + x];
-                            display.draw_pixel(start_x + x, screen_y as usize, pixel, ctx);
+                            
+                            // TRANSPARENCY LOGIC:
+                            // Only draw the pixel if it is Black. 
+                            // This prevents the "white" background of the top image
+                            // from erasing the "black" text of the image underneath.
+                            if pixel == rpi_memory_display::Pixel::Black {
+                                display.draw_pixel(start_x + x, screen_y as usize, pixel, ctx);
+                            }
                         }
                     }
                 }
-                // SPACING SET TO 0: Only move down by the height of the image
-                current_y += bmp.height as i32;
-            } else {
-                // If a file is missing, we draw a small label so the list doesn't break
-                display.draw_text(160, current_y as usize, &format!("<{}>", SETTINGS_OPTIONS[i]), ctx);
-                current_y += 20; 
             }
         }
     }
-}
