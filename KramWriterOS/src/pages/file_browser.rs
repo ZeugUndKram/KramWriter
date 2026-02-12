@@ -15,6 +15,12 @@ pub enum BrowserFocus {
     Footer,
 }
 
+#[derive(PartialEq)]
+pub enum BrowserMode {
+    Full,     // Normal browsing (New Folder, New File, etc.)
+    OpenFile, // Triggered from Write Menu (Cancel, Open)
+}
+
 #[derive(Clone)]
 pub struct FileEntry {
     pub name: String,
@@ -28,27 +34,37 @@ pub struct FileBrowserPage {
     back_icon: Option<Bitmap>, 
     folder_icon: Option<Bitmap>,
     file_icon: Option<Bitmap>,
-    footer_variants: [Option<Bitmap>; 4],
+    // Normal footer variants
+    footer_full: [Option<Bitmap>; 4],
+    // Open file footer variants
+    footer_open: [Option<Bitmap>; 3],
     renderer: FontRenderer,
     current_directory: PathBuf,
     entries: Vec<FileEntry>,
     selected_index: usize,
     scroll_offset: usize,
     focus: BrowserFocus,
+    mode: BrowserMode,
     footer_index: usize,
     needs_refresh: bool,
 }
 
 impl FileBrowserPage {
-    pub fn new() -> Self {
+    pub fn new(mode: BrowserMode) -> Self {
         let renderer = FontRenderer::new("/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf");
         let asset_path = "/home/kramwriter/KramWriter/assets/FileBrowser";
         
-        let footer_variants = [
+        let footer_full = [
             Bitmap::load(&format!("{}/bottom_bar_3.bmp", asset_path)).ok(),
             Bitmap::load(&format!("{}/bottom_bar_4.bmp", asset_path)).ok(),
             Bitmap::load(&format!("{}/bottom_bar_5.bmp", asset_path)).ok(),
             Bitmap::load(&format!("{}/bottom_bar_6.bmp", asset_path)).ok(),
+        ];
+
+        let footer_open = [
+            Bitmap::load(&format!("{}/bottom_bar_0.bmp", asset_path)).ok(),
+            Bitmap::load(&format!("{}/bottom_bar_1.bmp", asset_path)).ok(),
+            Bitmap::load(&format!("{}/bottom_bar_2.bmp", asset_path)).ok(),
         ];
 
         let mut page = Self {
@@ -56,13 +72,15 @@ impl FileBrowserPage {
             back_icon: Bitmap::load(&format!("{}/icon_up.bmp", asset_path)).ok(),
             folder_icon: Bitmap::load(&format!("{}/icon_folder.bmp", asset_path)).ok(),
             file_icon: Bitmap::load(&format!("{}/icon_file.bmp", asset_path)).ok(),
-            footer_variants,
+            footer_full,
+            footer_open,
             renderer,
             current_directory: PathBuf::from("/home/kramwriter/folder"),
             entries: Vec::new(),
             selected_index: 0,
             scroll_offset: 0,
             focus: BrowserFocus::List,
+            mode,
             footer_index: 0,
             needs_refresh: false,
         };
@@ -211,6 +229,10 @@ impl Page for FileBrowserPage {
                             self.refresh_entries();
                             self.selected_index = 0;
                             self.scroll_offset = 0;
+                        } else if self.mode == BrowserMode::OpenFile {
+                            // Logic: If in Open mode and user hits Enter on a file, open it
+                            // Action::Push(Box::new(EditorPage::new(selected.path)))
+                            return Action::Pop; 
                         }
                     }
                     Action::None
@@ -221,19 +243,40 @@ impl Page for FileBrowserPage {
             BrowserFocus::Footer => match key {
                 Key::Up | Key::Down => { self.focus = BrowserFocus::List; Action::None }
                 Key::Left => { if self.footer_index > 0 { self.footer_index -= 1; } Action::None }
-                Key::Right => { if self.footer_index < 2 { self.footer_index += 1; } Action::None }
+                Key::Right => { 
+                    let max = if self.mode == BrowserMode::Full { 2 } else { 1 };
+                    if self.footer_index < max { self.footer_index += 1; } 
+                    Action::None 
+                }
                 Key::Char('\n') => {
-                    match self.footer_index {
-                        0 => Action::Pop, 
-                        1 => {
-                            self.needs_refresh = true;
-                            Action::Push(Box::new(NameEntryPage::new(self.current_directory.clone(), true)))
-                        },
-                        2 => {
-                            self.needs_refresh = true;
-                            Action::Push(Box::new(NameEntryPage::new(self.current_directory.clone(), false)))
-                        },
-                        _ => Action::None
+                    if self.mode == BrowserMode::Full {
+                        match self.footer_index {
+                            0 => Action::Pop, 
+                            1 => {
+                                self.needs_refresh = true;
+                                Action::Push(Box::new(NameEntryPage::new(self.current_directory.clone(), true)))
+                            },
+                            2 => {
+                                self.needs_refresh = true;
+                                Action::Push(Box::new(NameEntryPage::new(self.current_directory.clone(), false)))
+                            },
+                            _ => Action::None
+                        }
+                    } else {
+                        // OpenFile mode footer logic
+                        match self.footer_index {
+                            0 => Action::Pop, // Cancel
+                            1 => { // Open
+                                if let Some(entry) = self.entries.get(self.selected_index) {
+                                    if !entry.is_dir {
+                                        // Action::Push(Box::new(EditorPage::new(entry.path.clone())))
+                                        return Action::Pop;
+                                    }
+                                }
+                                Action::None
+                            },
+                            _ => Action::None
+                        }
                     }
                 }
                 _ => Action::None,
@@ -242,6 +285,7 @@ impl Page for FileBrowserPage {
     }
 
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
+        // ... (Header and List drawing same as before) ...
         for x in 0..400 { display.draw_pixel(x, 22, Pixel::Black, ctx); }
         if let Some(bmp) = &self.home_icon { self.draw_icon_colored(display, bmp, 2, 2, Pixel::Black, ctx); }
         let header_path = self.format_header_path();
@@ -255,8 +299,16 @@ impl Page for FileBrowserPage {
             }
         }
 
-        let footer_idx = if self.focus == BrowserFocus::List { 0 } else { self.footer_index + 1 };
-        if let Some(bmp) = &self.footer_variants[footer_idx] {
+        // Logic for Footer Variants
+        let footer_bmp = if self.mode == BrowserMode::Full {
+            let idx = if self.focus == BrowserFocus::List { 0 } else { self.footer_index + 1 };
+            &self.footer_full[idx]
+        } else {
+            let idx = if self.focus == BrowserFocus::List { 0 } else { self.footer_index + 1 };
+            &self.footer_open[idx]
+        };
+
+        if let Some(bmp) = footer_bmp {
             let y_start = 216; 
             for y in 0..bmp.height {
                 let sy = y as i32 + y_start;

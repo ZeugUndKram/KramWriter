@@ -4,8 +4,9 @@ use crate::display::SharpDisplay;
 use crate::ui::bitmap::Bitmap;
 use termion::event::Key;
 use rpi_memory_display::Pixel;
+// Import the BrowserMode enum from the file_browser module
+use crate::pages::file_browser::{FileBrowserPage, BrowserMode};
 
-// Shifted both up: 75 -> 40 and 125 -> 90
 const NEW_FILE_Y: i32 = 40; 
 const OPEN_FILE_Y: i32 = 90;
 
@@ -42,7 +43,6 @@ impl WriteMenuPage {
 impl Page for WriteMenuPage {
     fn update(&mut self, key: Key, _ctx: &mut Context) -> Action {
         match key {
-            // Strict navigation: No looping
             Key::Up => {
                 if self.current_index == 1 {
                     self.current_index = 0;
@@ -57,9 +57,11 @@ impl Page for WriteMenuPage {
             }
             Key::Char('\n') => {
                 if self.current_index == 0 {
-                    Action::Push(Box::new(crate::pages::file_browser::FileBrowserPage::new()))
+                    // NEW FILE: Browser in Full mode to allow folder/file creation
+                    Action::Push(Box::new(FileBrowserPage::new(BrowserMode::Full)))
                 } else {
-                    Action::None
+                    // OPEN FILE: Browser in OpenFile mode with the alternate bottom bar
+                    Action::Push(Box::new(FileBrowserPage::new(BrowserMode::OpenFile)))
                 }
             }
             Key::Esc => Action::Pop,
@@ -68,18 +70,17 @@ impl Page for WriteMenuPage {
     }
 
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
-        // 1. Background Title
         if let Some(bmp) = &self.title {
             self.draw_layer(display, bmp, 0, ctx);
         }
 
-        // 2. New File
+        // New File
         let new_idx = if self.current_index == 0 { 0 } else { 1 };
         if let Some(bmp) = &self.new_file_variants[new_idx] {
             self.draw_layer(display, bmp, NEW_FILE_Y, ctx);
         }
 
-        // 3. Open File
+        // Open File
         let open_idx = if self.current_index == 1 { 0 } else { 1 };
         if let Some(bmp) = &self.open_file_variants[open_idx] {
             self.draw_layer(display, bmp, OPEN_FILE_Y, ctx);
@@ -91,7 +92,6 @@ impl WriteMenuPage {
     fn draw_layer(&self, display: &mut SharpDisplay, bmp: &Bitmap, y_offset: i32, ctx: &Context) {
         for y in 0..bmp.height {
             let screen_y = y as i32 + y_offset;
-            // Bounds check to prevent drawing off-screen
             if screen_y >= 0 && screen_y < 240 {
                 for x in 0..bmp.width.min(400) {
                     let pixel = bmp.pixels[y * bmp.width + x];
