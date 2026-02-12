@@ -8,8 +8,8 @@ const MENU_OPTIONS: [&str; 5] = ["Write", "Learn", "Zeugtris", "Settings", "Cred
 
 const SPACING_TOP_TO_MAIN: i32 = -10;
 const SPACING_MAIN_TO_BOTTOM: i32 = 10;
-const SPACING_TOP_TO_FARTOP: i32 = 30;
-const SPACING_BOTTOM_TO_FARBOTTOM: i32 = 45;
+const SPACING_TOP_TO_FARTOP: i32 = 10;
+const SPACING_BOTTOM_TO_FARBOTTOM: i32 = 10;
 
 pub struct MenuPage {
     current_index: usize,
