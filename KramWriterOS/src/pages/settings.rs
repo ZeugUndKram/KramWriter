@@ -4,40 +4,35 @@ use crate::display::SharpDisplay;
 use crate::ui::bitmap::Bitmap;
 use termion::event::Key;
 
-// Match the lowercase filenames from your 'ls' output
 const SETTINGS_OPTIONS: [&str; 5] = ["timezone", "location", "darkmode", "drive", "keyboard"];
 
 pub struct SettingsPage {
     current_index: usize,
     images: Vec<[Option<Bitmap>; 2]>,
-    vertical_spacing: i32, // Variable to control spacing
 }
 
 impl SettingsPage {
     pub fn new() -> Self {
         let mut images = Vec::new();
-        let vertical_spacing = 15; // Set your desired spacing here
 
         for option in SETTINGS_OPTIONS.iter() {
-            // Updated paths to match the lowercase filenames found in /assets/Settings/
             let path_0 = format!("/home/kramwriter/KramWriter/assets/Settings/{}_0.bmp", option);
             let path_1 = format!("/home/kramwriter/KramWriter/assets/Settings/{}_1.bmp", option);
             
             let img_0 = Bitmap::load(&path_0).ok();
             let img_1 = Bitmap::load(&path_1).ok();
 
-            if img_0.is_none() {
-                println!("⚠️ Settings Page: Failed to load {}", path_0);
+            // Terminal Debug: Check the size of loaded images
+            if let Some(ref b) = img_0 {
+                println!("✅ Loaded {}: {}x{}", option, b.width, b.height);
+            } else {
+                println!("❌ Failed to load: {}", path_0);
             }
 
             images.push([img_0, img_1]);
         }
 
-        Self { 
-            current_index: 0, 
-            images,
-            vertical_spacing 
-        }
+        Self { current_index: 0, images }
     }
 }
 
@@ -52,16 +47,15 @@ impl Page for SettingsPage {
                 if self.current_index < SETTINGS_OPTIONS.len() - 1 { self.current_index += 1; }
                 Action::None
             }
-            Key::Esc => Action::Pop, // Return to menu
+            Key::Esc => Action::Pop,
             _ => Action::None,
         }
     }
 
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
-        let mut current_y = 20; // Starting top margin
+        let mut current_y = 5; // Start very close to the top
 
         for (i, variants) in self.images.iter().enumerate() {
-            // variant 1 is selected (_1.bmp), variant 0 is unselected (_0.bmp)
             let selection_index = if i == self.current_index { 1 } else { 0 };
 
             if let Some(bmp) = &variants[selection_index] {
@@ -69,6 +63,7 @@ impl Page for SettingsPage {
                 
                 for y in 0..bmp.height {
                     let screen_y = current_y + y as i32;
+                    // Only draw if the pixel is actually on the screen
                     if screen_y >= 0 && screen_y < 240 {
                         for x in 0..bmp.width {
                             let pixel = bmp.pixels[y * bmp.width + x];
@@ -76,8 +71,12 @@ impl Page for SettingsPage {
                         }
                     }
                 }
-                // Add the image height plus our custom spacing variable
-                current_y += bmp.height as i32 + self.vertical_spacing;
+                // SPACING SET TO 0: Only move down by the height of the image
+                current_y += bmp.height as i32;
+            } else {
+                // If a file is missing, we draw a small label so the list doesn't break
+                display.draw_text(160, current_y as usize, &format!("<{}>", SETTINGS_OPTIONS[i]), ctx);
+                current_y += 20; 
             }
         }
     }
