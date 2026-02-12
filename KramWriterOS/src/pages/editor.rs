@@ -171,8 +171,7 @@ impl Page for EditorPage {
                 let test_line = format!("{}{}", current_line, word);
                 let width = self.renderer.calculate_width(&test_line, self.font_size);
 
-                if width > (max_width as f32) && !current_line.is_empty() {
-                    // Draw current line and start new one
+                if (width as f32) > (max_width as f32) && !current_line.is_empty() {                    // Draw current line and start new one
                     self.renderer.draw_text_colored(display, &current_line, margin, cur_y, self.font_size, Pixel::Black, ctx);
                     cur_y += line_height;
                     current_line = word.to_string();
