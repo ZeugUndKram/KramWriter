@@ -51,6 +51,7 @@ impl FileBrowserPage {
 
         let mut page = Self {
             home_icon: Bitmap::load(&format!("{}/icon_home.bmp", asset_path)).ok(),
+            // CRITICAL: Ensure this filename is exactly icon_back.bmp on your Pi
             back_icon: Bitmap::load(&format!("{}/icon_back.bmp", asset_path)).ok(),
             folder_icon: Bitmap::load(&format!("{}/icon_folder.bmp", asset_path)).ok(),
             file_icon: Bitmap::load(&format!("{}/icon_file.bmp", asset_path)).ok(),
@@ -71,11 +72,14 @@ impl FileBrowserPage {
     fn refresh_entries(&mut self) {
         self.entries.clear();
         
-        // Canonicalize the home path to avoid slash mismatches
-        let home_base = PathBuf::from("/home/kramwriter");
+        // Convert to absolute string for reliable comparison
+        let current_str = self.current_directory.to_string_lossy().to_string();
+        
+        // DEBUG: Check your terminal for this output!
+        println!("Current Directory: {}", current_str);
 
-        // Show "Back" if the current directory is NOT kramwriter home
-        if !self.current_directory.ends_with("kramwriter") && self.current_directory != PathBuf::from("/") {
+        // Logic: If we are NOT in the base home dir, add the ".." entry
+        if current_str != "/home/kramwriter" && current_str != "/home/kramwriter/" {
             if let Some(parent) = self.current_directory.parent() {
                 self.entries.push(FileEntry {
                     name: String::from(".."),
@@ -98,7 +102,8 @@ impl FileBrowserPage {
                 }
             }
         }
-        // Directories first, then alphabetical
+
+        // FORCE ".." to the top
         self.entries.sort_by(|a, b| {
             if a.name == ".." { return std::cmp::Ordering::Less; }
             if b.name == ".." { return std::cmp::Ordering::Greater; }
@@ -116,7 +121,10 @@ impl FileBrowserPage {
             full_path
         };
 
-        if display_path.is_empty() { display_path = String::from("/"); }
+        if display_path.is_empty() || display_path == "/" { 
+            display_path = String::from(""); // Just show icon if at home
+        }
+        
         display_path = display_path.to_uppercase();
 
         let max_chars = 30; 
@@ -154,14 +162,9 @@ impl FileBrowserPage {
             }
         }
 
-        // Check if this is the "Back" entry
-        let icon = if entry.name == ".." { 
-            &self.back_icon 
-        } else if entry.is_dir { 
-            &self.folder_icon 
-        } else { 
-            &self.file_icon 
-        };
+        let icon = if entry.name == ".." { &self.back_icon } 
+                   else if entry.is_dir { &self.folder_icon } 
+                   else { &self.file_icon };
 
         if let Some(bmp) = icon {
             self.draw_icon_colored(display, bmp, 5, (y + 3) as usize, draw_color, ctx);
@@ -236,8 +239,7 @@ impl Page for FileBrowserPage {
                 Key::Char('\n') => {
                     match self.footer_index {
                         0 => Action::Pop,
-                        1 => Action::None,
-                        2 => Action::None,
+                        1 | 2 => Action::None,
                         _ => Action::None
                     }
                 }
@@ -267,7 +269,7 @@ impl Page for FileBrowserPage {
             }
         }
 
-        // 3. Footer (Drawn at Y=216)
+        // 3. Footer (Y=216)
         let footer_idx = if self.focus == BrowserFocus::List { 0 } else { self.footer_index + 1 };
         if let Some(bmp) = &self.footer_variants[footer_idx] {
             let y_start = 216; 
