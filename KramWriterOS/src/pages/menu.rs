@@ -44,11 +44,33 @@ impl MenuPage {
     }
 }
 
+
 impl Page for MenuPage {
     fn update(&mut self, key: Key, _ctx: &mut Context) -> Action {
         match key {
-            Key::Up => { if self.current_index > 0 { self.current_index -= 1; } Action::None },
-            Key::Down => { if self.current_index < MENU_OPTIONS.len() - 1 { self.current_index += 1; } Action::None },
+            Key::Up => {
+                if self.current_index > 0 {
+                    self.current_index -= 1;
+                }
+                Action::None
+            }
+            Key::Down => {
+                if self.current_index < MENU_OPTIONS.len() - 1 {
+                    self.current_index += 1;
+                }
+                Action::None
+            }
+            // Handle the selection (Enter key)
+            Key::Char('\n') => {
+                match self.current_index {
+                    0 => Action::None, // Write (Add later)
+                    1 => Action::None, // Learn (Add later)
+                    2 => Action::None, // Zeugtris (Add later)
+                    3 => Action::None, // Settings (Add later)
+                    4 => Action::Push(Box::new(crate::pages::credits::CreditsPage::new())), // Credits
+                    _ => Action::None,
+                }
+            }
             Key::Esc => Action::Replace(Box::new(crate::pages::startup::LogoPage::new())),
             _ => Action::None,
         }
