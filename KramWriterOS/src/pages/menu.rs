@@ -22,7 +22,7 @@ impl MenuPage {
         for option in MENU_OPTIONS.iter() {
             let mut variants = Vec::new();
             for suffix in 0..3 {
-                let path = format!("/home/kramwriter/KramWriter/assets/Menu/{}_{}.bmp", option, suffix);
+                let path = format!("/home/kramwriter/KramWriter/assets/Mnu/{}_{}.bmp", option, suffix);
                 variants.push(Bitmap::load(&path).ok());
             }//test
             images.push(variants);
