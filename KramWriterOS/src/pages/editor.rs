@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::fs;
 
 // Timezone and Time imports
-use chrono::{Utc, FixedOffset}; // Add FixedOffset to your imports
+use chrono::{Utc, FixedOffset}; 
 use chrono_tz::Tz;
 
 // --- LAYOUT STRUCTURE ---
@@ -34,7 +34,8 @@ pub struct EditorPage {
     scroll_line_offset: usize,
     target_cursor_x: Option<i32>, 
     is_dirty: bool,
-    renderer: FontRenderer,
+    renderer: FontRenderer,     // Main writing font
+    ui_renderer: FontRenderer,  // Bottom bar font (Bebas Neue)
     font_size: f32,
     top_margin: i32,
     save_icons: [Option<Bitmap>; 2],
@@ -45,6 +46,7 @@ pub struct EditorPage {
 impl EditorPage {
     pub fn new(path: PathBuf) -> Self {
         let renderer = FontRenderer::new("/home/kramwriter/KramWriter/fonts/Inter_28pt-Medium.ttf");
+        let ui_renderer = FontRenderer::new("/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf");
         let asset_path = "/home/kramwriter/KramWriter/assets/Writing";
         let content = fs::read_to_string(&path).unwrap_or_default();
         let len = content.len();
@@ -57,8 +59,9 @@ impl EditorPage {
             target_cursor_x: None,
             is_dirty: false,
             renderer,
+            ui_renderer,
             font_size: 22.0,
-            top_margin: 10,
+            top_margin: 10, // Adjusted as requested
             save_icons: [
                 Bitmap::load(&format!("{}/save_0.bmp", asset_path)).ok(),
                 Bitmap::load(&format!("{}/save_1.bmp", asset_path)).ok(),
@@ -187,30 +190,30 @@ impl EditorPage {
    fn draw_bottom_bar(&self, display: &mut SharpDisplay, ctx: &Context) {
         let y_start = 218;
         let y_text = y_start as i32 + 18;
+        let ui_size = 18.0; // Size for Bebas Neue
 
         // Draw the separator line
         for x in 0..400 { 
             display.draw_pixel(x, y_start, Pixel::Black, ctx); 
         }
         
-        // 1. Save Icon (Left)
+        // 1. Save Icon
         let save_icon = if self.is_dirty { &self.save_icons[0] } else { &self.save_icons[1] };
         if let Some(bmp) = save_icon { 
             self.draw_icon(display, bmp, 5, y_start + 3, ctx); 
         }
         
-        // 2. Filename (Upper Case)
+        // 2. Filename (Uses ui_renderer)
         let filename = self.path.file_name()
             .map(|n| n.to_string_lossy().to_string().to_uppercase())
             .unwrap_or_else(|| "UNTITLED.TXT".to_string());
-        self.renderer.draw_text_colored(display, &filename, 28, y_text, 18.0, Pixel::Black, ctx);
+        self.ui_renderer.draw_text_colored(display, &filename, 28, y_text, ui_size, Pixel::Black, ctx);
         
-        // 3. Word Count (Center-ish)
+        // 3. Word Count (Uses ui_renderer)
         let w_count = format!("W:{}", self.get_word_count());
-        self.renderer.draw_text_colored(display, &w_count, 180, y_text, 18.0, Pixel::Black, ctx);
+        self.ui_renderer.draw_text_colored(display, &w_count, 180, y_text, ui_size, Pixel::Black, ctx);
         
-        // 4. --- DYNAMIC TIMEZONE LOGIC ---
-        // Parse offset string (e.g. "-5" or "3.5") to seconds
+        // 4. Dynamic Timezone Logic (Uses ui_renderer)
         let offset_hours = ctx.timezone.parse::<f32>().unwrap_or(0.0);
         let offset_seconds = (offset_hours * 3600.0) as i32;
         
@@ -221,7 +224,7 @@ impl EditorPage {
             Utc::now().format("%H:%M").to_string()
         };
         
-        self.renderer.draw_text_colored(display, &time_str, 305, y_text, 18.0, Pixel::Black, ctx);
+        self.ui_renderer.draw_text_colored(display, &time_str, 305, y_text, ui_size, Pixel::Black, ctx);
         
         // 5. Weather Icon
         let weather_idx = (ctx.status.weather_icon as usize).min(self.weather_icons.len() - 1);
