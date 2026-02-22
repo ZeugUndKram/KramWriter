@@ -44,7 +44,7 @@ pub struct EditorPage {
 
 impl EditorPage {
     pub fn new(path: PathBuf) -> Self {
-        let renderer = FontRenderer::new("/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf");
+        let renderer = FontRenderer::new("/home/kramwriter/KramWriter/fonts/Inter_28pt-Medium.ttf");
         let asset_path = "/home/kramwriter/KramWriter/assets/Writing";
         let content = fs::read_to_string(&path).unwrap_or_default();
         let len = content.len();
