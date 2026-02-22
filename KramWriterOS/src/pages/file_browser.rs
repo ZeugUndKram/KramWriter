@@ -247,11 +247,11 @@ impl Page for FileBrowserPage {
                     if self.mode == BrowserMode::Full {
                         match self.footer_index {
                             0 => Action::Pop, 
-                            1 => {
+                            2 => {
                                 self.needs_refresh = true;
                                 Action::Push(Box::new(NameEntryPage::new(self.current_directory.clone(), false)))
                             },
-                            2 => {
+                            1 => {
                                 self.needs_refresh = true;
                                 Action::Push(Box::new(NameEntryPage::new(self.current_directory.clone(), true)))
                             },
