@@ -58,7 +58,7 @@ impl EditorPage {
             is_dirty: false,
             renderer,
             font_size: 22.0,
-            top_margin: 25,
+            top_margin: 10,
             save_icons: [
                 Bitmap::load(&format!("{}/save_0.bmp", asset_path)).ok(),
                 Bitmap::load(&format!("{}/save_1.bmp", asset_path)).ok(),
