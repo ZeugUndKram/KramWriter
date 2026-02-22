@@ -272,8 +272,8 @@ impl Page for EditorPage {
         match key {
             Key::Esc => return Action::Pop,
             Key::Ctrl('s') => { let _ = fs::write(&self.path, &self.content); self.is_dirty = false; }
-            Key::Ctrl('+') | Key::Ctrl('=') => { if self.font_size < 60.0 { self.font_size += 2.0; } }
-            Key::Ctrl('-') => { if self.font_size > 10.0 { self.font_size -= 2.0; } }
+            Key::Alt('+') | Key::Alt('=') => { if self.font_size < 60.0 { self.font_size += 2.0; } }
+            Key::Alt('-') => { if self.font_size > 10.0 { self.font_size -= 2.0; } }
             Key::Left => { if self.cursor_pos > 0 { self.cursor_pos -= 1; } self.target_cursor_x = None; }
             Key::Right => { if self.cursor_pos < self.content.len() { self.cursor_pos += 1; } self.target_cursor_x = None; }
             Key::Up => self.move_cursor_vertical(-1, &layout),
