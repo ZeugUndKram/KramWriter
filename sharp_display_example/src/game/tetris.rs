@@ -1,6 +1,7 @@
+cat << 'EOF' > src/game/tetris.rs
 use super::{board::Board, score::Score, tetrimino::{Tetrimino, TetriminoType}, sprites::BlockSprites};
 use crate::display::SharpDisplay;
-use crate::context::Context; // ADDED THIS
+use crate::context::Context;
 use anyhow::Result;
 use rpi_memory_display::Pixel;
 use std::time::Instant;
@@ -8,12 +9,12 @@ use std::fs;
 
 // Game constants
 const BLOCK_SIZE: usize = 12;
-const ARENA_X: usize = 140;  // Updated to 140
+const ARENA_X: usize = 140; 
 const ARENA_Y: usize = 12;
 const NEXT_X: usize = 288;
 const NEXT_Y: usize = 13;
 const SCORE_X: usize = 300;
-const SCORE_Y: usize = 100;  // Moved up since we removed hold
+const SCORE_Y: usize = 100;
 const OVERLAY_X: usize = 0;
 const OVERLAY_Y: usize = 0;
 
@@ -29,7 +30,6 @@ const WALL_KICKS_JLSTZ: [[(i32, i32); 5]; 8] = [
     [(0, 0), (1, 0), (1, 1), (0, -2), (1, -2)],
 ];
 
-// I piece special wall kicks
 const WALL_KICKS_I: [[(i32, i32); 5]; 8] = [
     [(0, 0), (-2, 0), (1, 0), (-2, -1), (1, 2)],
     [(0, 0), (2, 0), (-1, 0), (2, 1), (-1, -2)],
@@ -60,21 +60,11 @@ pub struct TetrisGame {
 impl TetrisGame {
     pub fn new() -> Result<Self> {
         let sprites = match BlockSprites::new() {
-            Ok(sprites) => {
-                if sprites.has_sprites() {
-                    println!("Successfully loaded some Tetris sprites");
-                } else {
-                    println!("Warning: No Tetris sprites were loaded");
-                }
-                sprites
-            }
-            Err(e) => {
-                println!("Failed to load sprites: {}", e);
-                BlockSprites {
-                    i_sprite: None, o_sprite: None, s_sprite: None,
-                    z_sprite: None, t_sprite: None, l_sprite: None,
-                    j_sprite: None, sprite_width: 12, sprite_height: 12,
-                }
+            Ok(sprites) => sprites,
+            Err(_) => BlockSprites {
+                i_sprite: None, o_sprite: None, s_sprite: None,
+                z_sprite: None, t_sprite: None, l_sprite: None,
+                j_sprite: None, sprite_width: 12, sprite_height: 12,
             }
         };
         
@@ -111,13 +101,12 @@ impl TetrisGame {
     }
     
     fn parse_bmp(data: &[u8]) -> Option<(Vec<Pixel>, usize, usize)> {
-        if data.len() < 54 { return None; }
-        if data[0] != 0x42 || data[1] != 0x4D { return None; }
+        if data.len() < 54 || data[0] != 0x42 || data[1] != 0x4D { return None; }
         
-        let width = u32::from_le_bytes([data[18], data[19], data[20], data[21]]) as usize;
-        let height = u32::from_le_bytes([data[22], data[23], data[24], data[25]]) as usize;
-        let bits_per_pixel = u16::from_le_bytes([data[28], data[29]]) as usize;
-        let data_offset = u32::from_le_bytes([data[10], data[11], data[12], data[13]]) as usize;
+        let width = u32::from_le_bytes(data[18..22].try_into().ok()?) as usize;
+        let height = u32::from_le_bytes(data[22..26].try_into().ok()?) as usize;
+        let bits_per_pixel = u16::from_le_bytes(data[28..30].try_into().ok()?) as usize;
+        let data_offset = u32::from_le_bytes(data[10..14].try_into().ok()?) as usize;
         
         if data_offset >= data.len() { return None; }
         let mut pixels = Vec::with_capacity(width * height);
@@ -128,12 +117,12 @@ impl TetrisGame {
                 for y in 0..height {
                     let row_start = data_offset + (height - 1 - y) * row_bytes;
                     for x in 0..width {
-                        let pixel_start = row_start + x * 4;
-                        if pixel_start + 3 >= data.len() { pixels.push(Pixel::White); continue; }
-                        let b = data[pixel_start] as u32;
-                        let g = data[pixel_start + 1] as u32;
-                        let r = data[pixel_start + 2] as u32;
-                        let a = data[pixel_start + 3] as u32;
+                        let px_start = row_start + x * 4;
+                        if px_start + 3 >= data.len() { pixels.push(Pixel::White); continue; }
+                        let b = data[px_start] as u32;
+                        let g = data[px_start + 1] as u32;
+                        let r = data[px_start + 2] as u32;
+                        let a = data[px_start + 3] as u32;
                         let luminance = (r * 299 + g * 587 + b * 114) / 1000;
                         pixels.push(if a < 128 || luminance > 128 { Pixel::White } else { Pixel::Black });
                     }
@@ -144,11 +133,11 @@ impl TetrisGame {
                 for y in 0..height {
                     let row_start = data_offset + (height - 1 - y) * row_bytes;
                     for x in 0..width {
-                        let pixel_start = row_start + x * 3;
-                        if pixel_start + 2 >= data.len() { pixels.push(Pixel::White); continue; }
-                        let b = data[pixel_start] as u32;
-                        let g = data[pixel_start + 1] as u32;
-                        let r = data[pixel_start + 2] as u32;
+                        let px_start = row_start + x * 3;
+                        if px_start + 2 >= data.len() { pixels.push(Pixel::White); continue; }
+                        let b = data[px_start] as u32;
+                        let g = data[px_start + 1] as u32;
+                        let r = data[px_start + 2] as u32;
                         let luminance = (r * 299 + g * 587 + b * 114) / 1000;
                         pixels.push(if luminance > 128 { Pixel::White } else { Pixel::Black });
                     }
@@ -338,8 +327,6 @@ impl TetrisGame {
     pub fn is_paused(&self) -> bool { self.paused }
     pub fn needs_redraw(&self) -> bool { self.needs_redraw }
     pub fn clear_redraw_flag(&mut self) { self.needs_redraw = false; }
-    
-    // --- UPDATED DRAWING METHODS WITH `ctx` ---
 
     pub fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
         self.draw_overlay(display, ctx);
@@ -597,3 +584,4 @@ impl TetrisGame {
         }
     }
 }
+EOF
