@@ -72,7 +72,7 @@ impl Page for TimezonePage {
     // ... draw function stays the same ...
 
 
-    fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
+    fn draw(&mut self, display: &mut SharpDisplay, ctx: &Context) {
         // Draw the static map first
         if let Some(map) = &self.base_map {
             self.draw_full(display, map, ctx);

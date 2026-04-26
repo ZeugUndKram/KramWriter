@@ -2,6 +2,7 @@ mod display;
 mod context;
 mod pages;
 mod ui;
+mod game;
 
 use crate::display::SharpDisplay;
 use crate::context::Context;

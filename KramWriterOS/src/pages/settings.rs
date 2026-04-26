@@ -81,7 +81,7 @@ impl Page for SettingsPage {
         }
     }
 
-    fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
+    fn draw(&mut self, display: &mut SharpDisplay, ctx: &Context) {
         for (i, variants) in self.images.iter().enumerate() {
             let variant_idx;
 

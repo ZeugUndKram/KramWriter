@@ -310,7 +310,7 @@ impl Page for EditorPage {
         Action::None
     }
 
-    fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
+    fn draw(&mut self, display: &mut SharpDisplay, ctx: &Context) {
         let margin = 10;
         let max_width = 370.0;
         let layout = self.build_layout(max_width);
