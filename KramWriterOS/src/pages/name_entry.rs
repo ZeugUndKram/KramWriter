@@ -129,7 +129,7 @@ impl Page for NameEntryPage {
         }
     }
 
-    fn draw(&mut self, display: &mut SharpDisplay, ctx: &Context) {
+    fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
         // 1. Draw correct Title
         let title = if self.is_folder { &self.title_folder_bmp } else { &self.title_file_bmp };
         if let Some(bmp) = title {

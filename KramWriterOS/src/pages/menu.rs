@@ -77,7 +77,7 @@ impl Page for MenuPage {
         }
     }
 
-    fn draw(&mut self, display: &mut SharpDisplay, ctx: &Context) {
+    fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
         // CENTER: Suffix _0 (Variant index 0)
         if let Some(main_bmp) = self.images[self.current_index][0].as_ref() {
             let cy = (240i32 - main_bmp.height as i32) / 2;

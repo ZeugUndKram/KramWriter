@@ -1,4 +1,4 @@
-use crate::pages::{Page, Action};
+use crate::pages::{Page, Action, menu::MenuPage};
 use crate::context::Context;
 use crate::display::SharpDisplay;
 use crate::ui::bitmap::Bitmap;
@@ -28,7 +28,7 @@ impl Page for LogoPage {
         }
     }
 
-    fn draw(&mut self, display: &mut SharpDisplay, ctx: &Context) {
+    fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
         if let Some(bmp) = &self.logo {
             // Center the logo
             let start_x = (400usize.saturating_sub(bmp.width)) / 2;

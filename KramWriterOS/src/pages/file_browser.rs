@@ -278,7 +278,7 @@ impl Page for FileBrowserPage {
         }
     }
 
-    fn draw(&mut self, display: &mut SharpDisplay, ctx: &Context) {
+    fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
         for x in 0..400 { display.draw_pixel(x, 22, Pixel::Black, ctx); }
         if let Some(bmp) = &self.home_icon { self.draw_icon_colored(display, bmp, 2, 2, Pixel::Black, ctx); }
         let header_path = self.format_header_path();

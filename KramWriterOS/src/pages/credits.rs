@@ -30,7 +30,7 @@ impl Page for CreditsPage {
         }
     }
 
-    fn draw(&mut self, display: &mut SharpDisplay, ctx: &Context) {
+    fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
         if let Some(bmp) = &self.image {
             let start_x = (400usize.saturating_sub(bmp.width)) / 2;
             let start_y = (240usize.saturating_sub(bmp.height)) / 2;

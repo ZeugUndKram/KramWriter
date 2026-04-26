@@ -71,7 +71,7 @@ impl Page for WriteMenuPage {
         }
     }
 
-    fn draw(&mut self, display: &mut SharpDisplay, ctx: &Context) {
+    fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
         // 1. Title
         if let Some(bmp) = &self.title { 
             self.draw_layer(display, bmp, 0, ctx); 
