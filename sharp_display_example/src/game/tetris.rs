@@ -1,5 +1,6 @@
 use super::{board::Board, score::Score, tetrimino::{Tetrimino, TetriminoType}, sprites::BlockSprites};
 use crate::display::SharpDisplay;
+use crate::context::Context;
 use anyhow::Result;
 use rpi_memory_display::Pixel;
 use std::time::Instant;
@@ -500,8 +501,6 @@ impl TetrisGame {
         self.needs_redraw = false;
     }
     
-    // Drawing methods
-    // Drawing methods
     pub fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
         // Draw overlay first (as background)
         self.draw_overlay(display, ctx);
