@@ -1,11 +1,10 @@
 use super::{board::Board, score::Score, tetrimino::{Tetrimino, TetriminoType}, sprites::BlockSprites};
 use crate::display::SharpDisplay;
-use crate::context::Context;
+use crate::context::Context; // ADDED THIS
 use anyhow::Result;
 use rpi_memory_display::Pixel;
 use std::time::Instant;
 use std::fs;
-use crate::context::Context;
 
 // Game constants
 const BLOCK_SIZE: usize = 12;
@@ -20,41 +19,25 @@ const OVERLAY_Y: usize = 0;
 
 // SRS Wall kick data
 const WALL_KICKS_JLSTZ: [[(i32, i32); 5]; 8] = [
-    // 0->R (0 to 1)
     [(0, 0), (-1, 0), (-1, 1), (0, -2), (-1, -2)],
-    // R->0 (1 to 0)
     [(0, 0), (1, 0), (1, -1), (0, 2), (1, 2)],
-    // R->2 (1 to 2)
     [(0, 0), (1, 0), (1, -1), (0, 2), (1, 2)],
-    // 2->R (2 to 1)
     [(0, 0), (-1, 0), (-1, 1), (0, -2), (-1, -2)],
-    // 2->L (2 to 3)
     [(0, 0), (1, 0), (1, 1), (0, -2), (1, -2)],
-    // L->2 (3 to 2)
     [(0, 0), (-1, 0), (-1, -1), (0, 2), (-1, 2)],
-    // L->0 (3 to 0)
     [(0, 0), (-1, 0), (-1, -1), (0, 2), (-1, 2)],
-    // 0->L (0 to 3)
     [(0, 0), (1, 0), (1, 1), (0, -2), (1, -2)],
 ];
 
 // I piece special wall kicks
 const WALL_KICKS_I: [[(i32, i32); 5]; 8] = [
-    // 0->R (0 to 1)
     [(0, 0), (-2, 0), (1, 0), (-2, -1), (1, 2)],
-    // R->0 (1 to 0)
     [(0, 0), (2, 0), (-1, 0), (2, 1), (-1, -2)],
-    // R->2 (1 to 2)
     [(0, 0), (-1, 0), (2, 0), (-1, 2), (2, -1)],
-    // 2->R (2 to 1)
     [(0, 0), (1, 0), (-2, 0), (1, -2), (-2, 1)],
-    // 2->L (2 to 3)
     [(0, 0), (2, 0), (-1, 0), (2, 1), (-1, -2)],
-    // L->2 (3 to 2)
     [(0, 0), (-2, 0), (1, 0), (-2, -1), (1, 2)],
-    // L->0 (3 to 0)
     [(0, 0), (1, 0), (-2, 0), (1, -2), (-2, 1)],
-    // 0->L (0 to 3)
     [(0, 0), (-1, 0), (2, 0), (-1, 2), (2, -1)],
 ];
 
@@ -76,7 +59,6 @@ pub struct TetrisGame {
 
 impl TetrisGame {
     pub fn new() -> Result<Self> {
-        // Load block sprites
         let sprites = match BlockSprites::new() {
             Ok(sprites) => {
                 if sprites.has_sprites() {
@@ -89,41 +71,20 @@ impl TetrisGame {
             Err(e) => {
                 println!("Failed to load sprites: {}", e);
                 BlockSprites {
-                    i_sprite: None,
-                    o_sprite: None,
-                    s_sprite: None,
-                    z_sprite: None,
-                    t_sprite: None,
-                    l_sprite: None,
-                    j_sprite: None,
-                    sprite_width: 12,
-                    sprite_height: 12,
+                    i_sprite: None, o_sprite: None, s_sprite: None,
+                    z_sprite: None, t_sprite: None, l_sprite: None,
+                    j_sprite: None, sprite_width: 12, sprite_height: 12,
                 }
             }
         };
         
-        // Load overlay bitmap
         let overlay_path = "/home/kramwriter/KramWriter/assets/zeugtris/zeugtris_overlay.bmp";
-        println!("Loading overlay from: {}", overlay_path);
-        
         let (overlay_data, overlay_width, overlay_height) = match fs::read(overlay_path) {
-            Ok(data) => {
-                println!("Loaded overlay: {} bytes", data.len());
-                match Self::parse_bmp(&data) {
-                    Some((pixels, width, height)) => {
-                        println!("Parsed overlay BMP: {}x{}, {} pixels", width, height, pixels.len());
-                        (Some(pixels), width, height)
-                    }
-                    None => {
-                        println!("Failed to parse overlay BMP");
-                        (None, 0, 0)
-                    }
-                }
-            }
-            Err(e) => {
-                println!("Failed to read overlay: {}", e);
-                (None, 0, 0)
-            }
+            Ok(data) => match Self::parse_bmp(&data) {
+                Some((pixels, width, height)) => (Some(pixels), width, height),
+                None => (None, 0, 0)
+            },
+            Err(_) => (None, 0, 0)
         };
         
         let mut game = Self {
@@ -142,7 +103,6 @@ impl TetrisGame {
             sprites,
         };
         
-        // Check initial position
         if game.check_collision(game.position.0, game.position.1, None) {
             game.game_over = true;
         }
@@ -159,10 +119,7 @@ impl TetrisGame {
         let bits_per_pixel = u16::from_le_bytes([data[28], data[29]]) as usize;
         let data_offset = u32::from_le_bytes([data[10], data[11], data[12], data[13]]) as usize;
         
-        println!("Overlay BMP: {}x{}, {} bpp, offset: {}", width, height, bits_per_pixel, data_offset);
-        
         if data_offset >= data.len() { return None; }
-        
         let mut pixels = Vec::with_capacity(width * height);
         
         match bits_per_pixel {
@@ -172,26 +129,13 @@ impl TetrisGame {
                     let row_start = data_offset + (height - 1 - y) * row_bytes;
                     for x in 0..width {
                         let pixel_start = row_start + x * 4;
-                        if pixel_start + 3 >= data.len() {
-                            pixels.push(Pixel::White);
-                            continue;
-                        }
+                        if pixel_start + 3 >= data.len() { pixels.push(Pixel::White); continue; }
                         let b = data[pixel_start] as u32;
                         let g = data[pixel_start + 1] as u32;
                         let r = data[pixel_start + 2] as u32;
                         let a = data[pixel_start + 3] as u32;
-                        
                         let luminance = (r * 299 + g * 587 + b * 114) / 1000;
-                        let alpha = a;
-                        
-                        let pixel = if alpha < 128 {
-                            Pixel::White
-                        } else if luminance > 128 {
-                            Pixel::White
-                        } else {
-                            Pixel::Black
-                        };
-                        pixels.push(pixel);
+                        pixels.push(if a < 128 || luminance > 128 { Pixel::White } else { Pixel::Black });
                     }
                 }
             }
@@ -201,17 +145,12 @@ impl TetrisGame {
                     let row_start = data_offset + (height - 1 - y) * row_bytes;
                     for x in 0..width {
                         let pixel_start = row_start + x * 3;
-                        if pixel_start + 2 >= data.len() {
-                            pixels.push(Pixel::White);
-                            continue;
-                        }
+                        if pixel_start + 2 >= data.len() { pixels.push(Pixel::White); continue; }
                         let b = data[pixel_start] as u32;
                         let g = data[pixel_start + 1] as u32;
                         let r = data[pixel_start + 2] as u32;
-                        
                         let luminance = (r * 299 + g * 587 + b * 114) / 1000;
-                        let pixel = if luminance > 128 { Pixel::White } else { Pixel::Black };
-                        pixels.push(pixel);
+                        pixels.push(if luminance > 128 { Pixel::White } else { Pixel::Black });
                     }
                 }
             }
@@ -220,23 +159,15 @@ impl TetrisGame {
                 for y in 0..height {
                     let row_start = data_offset + (height - 1 - y) * row_bytes;
                     for x in 0..width {
-                        if row_start + (x / 8) >= data.len() {
-                            pixels.push(Pixel::White);
-                            continue;
-                        }
+                        if row_start + (x / 8) >= data.len() { pixels.push(Pixel::White); continue; }
                         let byte = data[row_start + (x / 8)];
                         let bit = 7 - (x % 8);
-                        let pixel = if (byte >> bit) & 1 == 1 { Pixel::Black } else { Pixel::White };
-                        pixels.push(pixel);
+                        pixels.push(if (byte >> bit) & 1 == 1 { Pixel::Black } else { Pixel::White });
                     }
                 }
             }
-            _ => {
-                println!("Unsupported BMP format: {} bpp", bits_per_pixel);
-                return None;
-            }
+            _ => return None,
         }
-        
         Some((pixels, width, height))
     }
     
@@ -248,46 +179,12 @@ impl TetrisGame {
         !self.check_collision(x, y, rotation)
     }
     
-    // Helper function for wall kick index
     fn get_kick_index(from_rotation: usize, to_rotation: usize) -> Option<usize> {
         match (from_rotation, to_rotation) {
-            (0, 1) => Some(0),  // 0->R (clockwise)
-            (1, 0) => Some(1),  // R->0 (counter-clockwise)
-            (1, 2) => Some(2),  // R->2 (clockwise)
-            (2, 1) => Some(3),  // 2->R (counter-clockwise)
-            (2, 3) => Some(4),  // 2->L (clockwise)
-            (3, 2) => Some(5),  // L->2 (counter-clockwise)
-            (3, 0) => Some(6),  // L->0 (clockwise)
-            (0, 3) => Some(7),  // 0->L (counter-clockwise)
+            (0, 1) => Some(0), (1, 0) => Some(1), (1, 2) => Some(2), (2, 1) => Some(3),
+            (2, 3) => Some(4), (3, 2) => Some(5), (3, 0) => Some(6), (0, 3) => Some(7),
             _ => None,
         }
-    }
-    
-    fn try_wall_kick(&self, from_rotation: usize, to_rotation: usize, x: i32, y: i32) -> Option<(i32, i32)> {
-        let is_i_piece = matches!(self.current_tetrimino.tetrimino_type, TetriminoType::I);
-        let kick_table = if is_i_piece { &WALL_KICKS_I } else { &WALL_KICKS_JLSTZ };
-        
-        let kick_index = match (from_rotation, to_rotation) {
-            (0, 1) => 0,
-            (1, 0) => 1,
-            (1, 2) => 2,
-            (2, 1) => 3,
-            (2, 3) => 4,
-            (3, 2) => 5,
-            (3, 0) => 6,
-            (0, 3) => 7,
-            _ => return None,
-        };
-        
-        for &(kx, ky) in &kick_table[kick_index] {
-            let new_x = x + kx;
-            let new_y = y + ky;
-            if self.valid_position(new_x, new_y, Some(to_rotation)) {
-                return Some((new_x, new_y));
-            }
-        }
-        
-        None
     }
     
     pub fn move_left(&mut self) -> bool {
@@ -330,46 +227,29 @@ impl TetrisGame {
     }
     
     pub fn hard_drop(&mut self) -> bool {
-        if self.game_over || self.paused {
-            return false;
-        }
-        
+        if self.game_over || self.paused { return false; }
         let mut drop_distance = 0;
         while self.valid_position(self.position.0, self.position.1 + drop_distance + 1, None) {
             drop_distance += 1;
         }
-        
         self.position.1 += drop_distance;
         self.score.add_hard_drop_points(drop_distance as u32);
         self.lock_current_piece()
     }
     
     pub fn rotate_left(&mut self) -> bool {
-        if self.game_over || self.paused {
-            return false;
-        }
-        
-        // O piece doesn't rotate
-        if matches!(self.current_tetrimino.tetrimino_type, TetriminoType::O) {
-            return false;
-        }
+        if self.game_over || self.paused { return false; }
+        if matches!(self.current_tetrimino.tetrimino_type, TetriminoType::O) { return false; }
         
         let from_rotation = self.current_tetrimino.rotation;
-        let to_rotation = (from_rotation + 3) % 4; // +3 ≡ -1 mod 4
+        let to_rotation = (from_rotation + 3) % 4;
+        let kick_table = if matches!(self.current_tetrimino.tetrimino_type, TetriminoType::I) { &WALL_KICKS_I } else { &WALL_KICKS_JLSTZ };
         
-        // Get the correct wall kick table
-        let is_i_piece = matches!(self.current_tetrimino.tetrimino_type, TetriminoType::I);
-        let kick_table = if is_i_piece { &WALL_KICKS_I } else { &WALL_KICKS_JLSTZ };
-        
-        // Get kick index
         if let Some(kick_index) = Self::get_kick_index(from_rotation, to_rotation) {
-            // Try each wall kick offset
             for &(kx, ky) in &kick_table[kick_index] {
                 let new_x = self.position.0 + kx;
                 let new_y = self.position.1 + ky;
-                
                 if self.valid_position(new_x, new_y, Some(to_rotation)) {
-                    // Rotation successful with wall kick
                     self.current_tetrimino.set_rotation(to_rotation);
                     self.position = (new_x, new_y);
                     self.needs_redraw = true;
@@ -378,42 +258,27 @@ impl TetrisGame {
             }
         }
         
-        // Try rotation without wall kick first
         if self.valid_position(self.position.0, self.position.1, Some(to_rotation)) {
             self.current_tetrimino.set_rotation(to_rotation);
             self.needs_redraw = true;
             return true;
         }
-        
         false
     }
     
     pub fn rotate_right(&mut self) -> bool {
-        if self.game_over || self.paused {
-            return false;
-        }
-        
-        // O piece doesn't rotate
-        if matches!(self.current_tetrimino.tetrimino_type, TetriminoType::O) {
-            return false;
-        }
+        if self.game_over || self.paused { return false; }
+        if matches!(self.current_tetrimino.tetrimino_type, TetriminoType::O) { return false; }
         
         let from_rotation = self.current_tetrimino.rotation;
         let to_rotation = (from_rotation + 1) % 4;
+        let kick_table = if matches!(self.current_tetrimino.tetrimino_type, TetriminoType::I) { &WALL_KICKS_I } else { &WALL_KICKS_JLSTZ };
         
-        // Get the correct wall kick table
-        let is_i_piece = matches!(self.current_tetrimino.tetrimino_type, TetriminoType::I);
-        let kick_table = if is_i_piece { &WALL_KICKS_I } else { &WALL_KICKS_JLSTZ };
-        
-        // Get kick index
         if let Some(kick_index) = Self::get_kick_index(from_rotation, to_rotation) {
-            // Try each wall kick offset
             for &(kx, ky) in &kick_table[kick_index] {
                 let new_x = self.position.0 + kx;
                 let new_y = self.position.1 + ky;
-                
                 if self.valid_position(new_x, new_y, Some(to_rotation)) {
-                    // Rotation successful with wall kick
                     self.current_tetrimino.set_rotation(to_rotation);
                     self.position = (new_x, new_y);
                     self.needs_redraw = true;
@@ -422,26 +287,18 @@ impl TetrisGame {
             }
         }
         
-        // Try rotation without wall kick first
         if self.valid_position(self.position.0, self.position.1, Some(to_rotation)) {
             self.current_tetrimino.set_rotation(to_rotation);
             self.needs_redraw = true;
             return true;
         }
-        
         false
     }
     
     fn lock_current_piece(&mut self) -> bool {
-        if self.game_over || self.paused {
-            return false;
-        }
-        
+        if self.game_over || self.paused { return false; }
         let lines_cleared = self.board.lock_tetrimino(&self.current_tetrimino, self.position.0, self.position.1);
-        if lines_cleared > 0 {
-            self.score.add_lines(lines_cleared);
-        }
-        
+        if lines_cleared > 0 { self.score.add_lines(lines_cleared); }
         self.spawn_new_piece();
         true
     }
@@ -451,25 +308,17 @@ impl TetrisGame {
         self.position = (4, 0);
         self.current_tetrimino.rotation = 0;
         self.last_update = Instant::now();
-        
-        // Check for game over
         if self.check_collision(self.position.0, self.position.1, None) {
             self.game_over = true;
         }
-        
         self.needs_redraw = true;
     }
     
     pub fn update(&mut self) {
-        if self.game_over || self.paused || self.board.is_line_clearing() {
-            return;
-        }
-        
+        if self.game_over || self.paused || self.board.is_line_clearing() { return; }
         let now = Instant::now();
         if now.duration_since(self.last_update) >= self.score.drop_interval() {
-            if !self.soft_drop() {
-                self.last_update = now;
-            }
+            if !self.soft_drop() { self.last_update = now; }
         }
     }
     
@@ -485,37 +334,19 @@ impl TetrisGame {
         }
     }
     
-    pub fn is_game_over(&self) -> bool {
-        self.game_over
-    }
+    pub fn is_game_over(&self) -> bool { self.game_over }
+    pub fn is_paused(&self) -> bool { self.paused }
+    pub fn needs_redraw(&self) -> bool { self.needs_redraw }
+    pub fn clear_redraw_flag(&mut self) { self.needs_redraw = false; }
     
-    pub fn is_paused(&self) -> bool {
-        self.paused
-    }
-    
-    pub fn needs_redraw(&self) -> bool {
-        self.needs_redraw
-    }
-    
-    pub fn clear_redraw_flag(&mut self) {
-        self.needs_redraw = false;
-    }
-    
+    // --- UPDATED DRAWING METHODS WITH `ctx` ---
+
     pub fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
-        // Draw overlay first (as background)
         self.draw_overlay(display, ctx);
-        
-        // Then draw game elements on top
         self.draw_arena(display, ctx);
         self.draw_game_info(display, ctx);
-        
-        if self.game_over {
-            self.draw_game_over(display, ctx);
-        }
-        
-        if self.paused {
-            self.draw_pause(display, ctx);
-        }
+        if self.game_over { self.draw_game_over(display, ctx); }
+        if self.paused { self.draw_pause(display, ctx); }
     }
     
     fn draw_overlay(&self, display: &mut SharpDisplay, ctx: &Context) {
@@ -541,7 +372,6 @@ impl TetrisGame {
         let border_right = (ARENA_X + self.board.width() * BLOCK_SIZE + 1).min(399);
         let border_bottom = (ARENA_Y + self.board.height() * BLOCK_SIZE + 1).min(239);
         
-        // Draw border
         for x in border_left..=border_right {
             display.draw_pixel(x, border_top, Pixel::Black, ctx);
             display.draw_pixel(x, border_bottom, Pixel::Black, ctx);
@@ -551,7 +381,6 @@ impl TetrisGame {
             display.draw_pixel(border_right, y, Pixel::Black, ctx);
         }
         
-        // Draw placed blocks using sprites
         for y in 0..self.board.height() {
             for x in 0..self.board.width() {
                 if let Some(color_index) = self.board.get_cell(x, y) {
@@ -561,7 +390,6 @@ impl TetrisGame {
             }
         }
         
-        // Draw current piece
         if !self.game_over && !self.paused {
             self.draw_tetrimino(display, self.position.0, self.position.1, &self.current_tetrimino, ctx);
         }
@@ -603,7 +431,6 @@ impl TetrisGame {
                     }
                 }
             }
-            
             for bx in 0..BLOCK_SIZE {
                 if block_x + bx < 400 {
                     display.draw_pixel(block_x + bx, block_y, Pixel::Black, ctx);
@@ -718,7 +545,6 @@ impl TetrisGame {
                 }
             }
         }
-        
         for by in 1..height - 1 {
             for bx in 1..filled_width.min(bar_width - 2) {
                 if x + bx < 400 && y + by < 240 {
