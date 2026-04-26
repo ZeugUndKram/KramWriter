@@ -8,12 +8,9 @@ use crate::display::SharpDisplay;
 use crate::context::Context;
 use crate::pages::{Page, Action};
 use std::io::{stdin, stdout};
-use std::sync::mpsc;
-use std::thread;
-use std::time::Duration;
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
-use termion::event::Key;
+use termion::event::Key; // Added this import
 use anyhow::Result;
 
 struct App {
@@ -24,6 +21,7 @@ struct App {
 
 impl App {
     fn new() -> Result<Self> {
+        // Using your CS pin 6
         let display = SharpDisplay::new(6)?;
         let ctx = Context::new();
         let startup_page = Box::new(pages::startup::LogoPage::new());
@@ -37,43 +35,28 @@ impl App {
 
     fn run(&mut self) -> Result<()> {
         let _stdout = stdout().into_raw_mode()?;
+        let stdin = stdin();
+        let mut keys = stdin.keys();
 
-        // 1. Setup background input thread
-        let (tx, rx) = mpsc::channel();
-        thread::spawn(move || {
-            let stdin = stdin();
-            for key in stdin.keys() {
-                if let Ok(k) = key {
-                    // If the main thread drops rx (exits), this send will fail gracefully
-                    if tx.send(k).is_err() {
-                        break;
-                    }
-                }
-            }
-        });
-
-        // Initial render
         self.render()?;
 
-        // 2. Main Game Loop (~60 FPS)
         loop {
-            let mut needs_redraw = false;
-
-            // 3. Process all queued input (Non-blocking)
-            while let Ok(key) = rx.try_recv() {
-                // Global Intercept
+            if let Some(Ok(key)) = keys.next() {
+                // 1. GLOBAL INTERCEPT: Ctrl+X to kill the app
                 if key == Key::Ctrl('x') {
-                    self.display.clear(&self.ctx);
+                    self.display.clear(&self.ctx); // Add &self.ctx here
                     self.display.update()?;
                     return Ok(());
                 }
 
+                // 2. GET ACTION: Pass key to the top page of the stack
                 let action = if let Some(top_page) = self.stack.last_mut() {
                     top_page.update(key, &mut self.ctx)
                 } else {
                     Action::Exit
                 };
 
+                // 3. PROCESS ACTION
                 match action {
                     Action::Push(new_page) => self.stack.push(new_page),
                     Action::Pop => { self.stack.pop(); },
@@ -81,37 +64,26 @@ impl App {
                         self.stack.pop();
                         self.stack.push(new_page);
                     },
-                    Action::Exit => return Ok(()),
+                    Action::Exit => break,
                     Action::None => {},
                 }
-                
-                needs_redraw = true;
-            }
 
-            if self.stack.is_empty() { break; }
-
-            // 4. Tick logic (for animations, physics, or timers)
-            if let Some(top_page) = self.stack.last_mut() {
-                if top_page.tick(&mut self.ctx) {
-                    needs_redraw = true;
+                // If we popped everything, exit the app
+                if self.stack.is_empty() { 
+                    break; 
                 }
-            }
 
-            // 5. Render only if necessary
-            if needs_redraw {
+                // 4. RENDER the new state
                 self.render()?;
             }
-
-            // Cap execution speed
-            thread::sleep(Duration::from_millis(16));
         }
         Ok(())
     }
 
     fn render(&mut self) -> Result<()> {
-        self.display.clear(&self.ctx);
+        self.display.clear(&self.ctx); // Add &self.ctx here
         
-        if let Some(top_page) = self.stack.last_mut() {
+        if let Some(top_page) = self.stack.last() {
             top_page.draw(&mut self.display, &self.ctx);
         }
         
