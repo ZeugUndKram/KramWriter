@@ -500,13 +500,11 @@ impl TetrisGame {
     }
     
     // Drawing methods
-    pub fn draw(&self, display: &mut SharpDisplay) {
+    pub fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
         // Draw overlay first (as background)
-        self.draw_overlay(display);
-        
-        // Then draw game elements on top
-        self.draw_arena(display);
-        self.draw_game_info(display);
+        self.draw_overlay(display, ctx);
+        self.draw_arena(display, ctx);
+        self.draw_game_info(display, ctx);
         
         if self.game_over {
             self.draw_game_over(display);
@@ -528,7 +526,7 @@ impl TetrisGame {
                         let screen_x = OVERLAY_X + x;
                         let screen_y = OVERLAY_Y + y;
                         if screen_x < 400 && screen_y < 240 {
-                            display.draw_pixel(screen_x, screen_y, pixel);
+                            display.draw_pixel(screen_x, screen_y, pixel, ctx);
                         }
                     }
                 }
@@ -544,12 +542,12 @@ impl TetrisGame {
         
         // Draw border
         for x in border_left..=border_right {
-            display.draw_pixel(x, border_top, Pixel::Black);
-            display.draw_pixel(x, border_bottom, Pixel::Black);
+            display.draw_pixel(x, border_top, Pixel::Black, ctx);
+            display.draw_pixel(x, border_bottom, Pixel::Black, ctx);
         }
         for y in border_top..=border_bottom {
-            display.draw_pixel(border_left, y, Pixel::Black);
-            display.draw_pixel(border_right, y, Pixel::Black);
+            display.draw_pixel(border_left, y, Pixel::Black, ctx);
+            display.draw_pixel(border_right, y, Pixel::Black, ctx);
         }
         
         // Draw placed blocks using sprites
@@ -599,7 +597,7 @@ impl TetrisGame {
                         let screen_x = block_x + sx;
                         let screen_y = block_y + sy;
                         if screen_x < 400 && screen_y < 240 {
-                            display.draw_pixel(screen_x, screen_y, Pixel::Black);
+                            display.draw_pixel(screen_x, screen_y, Pixel::Black, ctx);
                         }
                     }
                 }
@@ -609,7 +607,7 @@ impl TetrisGame {
             for by in 1..BLOCK_SIZE - 1 {
                 for bx in 1..BLOCK_SIZE - 1 {
                     if block_x + bx < 400 && block_y + by < 240 {
-                        display.draw_pixel(block_x + bx, block_y + by, Pixel::Black);
+                        display.draw_pixel(block_x + bx, block_y + by, Pixel::Black, ctx);
                     }
                 }
             }
@@ -617,14 +615,14 @@ impl TetrisGame {
             // Draw outline
             for bx in 0..BLOCK_SIZE {
                 if block_x + bx < 400 {
-                    display.draw_pixel(block_x + bx, block_y, Pixel::Black);
-                    display.draw_pixel(block_x + bx, block_y + BLOCK_SIZE - 1, Pixel::Black);
+                    display.draw_pixel(block_x + bx, block_y, Pixel::Black, ctx);
+                    display.draw_pixel(block_x + bx, block_y + BLOCK_SIZE - 1, Pixel::Black, ctx);
                 }
             }
             for by in 0..BLOCK_SIZE {
                 if block_y + by < 240 {
-                    display.draw_pixel(block_x, block_y + by, Pixel::Black);
-                    display.draw_pixel(block_x + BLOCK_SIZE - 1, block_y + by, Pixel::Black);
+                    display.draw_pixel(block_x, block_y + by, Pixel::Black, ctx);
+                    display.draw_pixel(block_x + BLOCK_SIZE - 1, block_y + by, Pixel::Black, ctx);
                 }
             }
         }
@@ -701,7 +699,7 @@ impl TetrisGame {
                                     let screen_x = block_x + sx;
                                     let screen_y = block_y + sy;
                                     if screen_x < 400 && screen_y < 240 {
-                                        display.draw_pixel(screen_x, screen_y, Pixel::Black);
+                                        display.draw_pixel(screen_x, screen_y, Pixel::Black, ctx);
                                     }
                                 }
                             }
@@ -725,7 +723,7 @@ impl TetrisGame {
                     for by in 0..preview_size {
                         for bx in 0..preview_size {
                             if screen_x + bx < 400 && screen_y + by < 240 {
-                                display.draw_pixel(screen_x + bx, screen_y + by, Pixel::Black);
+                                display.draw_pixel(screen_x + bx, screen_y + by, Pixel::Black, ctx);
                             }
                         }
                     }
@@ -742,7 +740,7 @@ impl TetrisGame {
         for by in 0..height {
             for bx in 0..bar_width {
                 if x + bx < 400 && y + by < 240 {
-                    display.draw_pixel(x + bx, y + by, Pixel::Black);
+                    display.draw_pixel(x + bx, y + by, Pixel::Black, ctx);
                 }
             }
         }
@@ -751,7 +749,7 @@ impl TetrisGame {
         for by in 1..height - 1 {
             for bx in 1..filled_width.min(bar_width - 2) {
                 if x + bx < 400 && y + by < 240 {
-                    display.draw_pixel(x + bx, y + by, Pixel::Black);
+                    display.draw_pixel(x + bx, y + by, Pixel::Black, ctx);
                 }
             }
         }
@@ -764,16 +762,16 @@ impl TetrisGame {
         // Draw X mark
         for i in 0..30 {
             if center_x + i < 400 && center_y + i < 240 {
-                display.draw_pixel(center_x + i, center_y + i, Pixel::Black);
+                display.draw_pixel(center_x + i, center_y + i, Pixel::Black, ctx);
             }
             if center_x + i < 400 && center_y >= i && center_y - i < 240 {
-                display.draw_pixel(center_x + i, center_y - i, Pixel::Black);
+                display.draw_pixel(center_x + i, center_y - i, Pixel::Black, ctx);
             }
             if center_x >= i && center_y + i < 240 {
-                display.draw_pixel(center_x - i, center_y + i, Pixel::Black);
+                display.draw_pixel(center_x - i, center_y + i, Pixel::Black, ctx);
             }
             if center_x >= i && center_y >= i {
-                display.draw_pixel(center_x - i, center_y - i, Pixel::Black);
+                display.draw_pixel(center_x - i, center_y - i, Pixel::Black, ctx);
             }
         }
     }
@@ -790,7 +788,7 @@ impl TetrisGame {
                 for x in 0..3 {
                     let draw_x = center_x as i32 - 6 + x as i32;
                     if draw_x >= 0 && draw_x < 400 {
-                        display.draw_pixel(draw_x as usize, draw_y as usize, Pixel::Black);
+                        display.draw_pixel(draw_x as usize, draw_y as usize, Pixel::Black, ctx);
                     }
                 }
                 
@@ -798,7 +796,7 @@ impl TetrisGame {
                 for x in 0..3 {
                     let draw_x = center_x as i32 + 4 + x as i32;
                     if draw_x >= 0 && draw_x < 400 {
-                        display.draw_pixel(draw_x as usize, draw_y as usize, Pixel::Black);
+                        display.draw_pixel(draw_x as usize, draw_y as usize, Pixel::Black, ctx);
                     }
                 }
             }
