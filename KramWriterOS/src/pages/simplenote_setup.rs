@@ -149,7 +149,6 @@ impl SimpleNoteSetupPage {
 }
 
 impl Page for SimpleNoteSetupPage {
-    /// This is called only when the user presses a key.
     fn update(&mut self, key: Key, ctx: &mut Context) -> Action {
         match self.focus {
             EntryFocus::TextInput => match key {
@@ -206,8 +205,6 @@ impl Page for SimpleNoteSetupPage {
         }
     }
 
-    /// This is called automatically every few ms (the "tick").
-    /// It handles background updates without requiring user input.
     fn tick(&mut self, _ctx: &mut Context) -> Action {
         if self.rx.is_none() {
             return Action::None;
@@ -239,14 +236,19 @@ impl Page for SimpleNoteSetupPage {
             self.step = SetupStep::ReadyToSync;
             self.status_msg = Some("SYNC COMPLETE".to_string());
             self.rx = None;
+            // Returning a non-None action to trigger redraw
+            return Action::Redraw; 
         } else if sync_error {
             self.step = SetupStep::ReadyToSync;
             self.error_msg = Some("SYNC FAILED. CHECK WIFI.".to_string());
             self.rx = None;
+            return Action::Redraw;
         }
 
-        // Return Action::None, but the main loop will trigger a redraw 
-        // because Action::None was returned after background activity.
+        if progress_received {
+            return Action::Redraw;
+        }
+
         Action::None
     }
 
