@@ -5,12 +5,16 @@ use crate::ui::bitmap::Bitmap;
 use crate::ui::fonts::FontRenderer;
 use termion::event::Key;
 use rpi_memory_display::Pixel;
-use std::path::PathBuf;
+use std::fs;
+use std::path::Path;
+use std::process::Command;
 
 #[derive(PartialEq)]
 enum SetupStep {
     Email,
     Password,
+    ReadyToSync,
+    Syncing,
 }
 
 #[derive(PartialEq)]
@@ -34,8 +38,16 @@ pub struct SimpleNoteSetupPage {
 impl SimpleNoteSetupPage {
     pub fn new() -> Self {
         let renderer = FontRenderer::new("/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf");
-        let asset_path = "/home/kramwriter/KramWriter/assets/NameEntry"; // Reusing your existing assets
+        let asset_path = "/home/kramwriter/KramWriter/assets/NameEntry"; 
         
+        // Check if we are already logged in
+        let creds_path = "/home/kramwriter/.simplenote_creds";
+        let initial_step = if Path::new(creds_path).exists() {
+            SetupStep::ReadyToSync
+        } else {
+            SetupStep::Email
+        };
+
         Self {
             renderer,
             footer_variants: [
@@ -43,7 +55,7 @@ impl SimpleNoteSetupPage {
                 Bitmap::load(&format!("{}/bottom_bar_1.bmp", asset_path)).ok(),
                 Bitmap::load(&format!("{}/bottom_bar_2.bmp", asset_path)).ok(),
             ],
-            step: SetupStep::Email,
+            step: initial_step,
             email: String::new(),
             password: String::new(),
             cursor_pos: 0,
@@ -53,7 +65,7 @@ impl SimpleNoteSetupPage {
         }
     }
 
-    fn handle_submit(&mut self, ctx: &mut Context) -> Action {
+    fn handle_submit(&mut self, _ctx: &mut Context) -> Action {
         match self.step {
             SetupStep::Email => {
                 if self.email.contains('@') && self.email.contains('.') {
@@ -72,13 +84,45 @@ impl SimpleNoteSetupPage {
                     return Action::None;
                 }
                 
-                // Here we would call the crate::simplenote::login logic
-                // For now, let's update context and pop
-                ctx.simplenote_email = Some(self.email.clone());
-                ctx.simplenote_token = Some("TEMP_TOKEN".to_string()); // Replace with actual API call result
-                
-                Action::Pop
+                // Save credentials for the Python script
+                let creds = format!("{}\n{}", self.email, self.password);
+                if fs::write("/home/kramwriter/.simplenote_creds", creds).is_ok() {
+                    self.step = SetupStep::ReadyToSync;
+                    self.focus = EntryFocus::BottomBar;
+                    self.footer_index = 1;
+                    self.error_msg = None;
+                } else {
+                    self.error_msg = Some("SYS ERROR: COULD NOT SAVE CREDS".to_string());
+                }
+                Action::None
             }
+            SetupStep::ReadyToSync => {
+                self.step = SetupStep::Syncing;
+                
+                // Call the Python script
+                let output = Command::new("python3")
+                    .arg("/home/kramwriter/KramWriter/scripts/sync_notes.py")
+                    .output();
+
+                match output {
+                    Ok(out) => {
+                        if out.status.success() {
+                            // Sync worked, kick back to browser or settings
+                            Action::Pop 
+                        } else {
+                            self.step = SetupStep::ReadyToSync;
+                            self.error_msg = Some("SYNC FAILED. CHECK WIFI.".to_string());
+                            Action::None
+                        }
+                    }
+                    Err(_) => {
+                        self.step = SetupStep::ReadyToSync;
+                        self.error_msg = Some("PYTHON SCRIPT MISSING".to_string());
+                        Action::None
+                    }
+                }
+            }
+            SetupStep::Syncing => Action::None,
         }
     }
 }
@@ -104,9 +148,11 @@ impl Page for SimpleNoteSetupPage {
                 }
                 Key::Down | Key::Char('\n') => { self.focus = EntryFocus::BottomBar; Action::None }
                 Key::Char(c) => {
+                    if self.step == SetupStep::ReadyToSync || self.step == SetupStep::Syncing {
+                        return Action::None;
+                    }
                     let target = if self.step == SetupStep::Email { &mut self.email } else { &mut self.password };
                     if target.len() < 30 {
-                        // Email stays uppercase for your UI style, or use c.to_lowercase() if Simplenote is picky
                         target.insert(self.cursor_pos, c); 
                         self.cursor_pos += 1;
                         self.error_msg = None;
@@ -116,11 +162,20 @@ impl Page for SimpleNoteSetupPage {
                 _ => Action::None,
             },
             EntryFocus::BottomBar => match key {
-                Key::Up => { self.focus = EntryFocus::TextInput; Action::None }
+                Key::Up => { 
+                    if self.step != SetupStep::ReadyToSync {
+                        self.focus = EntryFocus::TextInput; 
+                    }
+                    Action::None 
+                }
                 Key::Left => { self.footer_index = 0; Action::None }
                 Key::Right => { self.footer_index = 1; Action::None }
                 Key::Char('\n') => {
-                    if self.footer_index == 0 { Action::Pop } else { self.handle_submit(ctx) }
+                    if self.footer_index == 0 { 
+                        Action::Pop 
+                    } else { 
+                        self.handle_submit(ctx) 
+                    }
                 }
                 _ => Action::None,
             }
@@ -132,16 +187,19 @@ impl Page for SimpleNoteSetupPage {
         let title_text = match self.step {
             SetupStep::Email => "ENTER SIMPLENOTE EMAIL",
             SetupStep::Password => "ENTER PASSWORD",
+            SetupStep::ReadyToSync => "SIMPLENOTE HUB",
+            SetupStep::Syncing => "SYNCING NOTES...",
         };
         let title_w = self.renderer.calculate_width(title_text, 24.0);
         self.renderer.draw_text(display, title_text, 200 - (title_w / 2), 60, 24.0, ctx);
 
-        // 2. Prepare Display String
+        // 2. Main Body Content
         let font_size = 28.0;
-        let display_text = if self.step == SetupStep::Email {
-            self.email.to_uppercase()
-        } else {
-            "*".repeat(self.password.len()) // Mask password
+        let display_text = match self.step {
+            SetupStep::Email => self.email.to_uppercase(),
+            SetupStep::Password => "*".repeat(self.password.len()),
+            SetupStep::ReadyToSync => "PRESS ENTER TO SYNC".to_string(),
+            SetupStep::Syncing => "PLEASE WAIT".to_string(),
         };
 
         let full_width = self.renderer.calculate_width(&display_text, font_size);
@@ -150,8 +208,8 @@ impl Page for SimpleNoteSetupPage {
         
         self.renderer.draw_text(display, &display_text, start_x, text_y, font_size, ctx);
 
-        // 3. Draw Cursor
-        if self.focus == EntryFocus::TextInput {
+        // 3. Draw Cursor (Only for input steps)
+        if self.focus == EntryFocus::TextInput && (self.step == SetupStep::Email || self.step == SetupStep::Password) {
             let substring = if self.step == SetupStep::Email {
                 &self.email[0..self.cursor_pos]
             } else {
@@ -171,13 +229,15 @@ impl Page for SimpleNoteSetupPage {
             self.renderer.draw_text(display, err, 200 - (err_w / 2), 165, 20.0, ctx);
         }
 
-        // 5. Footer
-        let footer_idx = if self.focus == EntryFocus::TextInput { 0 } else { self.footer_index + 1 };
-        if let Some(bmp) = &self.footer_variants[footer_idx] {
-            for y in 0..bmp.height {
-                for x in 0..bmp.width {
-                    if bmp.pixels[y * bmp.width + x] == Pixel::Black {
-                        display.draw_pixel(x, (y + 216) as usize, Pixel::Black, ctx);
+        // 5. Footer (Hide footer if currently syncing to prevent double-clicks)
+        if self.step != SetupStep::Syncing {
+            let footer_idx = if self.focus == EntryFocus::TextInput { 0 } else { self.footer_index + 1 };
+            if let Some(bmp) = &self.footer_variants[footer_idx] {
+                for y in 0..bmp.height {
+                    for x in 0..bmp.width {
+                        if bmp.pixels[y * bmp.width + x] == Pixel::Black {
+                            display.draw_pixel(x, (y + 216) as usize, Pixel::Black, ctx);
+                        }
                     }
                 }
             }
