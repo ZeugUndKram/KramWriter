@@ -7,7 +7,10 @@ use termion::event::Key;
 use rpi_memory_display::Pixel;
 use std::fs;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio}; // Added Stdio
+use std::io::{BufRead, BufReader};   // Added for reading stream
+use std::sync::mpsc;                // Added for thread communication
+use std::thread;                    // Added for background task
 
 #[derive(PartialEq, Clone, Copy)] 
 enum SetupStep {
@@ -33,7 +36,9 @@ pub struct SimpleNoteSetupPage {
     focus: EntryFocus,
     footer_index: usize,
     error_msg: Option<String>,
-    status_msg: Option<String>, // Added for informational feedback
+    status_msg: Option<String>,
+    // The receiver for messages coming from the background sync thread
+    rx: Option<mpsc::Receiver<String>>, 
 }
 
 impl SimpleNoteSetupPage {
@@ -63,6 +68,7 @@ impl SimpleNoteSetupPage {
             footer_index: 1,
             error_msg: None,
             status_msg: None,
+            rx: None,
         }
     }
 
@@ -73,11 +79,10 @@ impl SimpleNoteSetupPage {
                     self.step = SetupStep::Password;
                     self.cursor_pos = 0;
                     self.focus = EntryFocus::TextInput;
-                    Action::None
                 } else {
                     self.error_msg = Some("INVALID EMAIL".to_string());
-                    Action::None
                 }
+                Action::None
             }
             SetupStep::Password => {
                 if self.password.is_empty() {
@@ -99,46 +104,48 @@ impl SimpleNoteSetupPage {
             }
             SetupStep::ReadyToSync => {
                 self.step = SetupStep::Syncing;
-                self.status_msg = None;
+                self.status_msg = Some("INITIALIZING...".to_string());
                 self.error_msg = None;
 
-                // NOTE: output() is blocking. The screen will stay on "SYNCING..." 
-                // until the Python script completes.
-                let output = Command::new("python3")
-                    .arg("/home/kramwriter/KramWriter/KramWriterOS/scripts/sync_notes.py")
-                    .output();
+                // Create a channel to communicate between the background thread and UI
+                let (tx, rx) = mpsc::channel();
+                self.rx = Some(rx);
 
-                match output {
-                    Ok(out) => {
-                        if out.status.success() {
-                            let stdout = String::from_utf8_lossy(&out.stdout);
-                            
-                            // Parse the output to count actions
-                            let downloads = stdout.lines().filter(|l| l.contains("Downloaded")).count();
-                            let uploads = stdout.lines().filter(|l| l.contains("Uploaded")).count();
-                            
-                            self.step = SetupStep::ReadyToSync;
-                            if downloads == 0 && uploads == 0 {
-                                self.status_msg = Some("SYNC COMPLETE: NO CHANGES".to_string());
-                            } else {
-                                self.status_msg = Some(format!("SUCCESS: {} DOWN, {} UP", downloads, uploads));
+                // Spawn the background thread so the UI remains responsive
+                thread::spawn(move || {
+                    let child = Command::new("python3")
+                        .arg("-u") // -u forces unbuffered output so we get lines instantly
+                        .arg("/home/kramwriter/KramWriter/KramWriterOS/scripts/sync_notes.py")
+                        .stdout(Stdio::piped())
+                        .stderr(Stdio::piped())
+                        .spawn();
+
+                    match child {
+                        Ok(mut child) => {
+                            let stdout = child.stdout.take().unwrap();
+                            let reader = BufReader::new(stdout);
+
+                            for line in reader.lines() {
+                                if let Ok(l) = line {
+                                    // Send the progress line (e.g., "Downloaded: Note.txt") to the UI
+                                    let _ = tx.send(l);
+                                }
                             }
-                            Action::None 
-                        } else {
-                            self.step = SetupStep::ReadyToSync;
-                            let err_text = String::from_utf8_lossy(&out.stderr);
-                            eprintln!("Python Sync Error: {}", err_text);
-                            self.error_msg = Some("SYNC FAILED. CHECK WIFI.".to_string());
-                            Action::None
+
+                            let status = child.wait().unwrap();
+                            if status.success() {
+                                let _ = tx.send("__FINISHED_SUCCESS__".to_string());
+                            } else {
+                                let _ = tx.send("__FINISHED_ERROR__".to_string());
+                            }
+                        }
+                        Err(_) => {
+                            let _ = tx.send("__FINISHED_ERROR__".to_string());
                         }
                     }
-                    Err(e) => {
-                        self.step = SetupStep::ReadyToSync;
-                        eprintln!("Failed to execute process: {}", e);
-                        self.error_msg = Some("PYTHON SCRIPT MISSING".to_string());
-                        Action::None
-                    }
-                }
+                });
+
+                Action::None
             }
             SetupStep::Syncing => Action::None,
         }
@@ -147,6 +154,29 @@ impl SimpleNoteSetupPage {
 
 impl Page for SimpleNoteSetupPage {
     fn update(&mut self, key: Key, ctx: &mut Context) -> Action {
+        // --- STREAMING LOGIC ---
+        // Check if there are any new messages from the Python thread
+        if let Some(ref rx) = self.rx {
+            while let Ok(msg) = rx.try_recv() {
+                if msg == "__FINISHED_SUCCESS__" {
+                    self.step = SetupStep::ReadyToSync;
+                    self.status_msg = Some("SYNC COMPLETE".to_string());
+                    self.rx = None;
+                } else if msg == "__FINISHED_ERROR__" {
+                    self.step = SetupStep::ReadyToSync;
+                    self.error_msg = Some("SYNC FAILED. CHECK WIFI.".to_string());
+                    self.rx = None;
+                } else {
+                    // Update the on-screen message with the current file being processed
+                    // We uppercase it to match your UI style
+                    let clean_msg = msg.replace("Syncing...", "").trim().to_string();
+                    if !clean_msg.is_empty() {
+                        self.status_msg = Some(clean_msg.to_uppercase());
+                    }
+                }
+            }
+        }
+
         match self.focus {
             EntryFocus::TextInput => match key {
                 Key::Left => { if self.cursor_pos > 0 { self.cursor_pos -= 1; } Action::None }
@@ -242,7 +272,7 @@ impl Page for SimpleNoteSetupPage {
             }
         }
 
-        // 4. Messages (Error in Black, Status in Black/Centered)
+        // 4. Progress Messages (Shows Downloaded: File.txt etc.)
         if let Some(err) = &self.error_msg {
             let err_w = self.renderer.calculate_width(err, 20.0);
             self.renderer.draw_text(display, err, 200 - (err_w / 2), 165, 20.0, ctx);
