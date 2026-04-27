@@ -40,7 +40,6 @@ impl SimpleNoteSetupPage {
         let renderer = FontRenderer::new("/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf");
         let asset_path = "/home/kramwriter/KramWriter/assets/NameEntry"; 
         
-        // Check if we are already logged in
         let creds_path = "/home/kramwriter/.simplenote_creds";
         let initial_step = if Path::new(creds_path).exists() {
             SetupStep::ReadyToSync
@@ -59,7 +58,7 @@ impl SimpleNoteSetupPage {
             email: String::new(),
             password: String::new(),
             cursor_pos: 0,
-            focus: EntryFocus::TextInput,
+            focus: if initial_step == SetupStep::ReadyToSync { EntryFocus::BottomBar } else { EntryFocus::TextInput },
             footer_index: 1,
             error_msg: None,
         }
@@ -84,7 +83,6 @@ impl SimpleNoteSetupPage {
                     return Action::None;
                 }
                 
-                // Save credentials for the Python script
                 let creds = format!("{}\n{}", self.email, self.password);
                 if fs::write("/home/kramwriter/.simplenote_creds", creds).is_ok() {
                     self.step = SetupStep::ReadyToSync;
@@ -99,24 +97,28 @@ impl SimpleNoteSetupPage {
             SetupStep::ReadyToSync => {
                 self.step = SetupStep::Syncing;
                 
-                // Call the Python script
+                // Using the full absolute path ensures the script is found regardless of where you ran cargo
                 let output = Command::new("python3")
-                    .arg("/home/kramwriter/KramWriter/scripts/sync_notes.py")
+                    .arg("/home/kramwriter/KramWriter/KramWriterOS/scripts/sync_notes.py")
                     .output();
 
                 match output {
                     Ok(out) => {
                         if out.status.success() {
-                            // Sync worked, kick back to browser or settings
                             Action::Pop 
                         } else {
                             self.step = SetupStep::ReadyToSync;
+                            // Log the Python error to the terminal for debugging
+                            let err_text = String::from_utf8_lossy(&out.stderr);
+                            eprintln!("Python Sync Error: {}", err_text);
+                            
                             self.error_msg = Some("SYNC FAILED. CHECK WIFI.".to_string());
                             Action::None
                         }
                     }
-                    Err(_) => {
+                    Err(e) => {
                         self.step = SetupStep::ReadyToSync;
+                        eprintln!("Failed to execute process: {}", e);
                         self.error_msg = Some("PYTHON SCRIPT MISSING".to_string());
                         Action::None
                     }
@@ -152,7 +154,7 @@ impl Page for SimpleNoteSetupPage {
                         return Action::None;
                     }
                     let target = if self.step == SetupStep::Email { &mut self.email } else { &mut self.password };
-                    if target.len() < 30 {
+                    if target.len() < 40 { // Increased limit slightly for long emails/passwords
                         target.insert(self.cursor_pos, c); 
                         self.cursor_pos += 1;
                         self.error_msg = None;
@@ -163,7 +165,7 @@ impl Page for SimpleNoteSetupPage {
             },
             EntryFocus::BottomBar => match key {
                 Key::Up => { 
-                    if self.step != SetupStep::ReadyToSync {
+                    if self.step != SetupStep::ReadyToSync && self.step != SetupStep::Syncing {
                         self.focus = EntryFocus::TextInput; 
                     }
                     Action::None 
@@ -208,7 +210,7 @@ impl Page for SimpleNoteSetupPage {
         
         self.renderer.draw_text(display, &display_text, start_x, text_y, font_size, ctx);
 
-        // 3. Draw Cursor (Only for input steps)
+        // 3. Draw Cursor
         if self.focus == EntryFocus::TextInput && (self.step == SetupStep::Email || self.step == SetupStep::Password) {
             let substring = if self.step == SetupStep::Email {
                 &self.email[0..self.cursor_pos]
@@ -220,6 +222,7 @@ impl Page for SimpleNoteSetupPage {
 
             for cy in (text_y - 24)..(text_y + 2) {
                 display.draw_pixel(cursor_x as usize, cy as usize, Pixel::Black, ctx);
+                display.draw_pixel((cursor_x + 1) as usize, cy as usize, Pixel::Black, ctx);
             }
         }
 
@@ -229,7 +232,7 @@ impl Page for SimpleNoteSetupPage {
             self.renderer.draw_text(display, err, 200 - (err_w / 2), 165, 20.0, ctx);
         }
 
-        // 5. Footer (Hide footer if currently syncing to prevent double-clicks)
+        // 5. Footer
         if self.step != SetupStep::Syncing {
             let footer_idx = if self.focus == EntryFocus::TextInput { 0 } else { self.footer_index + 1 };
             if let Some(bmp) = &self.footer_variants[footer_idx] {
