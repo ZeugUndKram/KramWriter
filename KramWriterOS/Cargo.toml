@@ -14,3 +14,5 @@ chrono = "0.4"
 chrono-tz = "0.8"
 parking_lot = "0.12"
 fontdue = "0.7"
+reqwest = { version = "0.12", features = ["blocking", "json"] }
+base64 = "0.22" # Simplenote auth requires base64 encoding credentials

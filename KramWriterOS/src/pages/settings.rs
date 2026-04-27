@@ -1,15 +1,17 @@
 use crate::pages::{Page, Action};
-use crate::context::Context;
+use crate::context::{Context, KeyboardLayout};
 use crate::display::SharpDisplay;
 use crate::ui::bitmap::Bitmap;
 use termion::event::Key;
 use rpi_memory_display::Pixel;
+use crate::pages::simplenote_setup::SimpleNoteSetupPage;
+use crate::pages::timezone::TimezonePage;
 
-const SETTINGS_OPTIONS: [&str; 5] = ["timezone", "location", "darkmode", "drive", "keyboard"];
+// Swapped "drive" for "simplenote"
+const SETTINGS_OPTIONS: [&str; 5] = ["timezone", "location", "darkmode", "simplenote", "keyboard"];
 
 pub struct SettingsPage {
     current_index: usize,
-    // We'll store up to 4 variants just in case, but most will only use 2
     images: Vec<[Option<Bitmap>; 4]>,
 }
 
@@ -21,7 +23,6 @@ impl SettingsPage {
             let mut variants = [None, None, None, None];
 
             if *option == "darkmode" {
-                // Darkmode option uses all four: Off, Selected-Off, On, Selected-On
                 let paths = [
                     "/home/kramwriter/KramWriter/assets/Settings/darkmode_0.bmp",
                     "/home/kramwriter/KramWriter/assets/Settings/darkmode_1.bmp",
@@ -32,7 +33,7 @@ impl SettingsPage {
                     variants[i] = Bitmap::load(path).ok();
                 }
             } else {
-                // All other options only use _0 and _1 (or _3 for keyboard)
+                // Suffix logic: keyboard uses _3 for selected, others use _1
                 let suffix_sel = if *option == "keyboard" { "3" } else { "1" };
                 let path_0 = format!("/home/kramwriter/KramWriter/assets/Settings/{}_0.bmp", option);
                 let path_sel = format!("/home/kramwriter/KramWriter/assets/Settings/{}_{}.bmp", option, suffix_sel);
@@ -61,15 +62,19 @@ impl Page for SettingsPage {
             }
             Key::Char('\n') => {
                 match self.current_index {
-                    0 => Action::Push(Box::new(crate::pages::timezone::TimezonePage::new())),
+                    0 => Action::Push(Box::new(TimezonePage::new())),
                     2 => {
                         ctx.dark_mode = !ctx.dark_mode;
                         Action::None
                     }
+                    3 => {
+                        // Triggers the Simplenote email/password entry flow
+                        Action::Push(Box::new(SimpleNoteSetupPage::new()))
+                    }
                     4 => {
                         ctx.layout = match ctx.layout {
-                            crate::context::KeyboardLayout::Qwerty => crate::context::KeyboardLayout::Qwertz,
-                            crate::context::KeyboardLayout::Qwertz => crate::context::KeyboardLayout::Qwerty,
+                            KeyboardLayout::Qwerty => KeyboardLayout::Qwertz,
+                            KeyboardLayout::Qwertz => KeyboardLayout::Qwerty,
                         };
                         Action::None
                     }
@@ -86,17 +91,14 @@ impl Page for SettingsPage {
             let variant_idx;
 
             if SETTINGS_OPTIONS[i] == "darkmode" {
-                // Logic for the Darkmode Toggle icon:
-                // If context is currently Dark: Unselected=2, Selected=3
-                // If context is currently Light: Unselected=0, Selected=1
+                // Logic: Unselected Dark=2, Selected Dark=3, Unselected Light=0, Selected Light=1
                 variant_idx = if ctx.dark_mode {
-                    if i == self.current_index { 2 } else { 3 }
+                    if i == self.current_index { 3 } else { 2 }
                 } else {
                     if i == self.current_index { 1 } else { 0 }
                 };
             } else {
-                // Standard Logic for all other icons:
-                // Just Unselected (0) vs Selected (1)
+                // Standard: Unselected=0, Selected=1
                 variant_idx = if i == self.current_index { 1 } else { 0 };
             }
 

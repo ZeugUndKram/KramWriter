@@ -11,22 +11,28 @@ pub struct SystemStatus {
 
 pub struct Context {
     pub dark_mode: bool,
-    pub timezone: String,   // Added field
+    pub timezone: String,
     pub layout: KeyboardLayout,
     pub status: SystemStatus,
+    // Add these two:
+    pub simplenote_email: Option<String>,
+    pub simplenote_token: Option<String>, 
 }
 
 impl Context {
     pub fn new() -> Self {
         Self {
             dark_mode: false,
-            timezone: String::from("UTC"), // Initialize with default
+            timezone: String::from("UTC"),
             layout: KeyboardLayout::Qwerty,
             status: SystemStatus {
                 wifi_strength: 0,
                 weather_icon: 0,
                 time_str: String::from("00:00"),
             },
+            // Initialize as None
+            simplenote_email: None,
+            simplenote_token: None,
         }
     }
 }
