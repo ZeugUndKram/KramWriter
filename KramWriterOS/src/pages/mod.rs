@@ -22,18 +22,6 @@ pub enum Action {
 }
 
 pub trait Page {
-    fn update(&mut self, key: Option<Key>, ctx: &mut Context) -> Action {
-    // 1. Progress check logic here (runs every tick)
-    // ... (Your streaming logic from the previous fix) ...
-
-    // 2. Key handling logic (only runs if a key exists)
-    if let Some(k) = key {
-        match self.focus {
-            // ... (Your key matching logic) ...
-        }
-    } else {
-        Action::None
-    }
-}
+    fn update(&mut self, key: Key, ctx: &mut Context) -> Action;
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context);
 }
