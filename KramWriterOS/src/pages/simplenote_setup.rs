@@ -9,7 +9,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy)] 
 enum SetupStep {
     Email,
     Password,
