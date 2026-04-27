@@ -154,21 +154,20 @@ impl SimpleNoteSetupPage {
 
 impl Page for SimpleNoteSetupPage {
     fn update(&mut self, key: Key, ctx: &mut Context) -> Action {
-        // --- STREAMING LOGIC ---
-        // Check if there are any new messages from the Python thread
+        // We use these flags to update the state AFTER the borrow is finished
+        let mut sync_finished = false;
+        let mut sync_error = false;
+
+        // 1. Check for messages from the Python thread
         if let Some(ref rx) = self.rx {
             while let Ok(msg) = rx.try_recv() {
                 if msg == "__FINISHED_SUCCESS__" {
-                    self.step = SetupStep::ReadyToSync;
-                    self.status_msg = Some("SYNC COMPLETE".to_string());
-                    self.rx = None;
+                    sync_finished = true;
+                    break; // Exit the while loop
                 } else if msg == "__FINISHED_ERROR__" {
-                    self.step = SetupStep::ReadyToSync;
-                    self.error_msg = Some("SYNC FAILED. CHECK WIFI.".to_string());
-                    self.rx = None;
+                    sync_error = true;
+                    break; // Exit the while loop
                 } else {
-                    // Update the on-screen message with the current file being processed
-                    // We uppercase it to match your UI style
                     let clean_msg = msg.replace("Syncing...", "").trim().to_string();
                     if !clean_msg.is_empty() {
                         self.status_msg = Some(clean_msg.to_uppercase());
@@ -177,6 +176,18 @@ impl Page for SimpleNoteSetupPage {
             }
         }
 
+        // 2. Handle the finished state (Now that 'rx' is no longer borrowed)
+        if sync_finished {
+            self.step = SetupStep::ReadyToSync;
+            self.status_msg = Some("SYNC COMPLETE".to_string());
+            self.rx = None;
+        } else if sync_error {
+            self.step = SetupStep::ReadyToSync;
+            self.error_msg = Some("SYNC FAILED. CHECK WIFI.".to_string());
+            self.rx = None;
+        }
+
+        // 3. Regular key handling (existing logic)
         match self.focus {
             EntryFocus::TextInput => match key {
                 Key::Left => { if self.cursor_pos > 0 { self.cursor_pos -= 1; } Action::None }
