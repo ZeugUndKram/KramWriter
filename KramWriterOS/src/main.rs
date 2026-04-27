@@ -38,7 +38,6 @@ impl App {
         let _stdout = stdout().into_raw_mode()?;
         
         // 1. ASYNC INPUT SETUP
-        // We move keyboard listening to a thread so it doesn't block the loop
         let (tx, rx) = mpsc::channel();
         thread::spawn(move || {
             let stdin = stdin();
@@ -52,33 +51,27 @@ impl App {
         self.render()?;
 
         loop {
-            // 2. WAIT WITH TIMEOUT
-            // Check for a key, but only wait for 100ms.
+            // Wait for 100ms so the loop "ticks" regularly even without typing
             let key_event = rx.recv_timeout(Duration::from_millis(100)).ok();
 
-            // Handle Global Exit
             if let Some(Key::Ctrl('x')) = key_event {
                 self.display.clear(&self.ctx);
                 self.display.update()?;
                 return Ok(());
             }
 
-            // 3. PAGE LOGIC
             let mut should_render = false;
             let action = if let Some(top_page) = self.stack.last_mut() {
                 match key_event {
                     Some(key) => {
-                        should_render = true; // Always render if user pressed a key
+                        should_render = true; 
                         top_page.update(key, &mut self.ctx)
                     }
                     None => {
-                        // This is the "Automatic" part. 
-                        // It calls tick() even if no key was pressed.
                         let tick_action = top_page.tick(&mut self.ctx);
                         
-                        // If the setup page found a background update, it should return an action 
-                        // or we trigger a render here.
-                        if tick_action != Action::None {
+                        // FIX: Use is_none() helper instead of != Action::None
+                        if !tick_action.is_none() {
                             should_render = true;
                         }
                         tick_action
@@ -88,7 +81,6 @@ impl App {
                 Action::Exit
             };
 
-            // 4. PROCESS ACTION
             match action {
                 Action::Push(new_page) => {
                     self.stack.push(new_page);
@@ -103,6 +95,10 @@ impl App {
                     self.stack.push(new_page);
                     should_render = true;
                 },
+                // FIX: Handle the Redraw variant explicitly
+                Action::Redraw => {
+                    should_render = true;
+                },
                 Action::Exit => break,
                 Action::None => {},
             }
@@ -111,8 +107,6 @@ impl App {
                 break; 
             }
 
-            // 5. CONDITIONAL RENDER
-            // Only update the Sharp display if something actually changed.
             if should_render {
                 self.render()?;
             }
@@ -122,11 +116,9 @@ impl App {
 
     fn render(&mut self) -> Result<()> {
         self.display.clear(&self.ctx);
-        
         if let Some(top_page) = self.stack.last() {
             top_page.draw(&mut self.display, &self.ctx);
         }
-        
         self.display.update()?;
         Ok(())
     }
