@@ -7,37 +7,30 @@ DIR = "/home/kramwriter/folder/simplenote"
 CREDS_FILE = "/home/kramwriter/.simplenote_creds"
 
 def get_title(content):
-    lines = content.strip().split('\n')
-    if not lines or not lines[0].strip():
+    if not content or not content.strip():
         return None
-    # Take first 30 chars and keep only safe filename characters
+    lines = content.strip().split('\n')
     title = lines[0][:30].strip()
     clean_title = "".join([c for c in title if c.isalnum() or c in (' ', '_')]).strip()
-    return clean_title if clean_title else None
+    return clean_title if clean_title else "Untitled"
 
 def sync():
     if not os.path.exists(CREDS_FILE):
-        print("Error: No credentials found.")
         sys.exit(1)
 
     with open(CREDS_FILE, 'r') as f:
-        creds = f.read().splitlines()
-        if len(creds) < 2:
-            sys.exit(1)
-        email, password = creds[0], creds[1]
+        lines = f.read().splitlines()
+        email, password = lines[0], lines[1]
 
     sn = Simplenote(email, password)
-    # Use the modern method name
-    remote_notes, res = sn.get_note_list()
+    remote_notes, res = sn.get_note_list()    
     
     if res != 0:
-        print("Error: Failed to authenticate.")
         sys.exit(1)
 
     if not os.path.exists(DIR):
         os.makedirs(DIR)
 
-    # Build local file map with UTF-8 safety
     local_files = {}
     for filename in os.listdir(DIR):
         if filename.endswith(".txt"):
@@ -46,7 +39,6 @@ def sync():
                 with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
                     content = f.read()
                 local_files[filename] = {
-                    'path': filepath,
                     'mtime': os.path.getmtime(filepath),
                     'content': content
                 }
@@ -54,51 +46,60 @@ def sync():
                 continue
 
     print("Syncing...")
+    
+    seen_filenames = set()
 
-    # Process Remote Notes
     for note in remote_notes:
-        if note.get('deleted'):
-            continue
+        if note.get('deleted'): continue
             
         full_note, _ = sn.get_note(note['key'])
         content = full_note.get('content', '')
         title = get_title(content)
-        
-        if not title: # Skip empty/ghost notes
-            continue
+        if not title: continue
             
-        filename = f"{title}.txt"
+        # Handle Duplicate Titles (e.g., GTA Radio, GTA Radio_1)
+        base_filename = f"{title}.txt"
+        filename = base_filename
+        counter = 1
+        while filename in seen_filenames:
+            filename = f"{title}_{counter}.txt"
+            counter += 1
+        seen_filenames.add(filename)
+
         remote_mtime = float(full_note.get('modificationDate', 0))
         filepath = os.path.join(DIR, filename)
 
         if filename in local_files:
             local_mtime = local_files[filename]['mtime']
-            # UPLOAD: Local is newer (5s buffer)
-            if local_mtime > remote_mtime + 5:
-                full_note['content'] = local_files[filename]['content']
-                sn.update_note(full_note)
-                print(f"Uploaded: {title}")
-            # DOWNLOAD: Remote is newer
-            elif remote_mtime > local_mtime + 5:
-                with open(filepath, 'w', encoding='utf-8') as f:
-                    f.write(content)
-                os.utime(filepath, (time.time(), remote_mtime))
-                print(f"Downloaded changes: {title}")
+            local_content = local_files[filename]['content']
+
+            # CRITICAL FIX: Only sync if content is actually DIFFERENT
+            if local_content != content:
+                # If local is newer than remote by more than 10 seconds
+                if local_mtime > (remote_mtime + 10):
+                    full_note['content'] = local_content
+                    sn.update_note(full_note)
+                    print(f"Uploaded: {filename}")
+                # If remote is newer than local by more than 10 seconds
+                elif remote_mtime > (local_mtime + 10):
+                    with open(filepath, 'w', encoding='utf-8') as f:
+                        f.write(content)
+                    os.utime(filepath, (time.time(), remote_mtime))
+                    print(f"Downloaded: {filename}")
             
             del local_files[filename]
         else:
-            # New file from server
+            # Download new notes from server
             with open(filepath, 'w', encoding='utf-8') as f:
                 f.write(content)
             os.utime(filepath, (time.time(), remote_mtime))
-            print(f"New note: {title}")
+            print(f"New Remote Note: {filename}")
 
-    # Process remaining local files (New files from Writerdeck)
+    # Upload local files that don't exist on server
     for filename, data in local_files.items():
-        if not data['content'].strip(): continue
-        new_note = {"content": data['content']}
-        sn.add_note(new_note)
-        print(f"Uploaded new: {filename}")
+        if data['content'].strip():
+            sn.add_note({"content": data['content']})
+            print(f"Uploaded New Local: {filename}")
 
     print("Sync Complete.")
 
