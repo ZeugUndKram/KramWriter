@@ -20,8 +20,7 @@ def sync():
         email, password = f.read().splitlines()
 
     sn = Simplenote(email, password)
-    remote_notes, res = sn.get_notes()
-    
+    remote_notes, res = sn.get_note_list()    
     if res != 0:
         print("Failed to authenticate with Simplenote.")
         sys.exit(1)
