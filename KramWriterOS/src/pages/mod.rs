@@ -23,5 +23,10 @@ pub enum Action {
 
 pub trait Page {
     fn update(&mut self, key: Key, ctx: &mut Context) -> Action;
+    
+    // Add this new optional method with a default "do nothing" implementation
+    fn tick(&mut self, _ctx: &mut Context) -> Action {
+        Action::None
+    }
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context);
 }

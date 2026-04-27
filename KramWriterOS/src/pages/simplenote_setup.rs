@@ -7,10 +7,10 @@ use termion::event::Key;
 use rpi_memory_display::Pixel;
 use std::fs;
 use std::path::Path;
-use std::process::{Command, Stdio}; // Added Stdio
-use std::io::{BufRead, BufReader};   // Added for reading stream
-use std::sync::mpsc;                // Added for thread communication
-use std::thread;                    // Added for background task
+use std::process::{Command, Stdio};
+use std::io::{BufRead, BufReader};
+use std::sync::mpsc;
+use std::thread;
 
 #[derive(PartialEq, Clone, Copy)] 
 enum SetupStep {
@@ -37,7 +37,6 @@ pub struct SimpleNoteSetupPage {
     footer_index: usize,
     error_msg: Option<String>,
     status_msg: Option<String>,
-    // The receiver for messages coming from the background sync thread
     rx: Option<mpsc::Receiver<String>>, 
 }
 
@@ -107,14 +106,12 @@ impl SimpleNoteSetupPage {
                 self.status_msg = Some("INITIALIZING...".to_string());
                 self.error_msg = None;
 
-                // Create a channel to communicate between the background thread and UI
                 let (tx, rx) = mpsc::channel();
                 self.rx = Some(rx);
 
-                // Spawn the background thread so the UI remains responsive
                 thread::spawn(move || {
                     let child = Command::new("python3")
-                        .arg("-u") // -u forces unbuffered output so we get lines instantly
+                        .arg("-u") 
                         .arg("/home/kramwriter/KramWriter/KramWriterOS/scripts/sync_notes.py")
                         .stdout(Stdio::piped())
                         .stderr(Stdio::piped())
@@ -127,7 +124,6 @@ impl SimpleNoteSetupPage {
 
                             for line in reader.lines() {
                                 if let Ok(l) = line {
-                                    // Send the progress line (e.g., "Downloaded: Note.txt") to the UI
                                     let _ = tx.send(l);
                                 }
                             }
@@ -153,41 +149,8 @@ impl SimpleNoteSetupPage {
 }
 
 impl Page for SimpleNoteSetupPage {
+    /// This is called only when the user presses a key.
     fn update(&mut self, key: Key, ctx: &mut Context) -> Action {
-        // We use these flags to update the state AFTER the borrow is finished
-        let mut sync_finished = false;
-        let mut sync_error = false;
-
-        // 1. Check for messages from the Python thread
-        if let Some(ref rx) = self.rx {
-            while let Ok(msg) = rx.try_recv() {
-                if msg == "__FINISHED_SUCCESS__" {
-                    sync_finished = true;
-                    break; // Exit the while loop
-                } else if msg == "__FINISHED_ERROR__" {
-                    sync_error = true;
-                    break; // Exit the while loop
-                } else {
-                    let clean_msg = msg.replace("Syncing...", "").trim().to_string();
-                    if !clean_msg.is_empty() {
-                        self.status_msg = Some(clean_msg.to_uppercase());
-                    }
-                }
-            }
-        }
-
-        // 2. Handle the finished state (Now that 'rx' is no longer borrowed)
-        if sync_finished {
-            self.step = SetupStep::ReadyToSync;
-            self.status_msg = Some("SYNC COMPLETE".to_string());
-            self.rx = None;
-        } else if sync_error {
-            self.step = SetupStep::ReadyToSync;
-            self.error_msg = Some("SYNC FAILED. CHECK WIFI.".to_string());
-            self.rx = None;
-        }
-
-        // 3. Regular key handling (existing logic)
         match self.focus {
             EntryFocus::TextInput => match key {
                 Key::Left => { if self.cursor_pos > 0 { self.cursor_pos -= 1; } Action::None }
@@ -243,8 +206,51 @@ impl Page for SimpleNoteSetupPage {
         }
     }
 
+    /// This is called automatically every few ms (the "tick").
+    /// It handles background updates without requiring user input.
+    fn tick(&mut self, _ctx: &mut Context) -> Action {
+        if self.rx.is_none() {
+            return Action::None;
+        }
+
+        let mut sync_finished = false;
+        let mut sync_error = false;
+        let mut progress_received = false;
+
+        if let Some(ref rx) = self.rx {
+            while let Ok(msg) = rx.try_recv() {
+                progress_received = true;
+                if msg == "__FINISHED_SUCCESS__" {
+                    sync_finished = true;
+                    break;
+                } else if msg == "__FINISHED_ERROR__" {
+                    sync_error = true;
+                    break;
+                } else {
+                    let clean_msg = msg.replace("Syncing...", "").trim().to_string();
+                    if !clean_msg.is_empty() {
+                        self.status_msg = Some(clean_msg.to_uppercase());
+                    }
+                }
+            }
+        }
+
+        if sync_finished {
+            self.step = SetupStep::ReadyToSync;
+            self.status_msg = Some("SYNC COMPLETE".to_string());
+            self.rx = None;
+        } else if sync_error {
+            self.step = SetupStep::ReadyToSync;
+            self.error_msg = Some("SYNC FAILED. CHECK WIFI.".to_string());
+            self.rx = None;
+        }
+
+        // Return Action::None, but the main loop will trigger a redraw 
+        // because Action::None was returned after background activity.
+        Action::None
+    }
+
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
-        // 1. Title
         let title_text = match self.step {
             SetupStep::Email => "ENTER SIMPLENOTE EMAIL",
             SetupStep::Password => "ENTER PASSWORD",
@@ -254,7 +260,6 @@ impl Page for SimpleNoteSetupPage {
         let title_w = self.renderer.calculate_width(title_text, 24.0);
         self.renderer.draw_text(display, title_text, 200 - (title_w / 2), 60, 24.0, ctx);
 
-        // 2. Main Content
         let font_size = 28.0;
         let display_text = match self.step {
             SetupStep::Email => self.email.to_uppercase(),
@@ -271,7 +276,6 @@ impl Page for SimpleNoteSetupPage {
         let text_y = 120;
         self.renderer.draw_text(display, &display_text, start_x, text_y, font_size, ctx);
 
-        // 3. Cursor
         if self.focus == EntryFocus::TextInput && (self.step == SetupStep::Email || self.step == SetupStep::Password) {
             let substring = if self.step == SetupStep::Email { &self.email[0..self.cursor_pos] } else { &display_text[0..self.cursor_pos] };
             let sub_width = self.renderer.calculate_width(substring, font_size);
@@ -283,7 +287,6 @@ impl Page for SimpleNoteSetupPage {
             }
         }
 
-        // 4. Progress Messages (Shows Downloaded: File.txt etc.)
         if let Some(err) = &self.error_msg {
             let err_w = self.renderer.calculate_width(err, 20.0);
             self.renderer.draw_text(display, err, 200 - (err_w / 2), 165, 20.0, ctx);
@@ -292,7 +295,6 @@ impl Page for SimpleNoteSetupPage {
             self.renderer.draw_text(display, status, 200 - (status_w / 2), 165, 20.0, ctx);
         }
 
-        // 5. Footer
         if self.step != SetupStep::Syncing {
             let footer_idx = if self.focus == EntryFocus::TextInput { 0 } else { self.footer_index + 1 };
             if let Some(bmp) = &self.footer_variants[footer_idx] {
