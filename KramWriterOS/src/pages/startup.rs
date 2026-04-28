@@ -29,22 +29,33 @@ impl Page for LogoPage {
     }
 
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
+        // 1. CRITICAL: Clear the display first so we have a fresh canvas
+        display.clear(ctx);
+
         if let Some(bmp) = &self.logo {
             // Center the logo
             let start_x = (400usize.saturating_sub(bmp.width)) / 2;
             let start_y = (240usize.saturating_sub(bmp.height)) / 2;
             
             for y in 0..bmp.height {
+                let screen_y = start_y + y;
+                if screen_y >= 240 { continue; } // Safety check
+
                 for x in 0..bmp.width {
-                    if y < 240 && x < 400 {
-                        let pixel = bmp.pixels[y * bmp.width + x];
-                        display.draw_pixel(start_x + x, start_y + y, pixel, ctx);
-                    }
+                    let screen_x = start_x + x;
+                    if screen_x >= 400 { continue; } // Safety check
+
+                    let pixel = bmp.pixels[y * bmp.width + x];
+                    display.draw_pixel(screen_x, screen_y, pixel, ctx);
                 }
             }
         } else {
             // Fallback if file missing
             display.draw_text(150, 100, "LOGO MISSING", ctx);
         }
+
+        // 2. Note: If your SharpDisplay requires a flush/update call to show 
+        // pixels on the physical screen, ensure the main loop or the 
+        // display driver is handling that.
     }
 }
