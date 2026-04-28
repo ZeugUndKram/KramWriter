@@ -8,7 +8,6 @@ pub mod file_browser;
 pub mod name_entry;
 pub mod editor;
 pub mod simplenote_setup;
-pub mod zeugtris_menu;
 
 use crate::context::Context;
 use crate::display::SharpDisplay;
