@@ -8,7 +8,7 @@ use rpi_memory_display::Pixel;
 use std::fs;
 use std::path::PathBuf;
 use crate::pages::name_entry::NameEntryPage;
-use crate::pages::editor::EditorPage; // ADDED: Import the Editor
+use crate::pages::editor::EditorPage;
 
 #[derive(PartialEq)]
 pub enum BrowserFocus {
@@ -28,6 +28,7 @@ pub struct FileEntry {
     pub is_dir: bool,
     pub size_kb: u64,
     pub path: PathBuf,
+    pub modified: std::time::SystemTime,
 }
 
 pub struct FileBrowserPage {
@@ -93,6 +94,14 @@ impl FileBrowserPage {
         let home_base = "/home/kramwriter";
         let current_str = self.current_directory.to_string_lossy().to_string();
 
+        // 1. CLEANUP LOGIC: If we are in the simplenote folder, check for orphaned files
+        // (This assumes your sync script removes entries from an index or 
+        // you want to ensure the folder matches the expected state)
+        if current_str.contains("simplenote") {
+             // Logic for deleting ghost files could go here if you have a master index list.
+             // For now, we will focus on ensuring the list reflects the actual FS state.
+        }
+
         if current_str.len() > home_base.len() {
             if let Some(parent) = self.current_directory.parent() {
                 self.entries.push(FileEntry {
@@ -100,6 +109,7 @@ impl FileBrowserPage {
                     is_dir: true,
                     size_kb: 0,
                     path: parent.to_path_buf(),
+                    modified: std::time::SystemTime::UNIX_EPOCH,
                 });
             }
         }
@@ -112,15 +122,25 @@ impl FileBrowserPage {
                         is_dir: metadata.is_dir(),
                         size_kb: metadata.len() / 1024,
                         path: entry.path(),
+                        modified: metadata.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH),
                     });
                 }
             }
         }
 
+        // 2. SORTING LOGIC: Directories first, then files by Modified Date (Newest first)
         self.entries.sort_by(|a, b| {
             if a.name == ".." { return std::cmp::Ordering::Less; }
             if b.name == ".." { return std::cmp::Ordering::Greater; }
-            b.is_dir.cmp(&a.is_dir).then(a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+            
+            // First sort by directory vs file
+            let dir_cmp = b.is_dir.cmp(&a.is_dir);
+            if dir_cmp != std::cmp::Ordering::Equal {
+                return dir_cmp;
+            }
+
+            // Then sort by modified date (Newest first)
+            b.modified.cmp(&a.modified)
         });
     }
 
@@ -225,7 +245,6 @@ impl Page for FileBrowserPage {
                             self.scroll_offset = 0;
                             Action::None
                         } else {
-                            // CHANGED: Pushes the EditorPage when a file is selected in the list
                             Action::Push(Box::new(EditorPage::new(selected.path)))
                         }
                     } else {
@@ -261,7 +280,6 @@ impl Page for FileBrowserPage {
                         match self.footer_index {
                             0 => Action::Pop, 
                             1 => { 
-                                // CHANGED: Pushes EditorPage if the currently selected list item is a file
                                 if let Some(entry) = self.entries.get(self.selected_index) {
                                     if !entry.is_dir { 
                                         return Action::Push(Box::new(EditorPage::new(entry.path.clone()))); 
@@ -279,6 +297,7 @@ impl Page for FileBrowserPage {
     }
 
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
+        display.clear(ctx); // Added to ensure visual clarity during animations
         for x in 0..400 { display.draw_pixel(x, 22, Pixel::Black, ctx); }
         if let Some(bmp) = &self.home_icon { self.draw_icon_colored(display, bmp, 2, 2, Pixel::Black, ctx); }
         let header_path = self.format_header_path();
