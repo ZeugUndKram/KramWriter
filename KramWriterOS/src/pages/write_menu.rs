@@ -4,7 +4,7 @@ use crate::display::SharpDisplay;
 use crate::ui::bitmap::Bitmap;
 use termion::event::Key;
 use rpi_memory_display::Pixel;
-use crate::pages::{FileBrowserPage, BrowserMode};
+use crate::pages::file_browser::{FileBrowserPage, BrowserMode};
 
 const NEW_FILE_Y: i32 = 40; 
 const OPEN_FILE_Y: i32 = 90;
