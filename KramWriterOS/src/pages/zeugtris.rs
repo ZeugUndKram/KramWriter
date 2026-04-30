@@ -5,11 +5,12 @@ use termion::event::Key;
 use rpi_memory_display::Pixel;
 use rand::seq::SliceRandom;
 
-const GRID_SIZE: usize = 10; // 10 columns
-const GRID_HEIGHT: usize = 20; // 20 rows visible
-const CELL_DIM: usize = 11;    // Size of each square in pixels
-const OFFSET_X: usize = 145;   // Center the game on 400px width
-const OFFSET_Y: usize = 10;    // Margin from top
+// Constants for the 400x240 Sharp Display
+const GRID_SIZE: usize = 10;
+const GRID_HEIGHT: usize = 20;
+const CELL_DIM: usize = 11;    // Size of block + 1px border for grid effect
+const OFFSET_X: usize = 145;   // Centering the 110px wide board
+const OFFSET_Y: usize = 10;
 
 #[derive(Clone, Copy, PartialEq)]
 enum TetrominoType { I, J, L, O, S, T, Z }
@@ -30,18 +31,19 @@ pub struct ZeugtrisPage {
 
 impl ZeugtrisPage {
     pub fn new() -> Self {
-        let mut page = Self {
+        Self {
             playfield: [[None; GRID_SIZE]; GRID_HEIGHT],
             active_piece: Self::spawn_piece(),
             tick_count: 0,
             game_over: false,
-        };
-        page
+        }
     }
 
     fn spawn_piece() -> Piece {
-        let kinds = [TetrominoType::I, TetrominoType::J, TetrominoType::L, 
-                     TetrominoType::O, TetrominoType::S, TetrominoType::T, TetrominoType::Z];
+        let kinds = [
+            TetrominoType::I, TetrominoType::J, TetrominoType::L, 
+            TetrominoType::O, TetrominoType::S, TetrominoType::T, TetrominoType::Z
+        ];
         let kind = *kinds.choose(&mut rand::thread_rng()).unwrap();
         
         let matrix = match kind {
@@ -116,7 +118,7 @@ impl ZeugtrisPage {
                     self.playfield[move_y] = self.playfield[move_y - 1];
                 }
                 self.playfield[0] = [None; GRID_SIZE];
-                self.clear_lines(); // Recursively check the same index again
+                self.clear_lines(); // Check same row again after shift
                 break;
             }
         }
@@ -154,31 +156,39 @@ impl Page for ZeugtrisPage {
             Key::Esc => return Action::Pop,
             _ => {}
         }
+        Action::Redraw
+    }
 
-        // Automatic Gravity
-        self.tick_count += 1;
-        if self.tick_count > 20 { // Adjust this number to change speed
-            if self.is_valid_move(&self.active_piece.matrix, self.active_piece.row + 1, self.active_piece.col) {
-                self.active_piece.row += 1;
-            } else {
-                self.place_piece();
-            }
-            self.tick_count = 0;
+    fn tick(&mut self, _ctx: &mut Context) -> Action {
+        if self.game_over {
+            return Action::None;
         }
 
+        self.tick_count += 1;
+        // Adjust this value to change falling speed (e.g., 10 for faster, 30 for slower)
+        if self.tick_count > 20 { 
+            self.tick_count = 0;
+            if self.is_valid_move(&self.active_piece.matrix, self.active_piece.row + 1, self.active_piece.col) {
+                self.active_piece.row += 1;
+                return Action::Redraw;
+            } else {
+                self.place_piece();
+                return Action::Redraw;
+            }
+        }
         Action::None
     }
 
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
         display.clear(ctx);
 
-        // Draw Playfield border
+        // Draw side borders
         for y in 0..(GRID_HEIGHT * CELL_DIM) {
             display.draw_pixel(OFFSET_X - 1, OFFSET_Y + y, Pixel::Black, ctx);
             display.draw_pixel(OFFSET_X + (GRID_SIZE * CELL_DIM), OFFSET_Y + y, Pixel::Black, ctx);
         }
 
-        // Draw settled pieces
+        // Draw settled blocks
         for r in 0..GRID_HEIGHT {
             for c in 0..GRID_SIZE {
                 if self.playfield[r][c].is_some() {
@@ -209,7 +219,7 @@ impl Page for ZeugtrisPage {
         }
 
         if self.game_over {
-            // Simple game over indicator (logic to draw text/bitmap would go here)
+            // "Game Over" logic could be added here (e.g., drawing a Bitmap)
         }
     }
 }
