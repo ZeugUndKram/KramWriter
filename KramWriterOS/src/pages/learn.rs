@@ -193,8 +193,7 @@ impl Page for LearnPage {
                 }
                 Action::None
             }
-            // ENTER or 1-4 moves to the next card, but only after the answer was shown
-            Key::Char('\n') | Key::Char('1') | Key::Char('2') | Key::Char('3') | Key::Char('4') => {
+            Key::Char('\n') => {
                 if self.answer_revealed {
                     self.next_card();
                 }
@@ -231,7 +230,7 @@ impl Page for LearnPage {
         let footer = if !self.answer_revealed {
             "SPACE: FLIP"
         } else {
-            "SPACE: TOGGLE | ENTER/1-4: NEXT"
+            "SPACE: TOGGLE | ENTER: NEXT"
         };
         let f_width = self.ui_renderer.calculate_width(footer, 18.0);
         self.ui_renderer.draw_text(display, footer, 200 - (f_width / 2), 230, 18.0, ctx);
