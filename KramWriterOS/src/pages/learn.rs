@@ -63,57 +63,39 @@ impl LearnPage {
 
     fn load_apkg(&mut self) {
         let temp_db_path = "/tmp/kram_anki.db";
-        println!("Attempting to load: {:?}", self.path);
+        
+        // Ensure path exists
+        if !self.path.exists() {
+            println!("File does not exist at: {:?}", self.path);
+            return;
+        }
 
-        let file = match File::open(&self.path) {
-            Ok(f) => f,
-            Err(e) => {
-                println!("Failed to open file: {}", e);
-                return;
-            }
-        };
+        let file = File::open(&self.path).expect("Could not open apkg file");
+        let mut archive = zip::ZipArchive::new(file).expect("Invalid zip archive");
 
-        let mut archive = match zip::ZipArchive::new(file) {
-            Ok(a) => a,
-            Err(e) => {
-                println!("Failed to read Zip: {}", e);
-                return;
-            }
-        };
-
-        // 1. Find the SQLite database inside the Zip
-        let mut target_entry_name = None;
+        let mut db_content = Vec::new();
+        
+        // Find the database
         for i in 0..archive.len() {
-            if let Ok(file) = archive.by_index(i) {
-                let name = file.name();
-                if name == "collection.anki21" || name == "collection.anki2" {
-                    target_entry_name = Some(name.to_string());
-                    break;
-                }
+            let mut file = archive.by_index(i).unwrap();
+            if file.name() == "collection.anki21" || file.name() == "collection.anki2" {
+                file.read_to_end(&mut db_content).unwrap();
+                break;
             }
         }
 
-        let entry_name = match target_entry_name {
-            Some(name) => name,
-            None => {
-                println!("No collection.anki2 or .anki21 found in package.");
-                return;
-            }
-        };
+        if db_content.is_empty() {
+            println!("No Anki database found in zip.");
+            return;
+        }
 
-        // 2. Extract DB to /tmp
-        let mut archive_file = archive.by_name(&entry_name).unwrap();
-        let mut buffer = Vec::new();
-        archive_file.read_to_end(&mut buffer).unwrap();
-        std::fs::write(temp_db_path, buffer).expect("Failed to write temp DB");
+        std::fs::write(temp_db_path, db_content).unwrap();
 
-        // 3. Query the Database
+        // Connect and Query
         if let Ok(conn) = rusqlite::Connection::open(temp_db_path) {
-            // We query NOTES directly. This ignores if they are in a "deck" yet.
-            // In Anki, 'flds' contains all fields separated by 0x1f
             let mut stmt = conn.prepare("SELECT flds FROM notes").unwrap();
             
-            let flashcard_iter = stmt.query_map([], |row| {
+            let card_iter = stmt.query_map([], |row| {
                 let flds: String = row.get(0)?;
                 let parts: Vec<String> = flds
                     .split('\x1f')
@@ -121,17 +103,13 @@ impl LearnPage {
                     .collect();
 
                 Ok(Flashcard {
-                    question: parts.get(0).cloned().unwrap_or_else(|| "No Question".to_string()),
-                    answer: parts.get(1).cloned().unwrap_or_else(|| "No Answer".to_string()),
+                    question: parts.get(0).unwrap_or(&"Empty".to_string()).clone(),
+                    answer: parts.get(1).unwrap_or(&"Empty".to_string()).clone(),
                 })
             }).unwrap();
 
-            self.deck = flashcard_iter
-                .filter_map(|r| r.ok())
-                .filter(|card| !card.question.is_empty())
-                .collect();
-
-            println!("Successfully loaded {} cards from notes table.", self.deck.len());
+            self.deck = card_iter.filter_map(|r| r.ok()).collect();
+            println!("Loaded {} cards.", self.deck.len());
         }
 
         let _ = std::fs::remove_file(temp_db_path);
