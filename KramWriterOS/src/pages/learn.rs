@@ -35,8 +35,8 @@ pub struct LearnPage {
 
 impl LearnPage {
     pub fn new(path: PathBuf) -> Self {
-        let renderer = FontRenderer::new("fonts/Inter-Regular.ttf");
-        let ui_renderer = FontRenderer::new("fonts/BebasNeue-Regular.ttf");
+        let renderer = FontRenderer::new("/home/kramwriter/KramWriter/fonts/Inter_28pt-Medium.ttf");
+        let ui_renderer = FontRenderer::new("/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf");
 
         let mut page = Self {
             path,
