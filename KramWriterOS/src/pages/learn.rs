@@ -80,8 +80,14 @@ impl LearnPage {
                         if std::fs::write(temp_db_path, buffer).is_ok() {
                             if let Ok(conn) = rusqlite::Connection::open(temp_db_path) {
                                 // Try to get notes
-                                let mut stmt_result = conn.prepare("SELECT flds FROM notes");
-                                
+                                // Replace your current prepare statement with this:
+                                let mut stmt_result = conn.prepare("
+                                    SELECT n.flds 
+                                    FROM cards c 
+                                    JOIN notes n ON c.nid = n.id 
+                                    WHERE c.queue >= 0
+                                ");
+                                                                
                                 if let Ok(mut stmt) = stmt_result {
                                     let rows = stmt.query_map([], |row| {
                                         let flds: String = row.get(0)?;
