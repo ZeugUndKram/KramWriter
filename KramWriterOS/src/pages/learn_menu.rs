@@ -17,7 +17,7 @@ pub struct LearnMenuPage {
 impl LearnMenuPage {
     pub fn new() -> Self {
         // Ensure this path matches the exact case of your folder on the Pi
-        let asset_path = "/home/kramwriter/Kramwriter/assets/Learn/Menu";
+        let asset_path = "/home/kramwriter/KramWriter/assets/Learn/Menu";
         
         Self {
             current_index: 0,
