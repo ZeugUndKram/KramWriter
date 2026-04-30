@@ -133,13 +133,14 @@ impl Page for LearnCreatePage {
                 Action::None
             }
 
-            // TOGGLE SIDE: Ctrl + Space (Sometimes shows up as Ctrl+' ')
-            Key::Ctrl(' ') | Key::Char('\0') => {
+            // TOGGLE SIDE: Handled as Null byte \0 or Ctrl+' '
+            // This is the fix for Ctrl+Space!
+            Key::Char('\0') | Key::Ctrl(' ') => {
                 self.side = if self.side == EditSide::Front { EditSide::Back } else { EditSide::Front };
                 Action::None
             }
 
-            // PREVIOUS CARD: Ctrl + P (More reliable than Ctrl+B)
+            // PREVIOUS CARD: Ctrl + P
             Key::Ctrl('p') => {
                 if self.current_index > 0 {
                     self.current_index -= 1;
@@ -147,7 +148,7 @@ impl Page for LearnCreatePage {
                 Action::None
             }
 
-            // NEXT CARD: Ctrl + N (More reliable than Ctrl+F)
+            // NEXT CARD: Ctrl + N
             Key::Ctrl('n') => {
                 if self.current_index < self.cards.len() - 1 {
                     self.current_index += 1;
@@ -163,6 +164,7 @@ impl Page for LearnCreatePage {
                 Action::None
             }
 
+            // NAVIGATION
             Key::Left => {
                 let is_front = self.side == EditSide::Front;
                 let card = self.current_card_mut();
@@ -183,7 +185,12 @@ impl Page for LearnCreatePage {
                 }
                 Action::None
             }
+
+            // EDITING
             Key::Char(c) => {
+                // Ignore the null byte here so it doesn't type a ' ' when flipping
+                if c == '\0' { return Action::None; }
+                
                 let is_front = self.side == EditSide::Front;
                 let card = self.current_card_mut();
                 if is_front {
