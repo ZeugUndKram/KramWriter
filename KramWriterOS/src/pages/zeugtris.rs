@@ -1,16 +1,17 @@
 use crate::pages::{Page, Action};
 use crate::context::Context;
 use crate::display::SharpDisplay;
+use crate::ui::bitmap::Bitmap;
 use termion::event::Key;
 use rpi_memory_display::Pixel;
 use rand::seq::SliceRandom;
 
-// Constants for the 400x240 Sharp Display
+// Constants updated for 12x12 blocks
 const GRID_SIZE: usize = 10;
 const GRID_HEIGHT: usize = 20;
-const CELL_DIM: usize = 11;    // Size of block + 1px border for grid effect
-const OFFSET_X: usize = 145;   // Centering the 110px wide board
-const OFFSET_Y: usize = 10;
+const CELL_DIM: usize = 12;    
+const OFFSET_X: usize = 140;   // Adjusted centering for 120px board
+const OFFSET_Y: usize = 0;
 
 #[derive(Clone, Copy, PartialEq)]
 enum TetrominoType { I, J, L, O, S, T, Z }
@@ -27,15 +28,40 @@ pub struct ZeugtrisPage {
     active_piece: Piece,
     tick_count: u32,
     game_over: bool,
+    // Graphics assets
+    backdrop: Option<Bitmap>,
+    sprites: std::collections::HashMap<TetrominoType, Bitmap>,
 }
 
 impl ZeugtrisPage {
     pub fn new() -> Self {
+        let asset_path = "/home/kramwriter/KramWriter/assets/zeugtris/game";
+        
+        // Load block sprites for each tetromino type
+        let mut sprites = std::collections::HashMap::new();
+        let types = [
+            (TetrominoType::I, "zeugtris_i.bmp"),
+            (TetrominoType::J, "zeugtris_j.bmp"), // Fixed typo from 'zeutris_j'
+            (TetrominoType::L, "zeugtris_l.bmp"),
+            (TetrominoType::O, "zeugtris_o.bmp"),
+            (TetrominoType::S, "zeugtris_s.bmp"),
+            (TetrominoType::T, "zeugtris_t.bmp"),
+            (TetrominoType::Z, "zeugtris_z.bmp"),
+        ];
+
+        for (kind, filename) in types {
+            if let Ok(bmp) = Bitmap::load(&format!("{}/{}", asset_path, filename)) {
+                sprites.insert(kind, bmp);
+            }
+        }
+
         Self {
             playfield: [[None; GRID_SIZE]; GRID_HEIGHT],
             active_piece: Self::spawn_piece(),
             tick_count: 0,
             game_over: false,
+            backdrop: Bitmap::load(&format!("{}/backdrop.bmp", asset_path)).ok(),
+            sprites,
         }
     }
 
@@ -56,12 +82,7 @@ impl ZeugtrisPage {
             TetrominoType::T => vec![vec![0,1,0], vec![1,1,1], vec![0,0,0]],
         };
 
-        Piece {
-            kind,
-            matrix,
-            row: -2, 
-            col: 3,
-        }
+        Piece { kind, matrix, row: -2, col: 3 }
     }
 
     fn rotate(matrix: &Vec<Vec<u8>>) -> Vec<Vec<u8>> {
@@ -99,10 +120,7 @@ impl ZeugtrisPage {
                 if cell != 0 {
                     let r = self.active_piece.row + y as i32;
                     let c = self.active_piece.col + x as i32;
-                    if r < 0 {
-                        self.game_over = true;
-                        return;
-                    }
+                    if r < 0 { self.game_over = true; return; }
                     self.playfield[r as usize][c as usize] = Some(self.active_piece.kind);
                 }
             }
@@ -118,8 +136,23 @@ impl ZeugtrisPage {
                     self.playfield[move_y] = self.playfield[move_y - 1];
                 }
                 self.playfield[0] = [None; GRID_SIZE];
-                self.clear_lines(); // Check same row again after shift
+                self.clear_lines();
                 break;
+            }
+        }
+    }
+
+    fn draw_block(&self, display: &mut SharpDisplay, kind: TetrominoType, grid_x: usize, grid_y: usize, ctx: &Context) {
+        if let Some(bmp) = self.sprites.get(&kind) {
+            let screen_x = OFFSET_X + (grid_x * CELL_DIM);
+            let screen_y = OFFSET_Y + (grid_y * CELL_DIM);
+            
+            for y in 0..bmp.height.min(CELL_DIM as u32) {
+                for x in 0..bmp.width.min(CELL_DIM as u32) {
+                    if bmp.pixels[(y * bmp.width + x) as usize] == Pixel::Black {
+                        display.draw_pixel(screen_x + x as usize, screen_y + y as usize, Pixel::Black, ctx);
+                    }
+                }
             }
         }
     }
@@ -130,29 +163,14 @@ impl Page for ZeugtrisPage {
         if self.game_over {
             return if key == Key::Esc { Action::Pop } else { Action::None };
         }
-
         match key {
-            Key::Left => {
-                if self.is_valid_move(&self.active_piece.matrix, self.active_piece.row, self.active_piece.col - 1) {
-                    self.active_piece.col -= 1;
-                }
-            }
-            Key::Right => {
-                if self.is_valid_move(&self.active_piece.matrix, self.active_piece.row, self.active_piece.col + 1) {
-                    self.active_piece.col += 1;
-                }
-            }
+            Key::Left => if self.is_valid_move(&self.active_piece.matrix, self.active_piece.row, self.active_piece.col - 1) { self.active_piece.col -= 1; }
+            Key::Right => if self.is_valid_move(&self.active_piece.matrix, self.active_piece.row, self.active_piece.col + 1) { self.active_piece.col += 1; }
             Key::Up => {
                 let rotated = Self::rotate(&self.active_piece.matrix);
-                if self.is_valid_move(&rotated, self.active_piece.row, self.active_piece.col) {
-                    self.active_piece.matrix = rotated;
-                }
+                if self.is_valid_move(&rotated, self.active_piece.row, self.active_piece.col) { self.active_piece.matrix = rotated; }
             }
-            Key::Down => {
-                if self.is_valid_move(&self.active_piece.matrix, self.active_piece.row + 1, self.active_piece.col) {
-                    self.active_piece.row += 1;
-                }
-            }
+            Key::Down => if self.is_valid_move(&self.active_piece.matrix, self.active_piece.row + 1, self.active_piece.col) { self.active_piece.row += 1; }
             Key::Esc => return Action::Pop,
             _ => {}
         }
@@ -160,13 +178,9 @@ impl Page for ZeugtrisPage {
     }
 
     fn tick(&mut self, _ctx: &mut Context) -> Action {
-        if self.game_over {
-            return Action::None;
-        }
-
+        if self.game_over { return Action::None; }
         self.tick_count += 1;
-        // Adjust this value to change falling speed (e.g., 10 for faster, 30 for slower)
-        if self.tick_count > 5 { 
+        if self.tick_count > 5 { // Set to your preferred 5-tick speed
             self.tick_count = 0;
             if self.is_valid_move(&self.active_piece.matrix, self.active_piece.row + 1, self.active_piece.col) {
                 self.active_piece.row += 1;
@@ -182,44 +196,37 @@ impl Page for ZeugtrisPage {
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
         display.clear(ctx);
 
-        // Draw side borders
-        for y in 0..(GRID_HEIGHT * CELL_DIM) {
-            display.draw_pixel(OFFSET_X - 1, OFFSET_Y + y, Pixel::Black, ctx);
-            display.draw_pixel(OFFSET_X + (GRID_SIZE * CELL_DIM), OFFSET_Y + y, Pixel::Black, ctx);
-        }
-
-        // Draw settled blocks
-        for r in 0..GRID_HEIGHT {
-            for c in 0..GRID_SIZE {
-                if self.playfield[r][c].is_some() {
-                    for py in 0..CELL_DIM-1 {
-                        for px in 0..CELL_DIM-1 {
-                            display.draw_pixel(OFFSET_X + c * CELL_DIM + px, OFFSET_Y + r * CELL_DIM + py, Pixel::Black, ctx);
-                        }
+        // 1. Always draw Backdrop first
+        if let Some(bmp) = &self.backdrop {
+            for y in 0..bmp.height.min(240) {
+                for x in 0..bmp.width.min(400) {
+                    if bmp.pixels[(y * bmp.width + x) as usize] == Pixel::Black {
+                        display.draw_pixel(x as usize, y as usize, Pixel::Black, ctx);
                     }
                 }
             }
         }
 
-        // Draw active piece
+        // 2. Draw settled blocks using sprites
+        for r in 0..GRID_HEIGHT {
+            for c in 0..GRID_SIZE {
+                if let Some(kind) = self.playfield[r][c] {
+                    self.draw_block(display, kind, c, r, ctx);
+                }
+            }
+        }
+
+        // 3. Draw active piece using sprites
         for (y, row) in self.active_piece.matrix.iter().enumerate() {
             for (x, &cell) in row.iter().enumerate() {
                 if cell != 0 {
                     let r = self.active_piece.row + y as i32;
                     let c = self.active_piece.col + x as i32;
                     if r >= 0 && r < GRID_HEIGHT as i32 {
-                        for py in 0..CELL_DIM-1 {
-                            for px in 0..CELL_DIM-1 {
-                                display.draw_pixel(OFFSET_X + c as usize * CELL_DIM + px, OFFSET_Y + r as usize * CELL_DIM + py, Pixel::Black, ctx);
-                            }
-                        }
+                        self.draw_block(display, self.active_piece.kind, c as usize, r as usize, ctx);
                     }
                 }
             }
-        }
-
-        if self.game_over {
-            // "Game Over" logic could be added here (e.g., drawing a Bitmap)
         }
     }
 }
