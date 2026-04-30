@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 // Pointing to the new NameEntryLearnPage
 use crate::pages::name_entry_learn::NameEntryLearnPage;
-use crate::pages::editor::EditorPage; // You might want to change this to a DeckViewerPage later!
+use crate::pages::learn_create::LearnCreatePage; 
 
 #[derive(PartialEq)]
 pub enum BrowserFocus {
@@ -54,7 +54,6 @@ pub struct FileBrowserLearnPage {
 impl FileBrowserLearnPage {
     pub fn new(mode: BrowserMode) -> Self {
         let renderer = FontRenderer::new("/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf");
-        // Reusing your FileBrowser assets, or you can change this to assets/Learn/FileBrowser later
         let asset_path = "/home/kramwriter/KramWriter/assets/FileBrowser"; 
         
         let footer_full = [
@@ -115,7 +114,6 @@ impl FileBrowserLearnPage {
                     let file_name = entry.file_name().to_string_lossy().into_owned();
                     let is_dir = metadata.is_dir();
 
-                    // --- THE FIX: Only allow directories or .apkg files ---
                     if is_dir || file_name.ends_with(".apkg") {
                         self.entries.push(FileEntry {
                             name: file_name,
@@ -132,12 +130,8 @@ impl FileBrowserLearnPage {
         self.entries.sort_by(|a, b| {
             if a.name == ".." { return std::cmp::Ordering::Less; }
             if b.name == ".." { return std::cmp::Ordering::Greater; }
-            
             let dir_cmp = b.is_dir.cmp(&a.is_dir);
-            if dir_cmp != std::cmp::Ordering::Equal {
-                return dir_cmp;
-            }
-
+            if dir_cmp != std::cmp::Ordering::Equal { return dir_cmp; }
             b.modified.cmp(&a.modified)
         });
     }
@@ -243,7 +237,7 @@ impl Page for FileBrowserLearnPage {
                             self.scroll_offset = 0;
                             Action::None
                         } else {
-                            // Note: You might want to push a DeckViewerPage here eventually!
+                            // OPEN FOR LEARNING
                             Action::Push(Box::new(crate::pages::learn::LearnPage::new(selected.path)))
                         }
                     } else {
@@ -266,12 +260,18 @@ impl Page for FileBrowserLearnPage {
                         match self.footer_index {
                             0 => Action::Pop, 
                             2 => {
+                                // NEW FILE
                                 self.needs_refresh = true;
                                 Action::Push(Box::new(NameEntryLearnPage::new(self.current_directory.clone(), false)))
                             },
-                            1 => {
-                                self.needs_refresh = true;
-                                Action::Push(Box::new(NameEntryLearnPage::new(self.current_directory.clone(), true)))
+                            1 => { 
+                                // MODIFY EXISTING FILE
+                                if let Some(entry) = self.entries.get(self.selected_index) {
+                                    if !entry.is_dir { 
+                                        return Action::Push(Box::new(LearnCreatePage::new(entry.path.clone()))); 
+                                    }
+                                }
+                                Action::None
                             },
                             _ => Action::None
                         }
@@ -279,9 +279,10 @@ impl Page for FileBrowserLearnPage {
                         match self.footer_index {
                             0 => Action::Pop, 
                             1 => { 
+                                // OPEN FOR EDITING (in OpenFile mode)
                                 if let Some(entry) = self.entries.get(self.selected_index) {
                                     if !entry.is_dir { 
-                                        return Action::Push(Box::new(EditorPage::new(entry.path.clone()))); 
+                                        return Action::Push(Box::new(LearnCreatePage::new(entry.path.clone()))); 
                                     }
                                 }
                                 Action::None
