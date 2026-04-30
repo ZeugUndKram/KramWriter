@@ -183,18 +183,18 @@ impl LearnPage {
 impl Page for LearnPage {
     fn update(&mut self, key: Key, _ctx: &mut Context) -> Action {
         match key {
+            // SPACE handles toggling between Question and Answer
             Key::Char(' ') => {
-                // Unlimited toggling: Space flips back and forth
                 if self.state == LearnState::Question {
                     self.state = LearnState::Answer;
-                    self.answer_revealed = true; // The answer is now "unlocked"
+                    self.answer_revealed = true; // Mark that we've seen the answer
                 } else {
                     self.state = LearnState::Question;
                 }
                 Action::None
             }
-            Key::Char('1') | Key::Char('2') | Key::Char('3') | Key::Char('4') => {
-                // 1-4 works on both screens only after the first flip
+            // ENTER or 1-4 moves to the next card, but only after the answer was shown
+            Key::Char('\n') | Key::Char('1') | Key::Char('2') | Key::Char('3') | Key::Char('4') => {
                 if self.answer_revealed {
                     self.next_card();
                 }
@@ -227,10 +227,11 @@ impl Page for LearnPage {
         let content = if self.state == LearnState::Question { &card.question } else { &card.answer };
         self.draw_centered_wrapped_text(display, content, ctx);
 
+        // Update footer to reflect that Enter now works
         let footer = if !self.answer_revealed {
             "SPACE: FLIP"
         } else {
-            "SPACE: TOGGLE | 1-4: RATE"
+            "SPACE: TOGGLE | ENTER/1-4: NEXT"
         };
         let f_width = self.ui_renderer.calculate_width(footer, 18.0);
         self.ui_renderer.draw_text(display, footer, 200 - (f_width / 2), 230, 18.0, ctx);
