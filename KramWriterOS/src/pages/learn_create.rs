@@ -28,7 +28,7 @@ pub struct LearnCreatePage {
     side: EditSide,
     renderer: FontRenderer,
     ui_renderer: FontRenderer,
-    message: Option<(String, std::time::Instant)>, // For "Saved!" notification
+    message: Option<(String, std::time::Instant)>,
 }
 
 impl LearnCreatePage {
@@ -36,7 +36,6 @@ impl LearnCreatePage {
         let renderer = FontRenderer::new("/home/kramwriter/KramWriter/fonts/Inter_28pt-Medium.ttf");
         let ui_renderer = FontRenderer::new("/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf");
 
-        // Start with one empty card
         let first_card = CardEditor {
             front: String::new(),
             back: String::new(),
@@ -62,6 +61,7 @@ impl LearnCreatePage {
     fn save_to_file(&mut self) {
         let mut content = String::new();
         for card in &self.cards {
+            // Only save cards that aren't completely empty
             if !card.front.trim().is_empty() || !card.back.trim().is_empty() {
                 content.push_str(&format!("Q: {}\nA: {}\n---\n", card.front.trim(), card.back.trim()));
             }
@@ -119,7 +119,6 @@ impl LearnCreatePage {
 
 impl Page for LearnCreatePage {
     fn update(&mut self, key: Key, _ctx: &mut Context) -> Action {
-        // Clear old messages after 2 seconds
         if let Some((_, time)) = &self.message {
             if time.elapsed().as_secs() >= 2 {
                 self.message = None;
@@ -133,9 +132,8 @@ impl Page for LearnCreatePage {
                 Action::None
             }
 
-            // TOGGLE SIDE: Handled as Null byte \0 or Ctrl+' '
-            // This is the fix for Ctrl+Space!
-            Key::Char('\0') | Key::Ctrl(' ') => {
+            // TOGGLE SIDE: Ctrl + T
+            Key::Ctrl('t') => {
                 self.side = if self.side == EditSide::Front { EditSide::Back } else { EditSide::Front };
                 Action::None
             }
@@ -186,10 +184,9 @@ impl Page for LearnCreatePage {
                 Action::None
             }
 
-            // EDITING
+            // TYPING
             Key::Char(c) => {
-                // Ignore the null byte here so it doesn't type a ' ' when flipping
-                if c == '\0' { return Action::None; }
+                if c.is_control() { return Action::None; }
                 
                 let is_front = self.side == EditSide::Front;
                 let card = self.current_card_mut();
@@ -214,6 +211,7 @@ impl Page for LearnCreatePage {
                 }
                 Action::None
             }
+
             Key::Esc => Action::Pop, 
             _ => Action::None,
         }
@@ -232,7 +230,7 @@ impl Page for LearnCreatePage {
         let p_w = self.ui_renderer.calculate_width(&progress, 20.0);
         self.ui_renderer.draw_text(display, &progress, 390 - p_w, 25, 20.0, ctx);
 
-        // Success Message Overlay
+        // Save Confirmation Message
         if let Some((msg, _)) = &self.message {
             let m_w = self.ui_renderer.calculate_width(msg, 20.0);
             self.ui_renderer.draw_text(display, msg, 200 - (m_w / 2), 50, 20.0, ctx);
@@ -245,8 +243,8 @@ impl Page for LearnCreatePage {
             self.draw_editor_text(display, &card.back, card.back_cursor, ctx);
         }
 
-        // Updated Footer Instructions for more reliable keys
-        let footer = "CTRL+SPACE: FLIP | CTRL+P/N: NAV | CTRL+S: SAVE | CTRL+D: DEL";
+        // Footer
+        let footer = "CTRL+T: FLIP | CTRL+P/N: NAV | CTRL+S: SAVE | CTRL+D: DEL";
         let f_w = self.ui_renderer.calculate_width(footer, 15.0);
         self.ui_renderer.draw_text(display, footer, 200 - (f_w / 2), 230, 15.0, ctx);
     }
