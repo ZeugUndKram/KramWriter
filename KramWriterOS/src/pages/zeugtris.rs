@@ -2,6 +2,7 @@ use crate::pages::{Page, Action};
 use crate::context::Context;
 use crate::display::SharpDisplay;
 use crate::ui::bitmap::Bitmap;
+use crate::ui::fonts::FontRenderer;
 use termion::event::Key;
 use rpi_memory_display::Pixel;
 use rand::seq::SliceRandom;
@@ -11,13 +12,18 @@ use std::collections::HashMap;
 const GRID_SIZE: usize = 10;
 const GRID_HEIGHT: usize = 18;
 const CELL_DIM: usize = 12;    
-const OFFSET_X: usize = 140;   // Centered board (120px wide) on 400px screen
-const OFFSET_Y: usize = 12;    // Full height (240px) board
+const OFFSET_X: usize = 140;   
+const OFFSET_Y: usize = 12;    
 
-// Adjust these to fit the "Next" box in your backdrop.bmp
 const NEXT_X: usize = 286;     
 const NEXT_Y: usize = 16;      
 const NEXT_CELL_DIM: usize = 12; 
+
+// --- Statistics Positioning (Adjust these for grafik.png alignment) ---
+const STATS_X: i32 = 84;         // Horizontal position for the numbers
+const STATS_START_Y: i32 = 35;   // Vertical start for the first number
+const STATS_SPACING: i32 = 30;   // Pixels between each statistic row
+const STATS_FONT_SIZE: f32 = 24.0;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum TetrominoType { I, J, L, O, S, T, Z }
@@ -37,13 +43,19 @@ pub struct ZeugtrisPage {
     game_over: bool,
     backdrop: Option<Bitmap>,
     sprites: HashMap<TetrominoType, Bitmap>,
+    renderer: FontRenderer,
+    stats: HashMap<TetrominoType, u32>,
 }
 
 impl ZeugtrisPage {
     pub fn new() -> Self {
         let asset_path = "/home/kramwriter/KramWriter/assets/zeugtris/game";
+        // Initialize renderer using the path from your name_entry example
+        let renderer = FontRenderer::new("/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf");
         
         let mut sprites = HashMap::new();
+        let mut stats = HashMap::new();
+        
         let types = [
             (TetrominoType::I, "zeugtris_i.bmp"),
             (TetrominoType::J, "zeugtris_j.bmp"), 
@@ -58,16 +70,27 @@ impl ZeugtrisPage {
             if let Ok(bmp) = Bitmap::load(&format!("{}/{}", asset_path, filename)) {
                 sprites.insert(kind, bmp);
             }
+            stats.insert(kind, 0);
+        }
+
+        let first_piece = Self::spawn_piece();
+        let next_piece = Self::spawn_piece();
+        
+        // Count the very first piece that enters the board
+        if let Some(count) = stats.get_mut(&first_piece.kind) {
+            *count += 1;
         }
 
         Self {
             playfield: [[None; GRID_SIZE]; GRID_HEIGHT],
-            active_piece: Self::spawn_piece(),
-            next_piece: Self::spawn_piece(),
+            active_piece: first_piece,
+            next_piece,
             tick_count: 0,
             game_over: false,
             backdrop: Bitmap::load(&format!("{}/backdrop.bmp", asset_path)).ok(),
             sprites,
+            renderer,
+            stats,
         }
     }
 
@@ -132,8 +155,14 @@ impl ZeugtrisPage {
             }
         }
         self.clear_lines();
-        // Move next piece to active, and spawn a new next piece
+        
+        // Transfer next piece to active
         self.active_piece = std::mem::replace(&mut self.next_piece, Self::spawn_piece());
+        
+        // Increment statistics for the piece now entering the field
+        if let Some(count) = self.stats.get_mut(&self.active_piece.kind) {
+            *count += 1;
+        }
     }
 
     fn clear_lines(&mut self) {
@@ -153,7 +182,6 @@ impl ZeugtrisPage {
         if let Some(bmp) = self.sprites.get(&kind) {
             let screen_x = OFFSET_X + (grid_x * CELL_DIM);
             let screen_y = OFFSET_Y + (grid_y * CELL_DIM);
-            
             for y in 0..(bmp.height as usize).min(CELL_DIM) {
                 for x in 0..(bmp.width as usize).min(CELL_DIM) {
                     let pixel = bmp.pixels[y * bmp.width as usize + x];
@@ -165,25 +193,24 @@ impl ZeugtrisPage {
         }
     }
 
-    fn draw_next_preview(&self, display: &mut SharpDisplay, ctx: &Context) {
-        if let Some(bmp) = self.sprites.get(&self.next_piece.kind) {
-            for (y, row) in self.next_piece.matrix.iter().enumerate() {
-                for (x, &cell) in row.iter().enumerate() {
-                    if cell != 0 {
-                        let screen_x = NEXT_X + (x * NEXT_CELL_DIM);
-                        let screen_y = NEXT_Y + (y * NEXT_CELL_DIM);
-                        
-                        for py in 0..(bmp.height as usize).min(NEXT_CELL_DIM) {
-                            for px in 0..(bmp.width as usize).min(NEXT_CELL_DIM) {
-                                let pixel = bmp.pixels[py * bmp.width as usize + px];
-                                if pixel == Pixel::Black {
-                                    display.draw_pixel(screen_x + px, screen_y + py, Pixel::Black, ctx);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+    fn draw_statistics(&self, display: &mut SharpDisplay, ctx: &Context) {
+        // Vertical order matching your grafik.png layout
+        let order = [
+            TetrominoType::L,
+            TetrominoType::J,
+            TetrominoType::S,
+            TetrominoType::Z,
+            TetrominoType::T,
+            TetrominoType::I,
+            TetrominoType::O,
+        ];
+
+        for (i, kind) in order.iter().enumerate() {
+            let count = self.stats.get(kind).unwrap_or(&0);
+            let text = format!("{:03}", count); // Formats as 043, 039, etc.
+            let y = STATS_START_Y + (i as i32 * STATS_SPACING);
+            
+            self.renderer.draw_text(display, &text, STATS_X, y, STATS_FONT_SIZE, ctx);
         }
     }
 }
@@ -260,6 +287,26 @@ impl Page for ZeugtrisPage {
         }
 
         // 4. Draw Next Piece Preview
-        self.draw_next_preview(display, ctx);
+        if let Some(bmp) = self.sprites.get(&self.next_piece.kind) {
+            for (y, row) in self.next_piece.matrix.iter().enumerate() {
+                for (x, &cell) in row.iter().enumerate() {
+                    if cell != 0 {
+                        let screen_x = NEXT_X + (x * NEXT_CELL_DIM);
+                        let screen_y = NEXT_Y + (y * NEXT_CELL_DIM);
+                        for py in 0..(bmp.height as usize).min(NEXT_CELL_DIM) {
+                            for px in 0..(bmp.width as usize).min(NEXT_CELL_DIM) {
+                                let pixel = bmp.pixels[py * bmp.width as usize + px];
+                                if pixel == Pixel::Black {
+                                    display.draw_pixel(screen_x + px, screen_y + py, Pixel::Black, ctx);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 5. Draw Statistics
+        self.draw_statistics(display, ctx);
     }
 }
