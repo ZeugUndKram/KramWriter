@@ -1,7 +1,6 @@
 use crate::pages::{Page, Action};
 use crate::context::Context;
 use crate::display::SharpDisplay;
-// Removed unused Bitmap import to clear the warning
 use crate::ui::fonts::FontRenderer;
 use termion::event::Key;
 use rpi_memory_display::Pixel;
@@ -9,7 +8,6 @@ use std::path::PathBuf;
 use std::fs::File;
 use std::io::Read;
 
-// Add these imports at the top
 use rusqlite::Connection;
 use zip::ZipArchive;
 
@@ -52,74 +50,74 @@ impl LearnPage {
     }
 
     fn load_apkg(&mut self) {
-    let temp_db_path = "/tmp/kram_anki.db";
+        let temp_db_path = "/tmp/kram_anki.db";
 
-    if let Ok(file) = File::open(&self.path) {
-        if let Ok(mut archive) = zip::ZipArchive::new(file) {
-            // First, get a list of all files in the zip to find the best database
-            let mut target_entry_name = None;
-            
-            // Prioritize collection.anki21 (Modern Anki) over collection.anki2 (Legacy)
-            for i in 0..archive.len() {
-                if let Ok(file) = archive.by_index(i) {
-                    let name = file.name();
-                    if name == "collection.anki21" {
-                        target_entry_name = Some(name.to_string());
-                        break; 
-                    } else if name == "collection.anki2" && target_entry_name.is_none() {
-                        target_entry_name = Some(name.to_string());
+        if let Ok(file) = File::open(&self.path) {
+            if let Ok(mut archive) = zip::ZipArchive::new(file) {
+                let mut target_entry_name = None;
+                
+                // Prioritize collection.anki21 (Modern) over collection.anki2 (Legacy)
+                for i in 0..archive.len() {
+                    if let Ok(file) = archive.by_index(i) {
+                        let name = file.name();
+                        if name == "collection.anki21" {
+                            target_entry_name = Some(name.to_string());
+                            break; 
+                        } else if name == "collection.anki2" && target_entry_name.is_none() {
+                            target_entry_name = Some(name.to_string());
+                        }
                     }
                 }
-            }
 
-            if let Some(entry_name) = target_entry_name {
-                if let Ok(mut archive_file) = archive.by_name(&entry_name) {
-                    let mut buffer = Vec::new();
-                    if archive_file.read_to_end(&mut buffer).is_ok() {
-                        // Write to temp file for rusqlite to open
-                        if std::fs::write(temp_db_path, buffer).is_ok() {
-                            if let Ok(conn) = rusqlite::Connection::open(temp_db_path) {
-                                // Try to get notes
-                                // Replace your current prepare statement with this:
-                                let mut stmt_result = conn.prepare("
-                                    SELECT n.flds 
-                                    FROM cards c 
-                                    JOIN notes n ON c.nid = n.id 
-                                    WHERE c.queue >= 0
-                                ");
-                                                                
-                                if let Ok(mut stmt) = stmt_result {
-                                    let rows = stmt.query_map([], |row| {
-                                        let flds: String = row.get(0)?;
-                                        // Anki uses the unit separator character \x1f to split fields
-                                        let parts: Vec<&str> = flds.split('\x1f').collect();
-                                        Ok(Flashcard {
-                                            question: parts.get(0).unwrap_or(&"Empty").to_string(),
-                                            answer: parts.get(1).unwrap_or(&"Empty").to_string(),
-                                        })
-                                    });
+                if let Some(entry_name) = target_entry_name {
+                    if let Ok(mut archive_file) = archive.by_name(&entry_name) {
+                        let mut buffer = Vec::new();
+                        if archive_file.read_to_end(&mut buffer).is_ok() {
+                            if std::fs::write(temp_db_path, buffer).is_ok() {
+                                if let Ok(conn) = rusqlite::Connection::open(temp_db_path) {
+                                    // JOIN with cards and filter c.queue >= 0 to skip "Update Anki" system notes
+                                    let mut stmt_result = conn.prepare("
+                                        SELECT n.flds 
+                                        FROM cards c 
+                                        JOIN notes n ON c.nid = n.id 
+                                        WHERE c.queue >= 0
+                                    ");
+                                                                        
+                                    if let Ok(mut stmt) = stmt_result {
+                                        let rows = stmt.query_map([], |row| {
+                                            let flds: String = row.get(0)?;
+                                            
+                                            // Split by the Anki Unit Separator \x1f
+                                            let parts: Vec<&str> = flds.split('\x1f').collect();
+                                            
+                                            Ok(Flashcard {
+                                                // Front of card is index 0, Back is index 1
+                                                question: parts.get(0).unwrap_or(&"Empty Question").to_string(),
+                                                answer: parts.get(1).unwrap_or(&"Empty Answer").to_string(),
+                                            })
+                                        });
 
-                                    if let Ok(flashcard_iter) = rows {
-                                        self.deck = flashcard_iter.filter_map(|r| r.ok()).collect();
+                                        if let Ok(flashcard_iter) = rows {
+                                            self.deck = flashcard_iter.filter_map(|r| r.ok()).collect();
+                                        }
                                     }
                                 }
+                                let _ = std::fs::remove_file(temp_db_path);
                             }
-                            let _ = std::fs::remove_file(temp_db_path);
                         }
                     }
                 }
             }
         }
     }
-}
 
     fn next_card(&mut self) {
-        if self.current_index < self.deck.len() - 1 {
-            self.current_index += 1;
-            self.state = LearnState::Question;
-        } else {
-            // Option: Loop back or Action::Pop
-            self.current_index = 0;
+        if !self.deck.is_empty() {
+            if self.current_index < self.deck.len() - 1 {
+                self.current_index += 1;
+            } else {
+                self.current_index = 0;
+            }
             self.state = LearnState::Question;
         }
     }
@@ -132,11 +130,21 @@ impl LearnPage {
         let mut lines = Vec::new();
         let mut current_line = String::new();
 
-        // Clean up basic Anki HTML tags (like <br> or <div>) for the terminal/display
-        let clean_text = text.replace("<br>", " ").replace("<div>", " ").replace("</div>", "");
+        // Basic clean-up of common Anki HTML formatting
+        let clean_text = text
+            .replace("<br>", " ")
+            .replace("<br/>", " ")
+            .replace("<div>", " ")
+            .replace("</div>", "")
+            .replace("&nbsp;", " ");
 
         for word in clean_text.split_whitespace() {
-            let test_str = if current_line.is_empty() { word.to_string() } else { format!("{} {}", current_line, word) };
+            let test_str = if current_line.is_empty() { 
+                word.to_string() 
+            } else { 
+                format!("{} {}", current_line, word) 
+            };
+
             if self.renderer.calculate_width(&test_str, font_size) as i32 > max_width {
                 lines.push(current_line);
                 current_line = word.to_string();
@@ -146,14 +154,16 @@ impl LearnPage {
         }
         lines.push(current_line);
 
-        let total_height = lines.len() as i32 * 28;
+        let line_height = 32;
+        let total_height = lines.len() as i32 * line_height;
         let mut start_y = (240 - total_height) / 2;
 
         for line in lines {
             let w = self.renderer.calculate_width(&line, font_size);
             let x = 200 - (w / 2);
+            // Added Y-offset correction (+24) to account for font baseline
             self.renderer.draw_text_colored(display, &line, x, start_y + 24, font_size, Pixel::Black, ctx);
-            start_y += 28;
+            start_y += line_height;
         }
     }
 }
@@ -190,7 +200,7 @@ impl Page for LearnPage {
 
         let card = &self.deck[self.current_index];
 
-        // Header
+        // UI Header
         let header = if self.state == LearnState::Question { "QUESTION" } else { "ANSWER" };
         self.ui_renderer.draw_text(display, header, 10, 25, 20.0, ctx);
         
@@ -198,11 +208,11 @@ impl Page for LearnPage {
         let p_width = self.ui_renderer.calculate_width(&progress, 20.0);
         self.ui_renderer.draw_text(display, &progress, 390 - p_width, 25, 20.0, ctx);
 
-        // Content
+        // Main Content (Question or Answer)
         let content = if self.state == LearnState::Question { &card.question } else { &card.answer };
         self.draw_centered_wrapped_text(display, content, ctx);
 
-        // Footer
+        // UI Footer
         let footer = if self.state == LearnState::Question {
             "SPACE: FLIP"
         } else {
