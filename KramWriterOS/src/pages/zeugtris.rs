@@ -5,15 +5,16 @@ use crate::ui::bitmap::Bitmap;
 use termion::event::Key;
 use rpi_memory_display::Pixel;
 use rand::seq::SliceRandom;
+use std::collections::HashMap;
 
 // Constants updated for 12x12 blocks
 const GRID_SIZE: usize = 10;
 const GRID_HEIGHT: usize = 20;
 const CELL_DIM: usize = 12;    
-const OFFSET_X: usize = 140;   // Adjusted centering for 120px board
-const OFFSET_Y: usize = 0;
+const OFFSET_X: usize = 140;   // Centered board (120px wide) on 400px screen
+const OFFSET_Y: usize = 0;     // Full height (240px) board
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)] // Added Eq and Hash for HashMap usage
 enum TetrominoType { I, J, L, O, S, T, Z }
 
 struct Piece {
@@ -28,20 +29,19 @@ pub struct ZeugtrisPage {
     active_piece: Piece,
     tick_count: u32,
     game_over: bool,
-    // Graphics assets
     backdrop: Option<Bitmap>,
-    sprites: std::collections::HashMap<TetrominoType, Bitmap>,
+    sprites: HashMap<TetrominoType, Bitmap>,
 }
 
 impl ZeugtrisPage {
     pub fn new() -> Self {
         let asset_path = "/home/kramwriter/KramWriter/assets/zeugtris/game";
         
-        // Load block sprites for each tetromino type
-        let mut sprites = std::collections::HashMap::new();
+        let mut sprites = HashMap::new();
+        // File list based on your specific filenames
         let types = [
             (TetrominoType::I, "zeugtris_i.bmp"),
-            (TetrominoType::J, "zeugtris_j.bmp"), // Fixed typo from 'zeutris_j'
+            (TetrominoType::J, "zeugtris_j.bmp"),
             (TetrominoType::L, "zeugtris_l.bmp"),
             (TetrominoType::O, "zeugtris_o.bmp"),
             (TetrominoType::S, "zeugtris_s.bmp"),
@@ -149,7 +149,8 @@ impl ZeugtrisPage {
             
             for y in 0..bmp.height.min(CELL_DIM as u32) {
                 for x in 0..bmp.width.min(CELL_DIM as u32) {
-                    if bmp.pixels[(y * bmp.width + x) as usize] == Pixel::Black {
+                    let pixel = bmp.pixels[(y * bmp.width + x) as usize];
+                    if pixel == Pixel::Black {
                         display.draw_pixel(screen_x + x as usize, screen_y + y as usize, Pixel::Black, ctx);
                     }
                 }
@@ -180,7 +181,7 @@ impl Page for ZeugtrisPage {
     fn tick(&mut self, _ctx: &mut Context) -> Action {
         if self.game_over { return Action::None; }
         self.tick_count += 1;
-        if self.tick_count > 5 { // Set to your preferred 5-tick speed
+        if self.tick_count > 5 { 
             self.tick_count = 0;
             if self.is_valid_move(&self.active_piece.matrix, self.active_piece.row + 1, self.active_piece.col) {
                 self.active_piece.row += 1;
@@ -196,7 +197,7 @@ impl Page for ZeugtrisPage {
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
         display.clear(ctx);
 
-        // 1. Always draw Backdrop first
+        // 1. Draw Backdrop
         if let Some(bmp) = &self.backdrop {
             for y in 0..bmp.height.min(240) {
                 for x in 0..bmp.width.min(400) {
