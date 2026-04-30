@@ -19,10 +19,10 @@ const NEXT_X: usize = 286;
 const NEXT_Y: usize = 16;      
 const NEXT_CELL_DIM: usize = 12; 
 
-// --- Statistics Positioning (Adjust these for grafik.png alignment) ---
-const STATS_X: i32 = 84;         // Horizontal position for the numbers
-const STATS_START_Y: i32 = 35;   // Vertical start for the first number
-const STATS_SPACING: i32 = 30;   // Pixels between each statistic row
+// --- Statistics Positioning (Aligned with grafik.png) ---
+const STATS_X: i32 = 84;         
+const STATS_START_Y: i32 = 35;   
+const STATS_SPACING: i32 = 30;   
 const STATS_FONT_SIZE: f32 = 24.0;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -50,7 +50,6 @@ pub struct ZeugtrisPage {
 impl ZeugtrisPage {
     pub fn new() -> Self {
         let asset_path = "/home/kramwriter/KramWriter/assets/zeugtris/game";
-        // Initialize renderer using the path from your name_entry example
         let renderer = FontRenderer::new("/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf");
         
         let mut sprites = HashMap::new();
@@ -76,7 +75,6 @@ impl ZeugtrisPage {
         let first_piece = Self::spawn_piece();
         let next_piece = Self::spawn_piece();
         
-        // Count the very first piece that enters the board
         if let Some(count) = stats.get_mut(&first_piece.kind) {
             *count += 1;
         }
@@ -156,10 +154,8 @@ impl ZeugtrisPage {
         }
         self.clear_lines();
         
-        // Transfer next piece to active
         self.active_piece = std::mem::replace(&mut self.next_piece, Self::spawn_piece());
         
-        // Increment statistics for the piece now entering the field
         if let Some(count) = self.stats.get_mut(&self.active_piece.kind) {
             *count += 1;
         }
@@ -194,12 +190,12 @@ impl ZeugtrisPage {
     }
 
     fn draw_statistics(&self, display: &mut SharpDisplay, ctx: &Context) {
-        // Vertical order matching your grafik.png layout
+        // Corrected order to match the vertical icons in grafik.png
         let order = [
-            TetrominoType::L,
-            TetrominoType::J,
-            TetrominoType::S,
-            TetrominoType::Z,
+            TetrominoType::J, // Swapped from L
+            TetrominoType::L, // Swapped from J
+            TetrominoType::Z, // Swapped from S
+            TetrominoType::S, // Swapped from Z
             TetrominoType::T,
             TetrominoType::I,
             TetrominoType::O,
@@ -207,7 +203,7 @@ impl ZeugtrisPage {
 
         for (i, kind) in order.iter().enumerate() {
             let count = self.stats.get(kind).unwrap_or(&0);
-            let text = format!("{:03}", count); // Formats as 043, 039, etc.
+            let text = format!("{:03}", count); 
             let y = STATS_START_Y + (i as i32 * STATS_SPACING);
             
             self.renderer.draw_text(display, &text, STATS_X, y, STATS_FONT_SIZE, ctx);
@@ -253,7 +249,6 @@ impl Page for ZeugtrisPage {
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
         display.clear(ctx);
 
-        // 1. Draw Backdrop
         if let Some(bmp) = &self.backdrop {
             for y in 0..(bmp.height as usize).min(240) {
                 for x in 0..(bmp.width as usize).min(400) {
@@ -264,7 +259,6 @@ impl Page for ZeugtrisPage {
             }
         }
 
-        // 2. Draw settled blocks
         for r in 0..GRID_HEIGHT {
             for c in 0..GRID_SIZE {
                 if let Some(kind) = self.playfield[r][c] {
@@ -273,7 +267,6 @@ impl Page for ZeugtrisPage {
             }
         }
 
-        // 3. Draw active piece
         for (y, row) in self.active_piece.matrix.iter().enumerate() {
             for (x, &cell) in row.iter().enumerate() {
                 if cell != 0 {
@@ -286,7 +279,6 @@ impl Page for ZeugtrisPage {
             }
         }
 
-        // 4. Draw Next Piece Preview
         if let Some(bmp) = self.sprites.get(&self.next_piece.kind) {
             for (y, row) in self.next_piece.matrix.iter().enumerate() {
                 for (x, &cell) in row.iter().enumerate() {
@@ -306,7 +298,6 @@ impl Page for ZeugtrisPage {
             }
         }
 
-        // 5. Draw Statistics
         self.draw_statistics(display, ctx);
     }
 }
