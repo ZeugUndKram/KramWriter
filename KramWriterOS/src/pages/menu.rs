@@ -66,7 +66,7 @@ impl Page for MenuPage {
                 match self.current_index {
                     0 => Action::Push(Box::new(crate::pages::write_menu::WriteMenuPage::new())),
                     1 => Action::Push(Box::new(crate::pages::learn_menu::LearnMenuPage::new())),
-                    2 => Action::None, // Zeugtris (Add later)
+                    2 => Action::Push(Box::new(crate::pages::zeugtris_menu::ZeugtrisMenuPage::new())),
                     3 => Action::Push(Box::new(crate::pages::settings::SettingsPage::new())),
                     4 => Action::Push(Box::new(crate::pages::credits::CreditsPage::new())), // Credits
                     _ => Action::None,
