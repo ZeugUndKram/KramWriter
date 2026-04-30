@@ -56,23 +56,36 @@ impl LearnPage {
 
     if let Ok(file) = File::open(&self.path) {
         if let Ok(mut archive) = zip::ZipArchive::new(file) {
+            // First, get a list of all files in the zip to find the best database
+            let mut target_entry_name = None;
+            
+            // Prioritize collection.anki21 (Modern Anki) over collection.anki2 (Legacy)
             for i in 0..archive.len() {
-                let mut archive_file = archive.by_index(i).unwrap();
-                
-                // Anki decks contain collection.anki2 or collection.anki21
-                if archive_file.name().contains("collection.anki2") {
+                if let Ok(file) = archive.by_index(i) {
+                    let name = file.name();
+                    if name == "collection.anki21" {
+                        target_entry_name = Some(name.to_string());
+                        break; 
+                    } else if name == "collection.anki2" && target_entry_name.is_none() {
+                        target_entry_name = Some(name.to_string());
+                    }
+                }
+            }
+
+            if let Some(entry_name) = target_entry_name {
+                if let Ok(mut archive_file) = archive.by_name(&entry_name) {
                     let mut buffer = Vec::new();
                     if archive_file.read_to_end(&mut buffer).is_ok() {
-                        // 1. Write the database bytes to a temporary file
+                        // Write to temp file for rusqlite to open
                         if std::fs::write(temp_db_path, buffer).is_ok() {
-                            // 2. Open the connection to the temporary file
                             if let Ok(conn) = rusqlite::Connection::open(temp_db_path) {
-                                // 3. Query the 'notes' table
-                                let stmt_result = conn.prepare("SELECT flds FROM notes");
+                                // Try to get notes
+                                let mut stmt_result = conn.prepare("SELECT flds FROM notes");
                                 
                                 if let Ok(mut stmt) = stmt_result {
                                     let rows = stmt.query_map([], |row| {
                                         let flds: String = row.get(0)?;
+                                        // Anki uses the unit separator character \x1f to split fields
                                         let parts: Vec<&str> = flds.split('\x1f').collect();
                                         Ok(Flashcard {
                                             question: parts.get(0).unwrap_or(&"Empty").to_string(),
@@ -85,11 +98,9 @@ impl LearnPage {
                                     }
                                 }
                             }
-                            // 4. Clean up the temp file
                             let _ = std::fs::remove_file(temp_db_path);
                         }
                     }
-                    break;
                 }
             }
         }
