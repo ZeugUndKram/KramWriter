@@ -1,13 +1,17 @@
 use crate::pages::{Page, Action};
 use crate::context::Context;
 use crate::display::SharpDisplay;
-use crate::ui::bitmap::Bitmap;
+// Removed unused Bitmap import to clear the warning
 use crate::ui::fonts::FontRenderer;
 use termion::event::Key;
 use rpi_memory_display::Pixel;
 use std::path::PathBuf;
 use std::fs::File;
 use std::io::Read;
+
+// Add these imports at the top
+use rusqlite::Connection;
+use zip::ZipArchive;
 
 #[derive(PartialEq)]
 enum LearnState {
@@ -25,17 +29,17 @@ pub struct LearnPage {
     deck: Vec<Flashcard>,
     current_index: usize,
     state: LearnState,
-    renderer: FontRenderer,    // Using Inter for Q&A
-    ui_renderer: FontRenderer, // Using Bebas for headers
+    renderer: FontRenderer,
+    ui_renderer: FontRenderer,
 }
 
 impl LearnPage {
     pub fn new(path: PathBuf) -> Self {
-        let renderer = FontRenderer::new("/home/kramwriter/KramWriter/fonts/Inter-Regular.ttf");
-        let ui_renderer = FontRenderer::new("/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf");
+        let renderer = FontRenderer::new("fonts/Inter-Regular.ttf");
+        let ui_renderer = FontRenderer::new("fonts/BebasNeue-Regular.ttf");
 
         let mut page = Self {
-            path: path.clone(),
+            path,
             deck: Vec::new(),
             current_index: 0,
             state: LearnState::Question,
@@ -48,35 +52,32 @@ impl LearnPage {
     }
 
     fn load_apkg(&mut self) {
-        let file = File::open(&self.path).ok();
-        if let Some(f) = file {
-            if let Ok(mut archive) = zip::ZipArchive::new(f) {
-                // Anki 2.1+ uses collection.anki21, older uses collection.anki2
+        if let Ok(file) = File::open(&self.path) {
+            // Explicitly type the archive
+            if let Ok(mut archive) = ZipArchive::new(file) {
                 for i in 0..archive.len() {
-                    let mut file = archive.by_index(i).unwrap();
-                    if file.name().contains("collection.anki2") {
+                    let mut archive_file = archive.by_index(i).unwrap();
+                    
+                    // Anki 2.1+ uses collection.anki21, older uses collection.anki2
+                    if archive_file.name().contains("collection.anki2") {
                         let mut buffer = Vec::new();
-                        file.read_to_end(&mut buffer).unwrap();
+                        let _ = archive_file.read_to_end(&mut buffer);
                         
-                        // Load SQLite from memory buffer
-                        if let Ok(conn) = rusqlite::Connection::open_in_memory() {
-                            let _ = conn.execute_batch("ATTACH DATABASE ':memory:' AS temp_db;");
-                            // This is a simplified extraction of the 'notes' table
-                            if let Ok(mut stmt) = conn.prepare("SELECT flds FROM notes") {
-                                let rows = stmt.query_map([], |row| {
-                                    let flds: String = row.get(0)?;
-                                    // Anki fields are separated by \x1f (Unit Separator)
-                                    let parts: Vec<&str> = flds.split('\x1f').collect();
-                                    Ok(Flashcard {
-                                        question: parts.get(0).unwrap_or(&"Empty").to_string(),
-                                        answer: parts.get(1).unwrap_or(&"Empty").to_string(),
-                                    })
-                                }).ok();
+                        // Open connection from the buffer
+                        if let Ok(conn) = Connection::open_in_memory() {
+                            // Extract notes - Anki notes are usually HTML/Text in the 'flds' column
+                            let mut stmt = conn.prepare("SELECT flds FROM notes").unwrap();
+                            let rows = stmt.query_map([], |row| {
+                                let flds: String = row.get(0)?;
+                                let parts: Vec<&str> = flds.split('\x1f').collect();
+                                Ok(Flashcard {
+                                    question: parts.get(0).unwrap_or(&"Empty").to_string(),
+                                    answer: parts.get(1).unwrap_or(&"Empty").to_string(),
+                                })
+                            }).unwrap();
 
-                                if let Some(flashcards) = rows {
-                                    self.deck = flashcards.flatten().collect();
-                                }
-                            }
+                            // Explicitly collect into the deck
+                            self.deck = rows.filter_map(|r| r.ok()).collect::<Vec<Flashcard>>();
                         }
                         break;
                     }
@@ -90,7 +91,9 @@ impl LearnPage {
             self.current_index += 1;
             self.state = LearnState::Question;
         } else {
-            // Finished deck
+            // Option: Loop back or Action::Pop
+            self.current_index = 0;
+            self.state = LearnState::Question;
         }
     }
 
@@ -99,11 +102,13 @@ impl LearnPage {
         let margin = 20;
         let max_width = 400 - (margin * 2);
         
-        // Simplified wrapping logic based on your editor.rs
         let mut lines = Vec::new();
         let mut current_line = String::new();
 
-        for word in text.split_whitespace() {
+        // Clean up basic Anki HTML tags (like <br> or <div>) for the terminal/display
+        let clean_text = text.replace("<br>", " ").replace("<div>", " ").replace("</div>", "");
+
+        for word in clean_text.split_whitespace() {
             let test_str = if current_line.is_empty() { word.to_string() } else { format!("{} {}", current_line, word) };
             if self.renderer.calculate_width(&test_str, font_size) as i32 > max_width {
                 lines.push(current_line);
@@ -135,7 +140,6 @@ impl Page for LearnPage {
                 }
                 Action::None
             }
-            // Difficulty selection 1-4
             Key::Char('1') | Key::Char('2') | Key::Char('3') | Key::Char('4') => {
                 if self.state == LearnState::Answer {
                     self.next_card();
@@ -151,28 +155,29 @@ impl Page for LearnPage {
         display.clear(ctx);
 
         if self.deck.is_empty() {
-            self.ui_renderer.draw_text(display, "NO CARDS FOUND", 100, 120, 30.0, ctx);
+            let msg = "NO CARDS FOUND";
+            let w = self.ui_renderer.calculate_width(msg, 30.0);
+            self.ui_renderer.draw_text(display, msg, 200 - (w/2), 120, 30.0, ctx);
             return;
         }
 
         let card = &self.deck[self.current_index];
 
-        // Draw Header
+        // Header
         let header = if self.state == LearnState::Question { "QUESTION" } else { "ANSWER" };
         self.ui_renderer.draw_text(display, header, 10, 25, 20.0, ctx);
         
-        // Draw Progress
         let progress = format!("{}/{}", self.current_index + 1, self.deck.len());
         let p_width = self.ui_renderer.calculate_width(&progress, 20.0);
         self.ui_renderer.draw_text(display, &progress, 390 - p_width, 25, 20.0, ctx);
 
-        // Draw Content
+        // Content
         let content = if self.state == LearnState::Question { &card.question } else { &card.answer };
         self.draw_centered_wrapped_text(display, content, ctx);
 
-        // Footer UI hint
+        // Footer
         let footer = if self.state == LearnState::Question {
-            "PRESS SPACE TO FLIP"
+            "SPACE: FLIP"
         } else {
             "1: AGAIN  2: HARD  3: GOOD  4: EASY"
         };
