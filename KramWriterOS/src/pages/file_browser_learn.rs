@@ -53,9 +53,9 @@ pub struct FileBrowserLearnPage {
 
 impl FileBrowserLearnPage {
     pub fn new(mode: BrowserMode) -> Self {
-        let renderer = FontRenderer::new("/home/kramwriter/Kramwriter/fonts/BebasNeue-Regular.ttf");
+        let renderer = FontRenderer::new("/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf");
         // Reusing your FileBrowser assets, or you can change this to assets/Learn/FileBrowser later
-        let asset_path = "/home/kramwriter/Kramwriter/assets/FileBrowser"; 
+        let asset_path = "/home/kramwriter/KramWriter/assets/FileBrowser"; 
         
         let footer_full = [
             Bitmap::load(&format!("{}/bottom_bar_3.bmp", asset_path)).ok(),
