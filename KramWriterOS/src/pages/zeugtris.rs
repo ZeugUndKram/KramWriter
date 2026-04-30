@@ -22,8 +22,15 @@ const NEXT_CELL_DIM: usize = 12;
 // --- Statistics Positioning (Aligned with grafik.png) ---
 const STATS_X: i32 = 84;         
 const STATS_START_Y: i32 = 35;   
-const STATS_SPACING: i32 = 32;   
+const STATS_SPACING: i32 = 30;   
 const STATS_FONT_SIZE: f32 = 24.0;
+
+// --- Right Panel Info Positioning ---
+const INFO_X: i32 = 286;
+const INFO_SCORE_LBL_Y: i32 = 95;
+const INFO_SCORE_VAL_Y: i32 = 120;
+const INFO_LEVEL_Y: i32 = 175;
+const INFO_LINES_Y: i32 = 205;
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum TetrominoType { I, J, L, O, S, T, Z }
@@ -45,6 +52,11 @@ pub struct ZeugtrisPage {
     sprites: HashMap<TetrominoType, Bitmap>,
     renderer: FontRenderer,
     stats: HashMap<TetrominoType, u32>,
+    
+    // Marathon Mode variables
+    score: u32,
+    level: u32,
+    lines: u32,
 }
 
 impl ZeugtrisPage {
@@ -89,6 +101,9 @@ impl ZeugtrisPage {
             sprites,
             renderer,
             stats,
+            score: 0,
+            level: 1,
+            lines: 0,
         }
     }
 
@@ -152,8 +167,8 @@ impl ZeugtrisPage {
                 }
             }
         }
-        self.clear_lines();
         
+        self.clear_lines();
         self.active_piece = std::mem::replace(&mut self.next_piece, Self::spawn_piece());
         
         if let Some(count) = self.stats.get_mut(&self.active_piece.kind) {
@@ -162,16 +177,64 @@ impl ZeugtrisPage {
     }
 
     fn clear_lines(&mut self) {
-        for y in (0..GRID_HEIGHT).rev() {
-            if self.playfield[y].iter().all(|cell| cell.is_some()) {
-                for move_y in (1..=y).rev() {
+        let mut lines_cleared = 0;
+        let mut y = GRID_HEIGHT as i32 - 1;
+
+        while y >= 0 {
+            let uy = y as usize;
+            if self.playfield[uy].iter().all(|cell| cell.is_some()) {
+                // Clear and shift down
+                for move_y in (1..=uy).rev() {
                     self.playfield[move_y] = self.playfield[move_y - 1];
                 }
                 self.playfield[0] = [None; GRID_SIZE];
-                self.clear_lines();
-                break;
+                lines_cleared += 1;
+                // DO NOT decrement y here, we need to check the newly shifted row
+            } else {
+                y -= 1;
             }
         }
+
+        // Apply scoring and level rules based on Guideline
+        if lines_cleared > 0 {
+            let base_points = match lines_cleared {
+                1 => 100,
+                2 => 300,
+                3 => 500,
+                4 => 800,
+                _ => 0,
+            };
+            self.score += base_points * self.level;
+            self.lines += lines_cleared;
+            
+            // Fixed-goal level advancement (10 lines per level)
+            self.level = (self.lines / 10) + 1;
+        }
+    }
+
+    // Convert Guideline G-values (gravity) into frame delays for 60fps tick rate
+    fn get_drop_delay(&self) -> u32 {
+        let delays = [
+            60, // Lvl 1 (0.01667G)
+            48, // Lvl 2 (0.021G)
+            37, // Lvl 3 (0.026G)
+            28, // Lvl 4 (0.035G)
+            21, // Lvl 5 (0.046G)
+            16, // Lvl 6 (0.063G)
+            11, // Lvl 7 (0.087G)
+             8, // Lvl 8 (0.123G)
+             6, // Lvl 9 (0.177G)
+             4, // Lvl 10 (0.259G)
+             3, // Lvl 11 (0.388G)
+             2, // Lvl 12 (0.591G)
+             1, // Lvl 13 (0.92G)
+             1, // Lvl 14 (1.46G)
+             0  // Lvl 15+ (2.36G+, instant drop/20G)
+        ];
+        
+        // Cap index at 14 (Level 15 rules)
+        let idx = (self.level.saturating_sub(1) as usize).min(14);
+        delays[idx]
     }
 
     fn draw_block(&self, display: &mut SharpDisplay, kind: TetrominoType, grid_x: usize, grid_y: usize, ctx: &Context) {
@@ -190,12 +253,11 @@ impl ZeugtrisPage {
     }
 
     fn draw_statistics(&self, display: &mut SharpDisplay, ctx: &Context) {
-        // Corrected order to match the vertical icons in grafik.png
         let order = [
-            TetrominoType::J, // Swapped from L
-            TetrominoType::L, // Swapped from J
-            TetrominoType::Z, // Swapped from S
-            TetrominoType::S, // Swapped from Z
+            TetrominoType::J, 
+            TetrominoType::L, 
+            TetrominoType::Z, 
+            TetrominoType::S, 
             TetrominoType::T,
             TetrominoType::I,
             TetrominoType::O,
@@ -208,6 +270,21 @@ impl ZeugtrisPage {
             
             self.renderer.draw_text(display, &text, STATS_X, y, STATS_FONT_SIZE, ctx);
         }
+    }
+
+    fn draw_game_info(&self, display: &mut SharpDisplay, ctx: &Context) {
+        // Draw SCORE
+        self.renderer.draw_text(display, "SCORE:", INFO_X, INFO_SCORE_LBL_Y, STATS_FONT_SIZE, ctx);
+        let score_text = format!("{}", self.score);
+        self.renderer.draw_text(display, &score_text, INFO_X, INFO_SCORE_VAL_Y, STATS_FONT_SIZE, ctx);
+
+        // Draw LEVEL
+        let level_text = format!("LEVEL: {}", self.level);
+        self.renderer.draw_text(display, &level_text, INFO_X, INFO_LEVEL_Y, STATS_FONT_SIZE, ctx);
+
+        // Draw LINES
+        let lines_text = format!("LINES: {}", self.lines);
+        self.renderer.draw_text(display, &lines_text, INFO_X, INFO_LINES_Y, STATS_FONT_SIZE, ctx);
     }
 }
 
@@ -223,7 +300,12 @@ impl Page for ZeugtrisPage {
                 let rotated = Self::rotate(&self.active_piece.matrix);
                 if self.is_valid_move(&rotated, self.active_piece.row, self.active_piece.col) { self.active_piece.matrix = rotated; }
             }
-            Key::Down => if self.is_valid_move(&self.active_piece.matrix, self.active_piece.row + 1, self.active_piece.col) { self.active_piece.row += 1; }
+            Key::Down => {
+                if self.is_valid_move(&self.active_piece.matrix, self.active_piece.row + 1, self.active_piece.col) { 
+                    self.active_piece.row += 1; 
+                    self.score += 1; // Soft drop gives 1 point per cell
+                }
+            }
             Key::Esc => return Action::Pop,
             _ => {}
         }
@@ -232,8 +314,12 @@ impl Page for ZeugtrisPage {
 
     fn tick(&mut self, _ctx: &mut Context) -> Action {
         if self.game_over { return Action::None; }
+        
         self.tick_count += 1;
-        if self.tick_count > 5 { 
+        
+        let drop_delay = self.get_drop_delay();
+        
+        if self.tick_count >= drop_delay { 
             self.tick_count = 0;
             if self.is_valid_move(&self.active_piece.matrix, self.active_piece.row + 1, self.active_piece.col) {
                 self.active_piece.row += 1;
@@ -299,5 +385,6 @@ impl Page for ZeugtrisPage {
         }
 
         self.draw_statistics(display, ctx);
+        self.draw_game_info(display, ctx); // Draws Score, Level, and Lines
     }
 }
