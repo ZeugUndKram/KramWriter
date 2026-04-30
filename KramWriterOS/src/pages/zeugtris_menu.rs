@@ -5,19 +5,19 @@ use crate::ui::bitmap::Bitmap;
 use termion::event::Key;
 use rpi_memory_display::Pixel;
 
-// Import the target pages
+// --- Updated imports to match your file names ---
 use crate::pages::zeugtris::ZeugtrisPage;
-use crate::pages::highscores::HighscoresPage;
+use crate::pages::zeugtris_highscores::ZeugtrisHighscoresPage;
 
 pub struct ZeugtrisMenuPage {
     current_index: usize, 
     title: Option<Bitmap>,
-    options: [Option<Bitmap>; 2], // Reduced to 2 options (Play, Highscores)
+    options: [Option<Bitmap>; 2], // Only 2 options: Play and Highscores
 }
 
 impl ZeugtrisMenuPage {
     pub fn new() -> Self {
-        // Updated path to the Zeugtris menu assets
+        // Path to your Zeugtris assets
         let asset_path = "/home/kramwriter/KramWriter/assets/zeugtris/menu";
         
         Self {
@@ -46,14 +46,14 @@ impl Page for ZeugtrisMenuPage {
     fn update(&mut self, key: Key, _ctx: &mut Context) -> Action {
         match key {
             Key::Up | Key::Down => {
-                // Toggle between 0 and 1 since there are only two options
+                // Toggles between index 0 (Play) and index 1 (Highscores)
                 self.current_index = if self.current_index == 0 { 1 } else { 0 };
                 Action::None
             }
             Key::Char('\n') => {
                 match self.current_index {
-                    0 => Action::Push(Box::new(ZeugtrisPage::new())),   // PLAY
-                    1 => Action::Push(Box::new(HighscoresPage::new())), // HIGHSCORES
+                    0 => Action::Push(Box::new(ZeugtrisPage::new())),           // PLAY
+                    1 => Action::Push(Box::new(ZeugtrisHighscoresPage::new())), // HIGHSCORES
                     _ => Action::None,
                 }
             }
@@ -65,12 +65,12 @@ impl Page for ZeugtrisMenuPage {
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
         display.clear(ctx);
 
-        // Draw the selected option background/highlight first
+        // Draw the background option highlight
         if let Some(bmp) = &self.options[self.current_index] {
             self.draw_full_screen(display, bmp, ctx);
         }
 
-        // Overlay the Title on top
+        // Draw the static Title over it
         if let Some(bmp) = &self.title {
             self.draw_full_screen(display, bmp, ctx);
         }

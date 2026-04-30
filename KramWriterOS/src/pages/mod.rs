@@ -14,7 +14,7 @@ pub mod name_entry_learn;
 pub mod learn;
 pub mod learn_create;
 pub mod zeugtris;
-pub mod highscores;
+pub mod zeugtris_highscores;
 pub mod zeugtris_menu;
 
 use crate::context::Context;
