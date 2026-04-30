@@ -35,13 +35,11 @@ impl App {
     }
 
     fn run(&mut self) -> Result<()> {
+        // IntoRawMode must be held in a variable to keep the terminal in raw mode
         let _stdout = stdout().into_raw_mode()?;
         
-<<<<<<< HEAD
-=======
         // 1. ASYNC INPUT SETUP
         // We move keyboard listening to a thread so it doesn't block the loop
->>>>>>> parent of b1966bc (c)
         let (tx, rx) = mpsc::channel();
         thread::spawn(move || {
             let stdin = stdin();
@@ -52,14 +50,12 @@ impl App {
             }
         });
 
+        // Initial render
         self.render()?;
 
         loop {
-<<<<<<< HEAD
-=======
             // 2. WAIT WITH TIMEOUT
-            // Check for a key, but only wait for 100ms.
->>>>>>> parent of b1966bc (c)
+            // Check for a key, but only wait for 100ms so tick() can run.
             let key_event = rx.recv_timeout(Duration::from_millis(100)).ok();
 
             // Handle Global Exit
@@ -78,18 +74,11 @@ impl App {
                         top_page.update(key, &mut self.ctx)
                     }
                     None => {
-                        // This is the "Automatic" part. 
-                        // It calls tick() even if no key was pressed.
+                        // This is the "Automatic" part: call tick() even without input.
                         let tick_action = top_page.tick(&mut self.ctx);
                         
-<<<<<<< HEAD
-                        // FIX: Use matches! instead of != Action::None
+                        // If tick returns anything other than None, we should redraw.
                         if !matches!(tick_action, Action::None) {
-=======
-                        // If the setup page found a background update, it should return an action 
-                        // or we trigger a render here.
-                        if tick_action != Action::None {
->>>>>>> parent of b1966bc (c)
                             should_render = true;
                         }
                         tick_action
@@ -99,11 +88,7 @@ impl App {
                 Action::Exit
             };
 
-<<<<<<< HEAD
-            // PROCESS ACTION
-=======
             // 4. PROCESS ACTION
->>>>>>> parent of b1966bc (c)
             match action {
                 Action::Push(new_page) => {
                     self.stack.push(new_page);
@@ -118,13 +103,10 @@ impl App {
                     self.stack.push(new_page);
                     should_render = true;
                 },
-<<<<<<< HEAD
                 Action::Redraw => {
                     // Force a render even if no page change or keypress occurred
                     should_render = true;
                 },
-=======
->>>>>>> parent of b1966bc (c)
                 Action::Exit => break,
                 Action::None => {},
             }
@@ -134,7 +116,7 @@ impl App {
             }
 
             // 5. CONDITIONAL RENDER
-            // Only update the Sharp display if something actually changed.
+            // Only update the display if something actually changed.
             if should_render {
                 self.render()?;
             }
