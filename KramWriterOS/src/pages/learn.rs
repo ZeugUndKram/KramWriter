@@ -52,39 +52,49 @@ impl LearnPage {
     }
 
     fn load_apkg(&mut self) {
-        if let Ok(file) = File::open(&self.path) {
-            // Explicitly type the archive
-            if let Ok(mut archive) = ZipArchive::new(file) {
-                for i in 0..archive.len() {
-                    let mut archive_file = archive.by_index(i).unwrap();
-                    
-                    // Anki 2.1+ uses collection.anki21, older uses collection.anki2
-                    if archive_file.name().contains("collection.anki2") {
-                        let mut buffer = Vec::new();
-                        let _ = archive_file.read_to_end(&mut buffer);
-                        
-                        // Open connection from the buffer
-                        if let Ok(conn) = Connection::open_in_memory() {
-                            // Extract notes - Anki notes are usually HTML/Text in the 'flds' column
-                            let mut stmt = conn.prepare("SELECT flds FROM notes").unwrap();
-                            let rows = stmt.query_map([], |row| {
-                                let flds: String = row.get(0)?;
-                                let parts: Vec<&str> = flds.split('\x1f').collect();
-                                Ok(Flashcard {
-                                    question: parts.get(0).unwrap_or(&"Empty").to_string(),
-                                    answer: parts.get(1).unwrap_or(&"Empty").to_string(),
-                                })
-                            }).unwrap();
+    let temp_db_path = "/tmp/kram_anki.db";
 
-                            // Explicitly collect into the deck
-                            self.deck = rows.filter_map(|r| r.ok()).collect::<Vec<Flashcard>>();
+    if let Ok(file) = File::open(&self.path) {
+        if let Ok(mut archive) = zip::ZipArchive::new(file) {
+            for i in 0..archive.len() {
+                let mut archive_file = archive.by_index(i).unwrap();
+                
+                // Anki decks contain collection.anki2 or collection.anki21
+                if archive_file.name().contains("collection.anki2") {
+                    let mut buffer = Vec::new();
+                    if archive_file.read_to_end(&mut buffer).is_ok() {
+                        // 1. Write the database bytes to a temporary file
+                        if std::fs::write(temp_db_path, buffer).is_ok() {
+                            // 2. Open the connection to the temporary file
+                            if let Ok(conn) = rusqlite::Connection::open(temp_db_path) {
+                                // 3. Query the 'notes' table
+                                let stmt_result = conn.prepare("SELECT flds FROM notes");
+                                
+                                if let Ok(mut stmt) = stmt_result {
+                                    let rows = stmt.query_map([], |row| {
+                                        let flds: String = row.get(0)?;
+                                        let parts: Vec<&str> = flds.split('\x1f').collect();
+                                        Ok(Flashcard {
+                                            question: parts.get(0).unwrap_or(&"Empty").to_string(),
+                                            answer: parts.get(1).unwrap_or(&"Empty").to_string(),
+                                        })
+                                    });
+
+                                    if let Ok(flashcard_iter) = rows {
+                                        self.deck = flashcard_iter.filter_map(|r| r.ok()).collect();
+                                    }
+                                }
+                            }
+                            // 4. Clean up the temp file
+                            let _ = std::fs::remove_file(temp_db_path);
                         }
-                        break;
                     }
+                    break;
                 }
             }
         }
     }
+}
 
     fn next_card(&mut self) {
         if self.current_index < self.deck.len() - 1 {
