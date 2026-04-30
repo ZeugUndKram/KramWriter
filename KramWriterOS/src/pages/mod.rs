@@ -9,6 +9,8 @@ pub mod name_entry;
 pub mod editor;
 pub mod simplenote_setup;
 pub mod learn_menu;
+pub mod file_browser_learn;
+pub mod name_entry_learn;
 
 use crate::context::Context;
 use crate::display::SharpDisplay;
