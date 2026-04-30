@@ -12,7 +12,7 @@ const GRID_SIZE: usize = 10;
 const GRID_HEIGHT: usize = 18;
 const CELL_DIM: usize = 12;    
 const OFFSET_X: usize = 140;   // Centered board (120px wide) on 400px screen
-const OFFSET_Y: usize = 0;     // Full height (240px) board
+const OFFSET_Y: usize = 24;     // Full height (240px) board
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum TetrominoType { I, J, L, O, S, T, Z }
