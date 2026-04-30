@@ -14,7 +14,7 @@ const CELL_DIM: usize = 12;
 const OFFSET_X: usize = 140;   // Centered board (120px wide) on 400px screen
 const OFFSET_Y: usize = 0;     // Full height (240px) board
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)] // Added Eq and Hash for HashMap usage
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum TetrominoType { I, J, L, O, S, T, Z }
 
 struct Piece {
@@ -38,10 +38,9 @@ impl ZeugtrisPage {
         let asset_path = "/home/kramwriter/KramWriter/assets/zeugtris/game";
         
         let mut sprites = HashMap::new();
-        // File list based on your specific filenames
         let types = [
             (TetrominoType::I, "zeugtris_i.bmp"),
-            (TetrominoType::J, "zeugtris_j.bmp"),
+            (TetrominoType::J, "zeutris_j.bmp"), 
             (TetrominoType::L, "zeugtris_l.bmp"),
             (TetrominoType::O, "zeugtris_o.bmp"),
             (TetrominoType::S, "zeugtris_s.bmp"),
@@ -147,11 +146,12 @@ impl ZeugtrisPage {
             let screen_x = OFFSET_X + (grid_x * CELL_DIM);
             let screen_y = OFFSET_Y + (grid_y * CELL_DIM);
             
-            for y in 0..bmp.height.min(CELL_DIM as u32) {
-                for x in 0..bmp.width.min(CELL_DIM as u32) {
-                    let pixel = bmp.pixels[(y * bmp.width + x) as usize];
+            // Fixed type mismatches by converting bmp dimensions to usize
+            for y in 0..(bmp.height as usize).min(CELL_DIM) {
+                for x in 0..(bmp.width as usize).min(CELL_DIM) {
+                    let pixel = bmp.pixels[y * bmp.width as usize + x];
                     if pixel == Pixel::Black {
-                        display.draw_pixel(screen_x + x as usize, screen_y + y as usize, Pixel::Black, ctx);
+                        display.draw_pixel(screen_x + x, screen_y + y, Pixel::Black, ctx);
                     }
                 }
             }
@@ -199,16 +199,16 @@ impl Page for ZeugtrisPage {
 
         // 1. Draw Backdrop
         if let Some(bmp) = &self.backdrop {
-            for y in 0..bmp.height.min(240) {
-                for x in 0..bmp.width.min(400) {
-                    if bmp.pixels[(y * bmp.width + x) as usize] == Pixel::Black {
-                        display.draw_pixel(x as usize, y as usize, Pixel::Black, ctx);
+            for y in 0..(bmp.height as usize).min(240) {
+                for x in 0..(bmp.width as usize).min(400) {
+                    if bmp.pixels[y * bmp.width as usize + x] == Pixel::Black {
+                        display.draw_pixel(x, y, Pixel::Black, ctx);
                     }
                 }
             }
         }
 
-        // 2. Draw settled blocks using sprites
+        // 2. Draw settled blocks
         for r in 0..GRID_HEIGHT {
             for c in 0..GRID_SIZE {
                 if let Some(kind) = self.playfield[r][c] {
@@ -217,7 +217,7 @@ impl Page for ZeugtrisPage {
             }
         }
 
-        // 3. Draw active piece using sprites
+        // 3. Draw active piece
         for (y, row) in self.active_piece.matrix.iter().enumerate() {
             for (x, &cell) in row.iter().enumerate() {
                 if cell != 0 {
