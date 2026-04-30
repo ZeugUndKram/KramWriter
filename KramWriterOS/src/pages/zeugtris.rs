@@ -40,7 +40,7 @@ impl ZeugtrisPage {
         let mut sprites = HashMap::new();
         let types = [
             (TetrominoType::I, "zeugtris_i.bmp"),
-            (TetrominoType::J, "zeutris_j.bmp"), 
+            (TetrominoType::J, "zeugtris_j.bmp"), 
             (TetrominoType::L, "zeugtris_l.bmp"),
             (TetrominoType::O, "zeugtris_o.bmp"),
             (TetrominoType::S, "zeugtris_s.bmp"),
