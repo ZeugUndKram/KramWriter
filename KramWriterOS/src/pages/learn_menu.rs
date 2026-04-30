@@ -4,42 +4,45 @@ use crate::display::SharpDisplay;
 use crate::ui::bitmap::Bitmap;
 use termion::event::Key;
 use rpi_memory_display::Pixel;
-use crate::pages::file_browser::{FileBrowserPage, BrowserMode};
 
-const NEW_FILE_Y: i32 = 40; 
-const OPEN_FILE_Y: i32 = 90;
+// Vertical offsets for the menu items
+const OPTION_1_Y: i32 = 40; 
+const OPTION_2_Y: i32 = 90;
 
-pub struct WriteMenuPage {
+pub struct LearnMenuPage {
     current_index: usize, 
     title: Option<Bitmap>,
-    new_file_variants: [Option<Bitmap>; 2],
-    open_file_variants: [Option<Bitmap>; 2],
+    option_1_variants: [Option<Bitmap>; 2],
+    option_2_variants: [Option<Bitmap>; 2],
 }
 
-impl WriteMenuPage {
+impl LearnMenuPage {
     pub fn new() -> Self {
-        let asset_path = "/home/kramwriter/KramWriter/assets/Writing/menu";
+        // Path adjusted to lowercase 'w' to match your Pi's filesystem
+        let asset_path = "/home/kramwriter/Kramwriter/assets/Learn/menu";
+        
         Self {
             current_index: 0,
             title: Bitmap::load(&format!("{}/title.bmp", asset_path)).ok(),
-            new_file_variants: [
-                Bitmap::load(&format!("{}/new_file.bmp", asset_path)).ok(),
-                Bitmap::load(&format!("{}/new_file_1.bmp", asset_path)).ok(),
+            option_1_variants: [
+                Bitmap::load(&format!("{}/option_1_0.bmp", asset_path)).ok(), // Selected
+                Bitmap::load(&format!("{}/option_1_1.bmp", asset_path)).ok(), // Unselected
             ],
-            open_file_variants: [
-                Bitmap::load(&format!("{}/open_file_0.bmp", asset_path)).ok(),
-                Bitmap::load(&format!("{}/open_file_1.bmp", asset_path)).ok(),
+            option_2_variants: [
+                Bitmap::load(&format!("{}/option_2_0.bmp", asset_path)).ok(), // Selected
+                Bitmap::load(&format!("{}/option_2_1.bmp", asset_path)).ok(), // Unselected
             ],
         }
     }
 
-    // Helper to draw bitmaps with vertical offsets
     fn draw_layer(&self, display: &mut SharpDisplay, bmp: &Bitmap, y_offset: i32, ctx: &Context) {
         for y in 0..bmp.height {
             let screen_y = y as i32 + y_offset;
             if screen_y >= 0 && screen_y < 240 {
                 for x in 0..bmp.width.min(400) {
-                    if bmp.pixels[y * bmp.width + x] == Pixel::Black {
+                    // Using the pixel data from the loaded bitmap
+                    let pixel = bmp.pixels[y * bmp.width + x];
+                    if pixel == Pixel::Black {
                         display.draw_pixel(x, screen_y as usize, Pixel::Black, ctx);
                     }
                 }
@@ -48,7 +51,7 @@ impl WriteMenuPage {
     }
 }
 
-impl Page for WriteMenuPage {
+impl Page for LearnMenuPage {
     fn update(&mut self, key: Key, _ctx: &mut Context) -> Action {
         match key {
             Key::Up => {
@@ -60,33 +63,36 @@ impl Page for WriteMenuPage {
                 Action::None
             }
             Key::Char('\n') => {
-                if self.current_index == 0 {
-                    Action::Push(Box::new(FileBrowserPage::new(BrowserMode::Full)))
-                } else {
-                    Action::Push(Box::new(FileBrowserPage::new(BrowserMode::OpenFile)))
+                match self.current_index {
+                    0 => Action::None, // Placeholder for first Learn option
+                    1 => Action::None, // Placeholder for second Learn option
+                    _ => Action::None,
                 }
             }
-            Key::Esc => Action::Pop,
+            Key::Esc => Action::Pop, // Returns to main MenuPage
             _ => Action::None,
         }
     }
 
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
-        // 1. Title
+        // Clear screen based on dark mode context
+        display.clear(ctx);
+
+        // 1. Draw Title
         if let Some(bmp) = &self.title { 
             self.draw_layer(display, bmp, 0, ctx); 
         }
 
-        // 2. New File Selection
-        let new_idx = if self.current_index == 0 { 0 } else { 1 };
-        if let Some(bmp) = &self.new_file_variants[new_idx] {
-            self.draw_layer(display, bmp, NEW_FILE_Y, ctx);
+        // 2. Draw Option 1 (Uses variant 0 if selected, variant 1 if not)
+        let opt1_idx = if self.current_index == 0 { 0 } else { 1 };
+        if let Some(bmp) = &self.option_1_variants[opt1_idx] {
+            self.draw_layer(display, bmp, OPTION_1_Y, ctx);
         }
 
-        // 3. Open File Selection
-        let open_idx = if self.current_index == 1 { 0 } else { 1 };
-        if let Some(bmp) = &self.open_file_variants[open_idx] {
-            self.draw_layer(display, bmp, OPEN_FILE_Y, ctx);
+        // 3. Draw Option 2 (Uses variant 0 if selected, variant 1 if not)
+        let opt2_idx = if self.current_index == 1 { 0 } else { 1 };
+        if let Some(bmp) = &self.option_2_variants[opt2_idx] {
+            self.draw_layer(display, bmp, OPTION_2_Y, ctx);
         }
     }
 }
