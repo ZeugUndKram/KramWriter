@@ -7,7 +7,7 @@ use rpi_memory_display::Pixel;
 use std::path::PathBuf;
 use std::fs::File;
 use std::io::Read;
-use regex::Regex; // Add regex = "1" to your Cargo.toml
+use regex::Regex;
 
 use rusqlite::Connection;
 use zip::ZipArchive;
@@ -28,6 +28,7 @@ pub struct LearnPage {
     deck: Vec<Flashcard>,
     current_index: usize,
     state: LearnState,
+    answer_revealed: bool, // Track if the answer has been seen for the current card
     renderer: FontRenderer,
     ui_renderer: FontRenderer,
 }
@@ -42,6 +43,7 @@ impl LearnPage {
             deck: Vec::new(),
             current_index: 0,
             state: LearnState::Question,
+            answer_revealed: false,
             renderer,
             ui_renderer,
         };
@@ -50,21 +52,28 @@ impl LearnPage {
         page
     }
 
-    /// Cleans HTML tags out of Anki strings
+    /// Enhanced HTML cleaner that handles lists, breaks, and non-breaking spaces
     fn clean_html(input: &str) -> String {
-        let re = Regex::new(r"<[^>]*>").unwrap();
-        re.replace_all(input, " ")
+        let re_tags = Regex::new(r"<[^>]*>").unwrap();
+        
+        input
+            .replace("<li>", "\n• ") // Convert list items to bullet points
+            .replace("</li>", "")
+            .replace("<ul>", "\n")
+            .replace("</ul>", "\n")
+            .replace("<br>", "\n")
+            .replace("<br/>", "\n")
             .replace("&nbsp;", " ")
-            .replace("&gt;", ">")
-            .replace("&lt;", "<")
-            .trim()
-            .to_string()
+            .split('\n')
+            .map(|line| re_tags.replace_all(line, "").trim().to_string())
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     fn load_apkg(&mut self) {
         let temp_db_path = "/tmp/kram_anki.db";
         
-        // Ensure path exists
         if !self.path.exists() {
             println!("File does not exist at: {:?}", self.path);
             return;
@@ -75,7 +84,6 @@ impl LearnPage {
 
         let mut db_content = Vec::new();
         
-        // Find the database
         for i in 0..archive.len() {
             let mut file = archive.by_index(i).unwrap();
             if file.name() == "collection.anki21" || file.name() == "collection.anki2" {
@@ -91,16 +99,12 @@ impl LearnPage {
 
         std::fs::write(temp_db_path, db_content).unwrap();
 
-        // Connect and Query
         if let Ok(conn) = rusqlite::Connection::open(temp_db_path) {
             let mut stmt = conn.prepare("SELECT flds FROM notes").unwrap();
             
             let card_iter = stmt.query_map([], |row| {
                 let flds: String = row.get(0)?;
                 
-                // Print the raw fields to your terminal so you can see what's actually inside!
-                println!("Found raw note data: {}", flds);
-
                 let parts: Vec<String> = flds
                     .split('\x1f')
                     .map(|s| Self::clean_html(s))
@@ -114,7 +118,6 @@ impl LearnPage {
 
             self.deck = card_iter
                 .filter_map(|r| r.ok())
-                // STRENGTHENED FILTER: Skip the version warning and empty notes
                 .filter(|card| {
                     let c = card.question.to_lowercase();
                     !c.contains("update to the latest anki") && !c.is_empty()
@@ -131,34 +134,40 @@ impl LearnPage {
         if !self.deck.is_empty() {
             self.current_index = (self.current_index + 1) % self.deck.len();
             self.state = LearnState::Question;
+            self.answer_revealed = false; // Reset flag for new card
         }
     }
 
+    /// Newline-aware drawing logic that respects formatting and paragraphs
     fn draw_centered_wrapped_text(&self, display: &mut SharpDisplay, text: &str, ctx: &Context) {
         let font_size = 24.0;
         let margin = 20;
         let max_width = 400 - (margin * 2);
-        
         let mut lines = Vec::new();
-        let mut current_line = String::new();
 
-        for word in text.split_whitespace() {
-            let test_str = if current_line.is_empty() { 
-                word.to_string() 
-            } else { 
-                format!("{} {}", current_line, word) 
-            };
+        // Process text paragraph by paragraph to respect explicit newlines
+        for paragraph in text.split('\n') {
+            let mut current_line = String::new();
+            for word in paragraph.split_whitespace() {
+                let test_str = if current_line.is_empty() { 
+                    word.to_string() 
+                } else { 
+                    format!("{} {}", current_line, word) 
+                };
 
-            if self.renderer.calculate_width(&test_str, font_size) as i32 > max_width {
+                if self.renderer.calculate_width(&test_str, font_size) as i32 > max_width {
+                    lines.push(current_line);
+                    current_line = word.to_string();
+                } else {
+                    current_line = test_str;
+                }
+            }
+            if !current_line.is_empty() {
                 lines.push(current_line);
-                current_line = word.to_string();
-            } else {
-                current_line = test_str;
             }
         }
-        lines.push(current_line);
 
-        let line_height = 32;
+        let line_height = 30;
         let total_height = lines.len() as i32 * line_height;
         let mut start_y = (240 - total_height) / 2;
 
@@ -175,13 +184,18 @@ impl Page for LearnPage {
     fn update(&mut self, key: Key, _ctx: &mut Context) -> Action {
         match key {
             Key::Char(' ') => {
+                // Unlimited toggling: Space flips back and forth
                 if self.state == LearnState::Question {
                     self.state = LearnState::Answer;
+                    self.answer_revealed = true; // The answer is now "unlocked"
+                } else {
+                    self.state = LearnState::Question;
                 }
                 Action::None
             }
             Key::Char('1') | Key::Char('2') | Key::Char('3') | Key::Char('4') => {
-                if self.state == LearnState::Answer {
+                // 1-4 works on both screens only after the first flip
+                if self.answer_revealed {
                     self.next_card();
                 }
                 Action::None
@@ -213,10 +227,10 @@ impl Page for LearnPage {
         let content = if self.state == LearnState::Question { &card.question } else { &card.answer };
         self.draw_centered_wrapped_text(display, content, ctx);
 
-        let footer = if self.state == LearnState::Question {
+        let footer = if !self.answer_revealed {
             "SPACE: FLIP"
         } else {
-            "1-4: RATE CARD"
+            "SPACE: TOGGLE | 1-4: RATE"
         };
         let f_width = self.ui_renderer.calculate_width(footer, 18.0);
         self.ui_renderer.draw_text(display, footer, 200 - (f_width / 2), 230, 18.0, ctx);
