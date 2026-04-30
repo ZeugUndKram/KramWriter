@@ -15,7 +15,7 @@ pub struct LearnMenuPage {
 impl LearnMenuPage {
     pub fn new() -> Self {
         // Using the lowercase 'w' as found in your Pi's terminal output
-        let asset_path = "/home/kramwriter/Kramwriter/assets/Learn/Menu";
+        let asset_path = "/home/kramwriter/KramWriter/assets/Learn/Menu";
         
         Self {
             current_index: 0,
