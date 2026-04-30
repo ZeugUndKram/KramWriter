@@ -7,6 +7,7 @@ use termion::event::Key;
 use rpi_memory_display::Pixel;
 use std::fs;
 use std::path::PathBuf;
+use crate::pages::learn_create::LearnCreatePage;
 
 #[derive(PartialEq)]
 enum EntryFocus {
@@ -60,7 +61,6 @@ impl NameEntryLearnPage {
             return Action::None;
         }
 
-        // --- THE FIX: Add .apkg extension if it's a file ---
         if !self.is_folder {
             final_name.push_str(".apkg");
         }
@@ -73,11 +73,17 @@ impl NameEntryLearnPage {
             let success = if self.is_folder {
                 fs::create_dir(&new_path).is_ok()
             } else {
+                // Create an empty file to reserve the path
                 fs::File::create(&new_path).is_ok()
             };
 
             if success {
-                Action::Pop
+                if self.is_folder {
+                    Action::Pop // Go back to browser after creating a folder
+                } else {
+                    // IMMEDIATELY OPEN THE EDITOR for the new file
+                    Action::Replace(Box::new(LearnCreatePage::new(new_path)))
+                }
             } else {
                 self.error_msg = Some("SYSTEM ERROR".to_string());
                 Action::None

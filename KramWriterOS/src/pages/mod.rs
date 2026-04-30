@@ -12,6 +12,7 @@ pub mod learn_menu;
 pub mod file_browser_learn;
 pub mod name_entry_learn;
 pub mod learn;
+pub mod learn_create;
 
 use crate::context::Context;
 use crate::display::SharpDisplay;
