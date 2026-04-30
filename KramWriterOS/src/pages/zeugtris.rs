@@ -166,7 +166,7 @@ impl Page for ZeugtrisPage {
 
         self.tick_count += 1;
         // Adjust this value to change falling speed (e.g., 10 for faster, 30 for slower)
-        if self.tick_count > 20 { 
+        if self.tick_count > 5 { 
             self.tick_count = 0;
             if self.is_valid_move(&self.active_piece.matrix, self.active_piece.row + 1, self.active_piece.col) {
                 self.active_piece.row += 1;
