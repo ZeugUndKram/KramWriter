@@ -97,19 +97,31 @@ impl LearnPage {
             
             let card_iter = stmt.query_map([], |row| {
                 let flds: String = row.get(0)?;
+                
+                // Print the raw fields to your terminal so you can see what's actually inside!
+                println!("Found raw note data: {}", flds);
+
                 let parts: Vec<String> = flds
                     .split('\x1f')
                     .map(|s| Self::clean_html(s))
                     .collect();
 
                 Ok(Flashcard {
-                    question: parts.get(0).unwrap_or(&"Empty".to_string()).clone(),
-                    answer: parts.get(1).unwrap_or(&"Empty".to_string()).clone(),
+                    question: parts.get(0).cloned().unwrap_or_else(|| "Empty Q".to_string()),
+                    answer: parts.get(1).cloned().unwrap_or_else(|| "Empty A".to_string()),
                 })
             }).unwrap();
 
-            self.deck = card_iter.filter_map(|r| r.ok()).collect();
-            println!("Loaded {} cards.", self.deck.len());
+            self.deck = card_iter
+                .filter_map(|r| r.ok())
+                // STRENGTHENED FILTER: Skip the version warning and empty notes
+                .filter(|card| {
+                    let c = card.question.to_lowercase();
+                    !c.contains("update to the latest anki") && !c.is_empty()
+                })
+                .collect();
+
+            println!("Final deck count after filtering: {} cards.", self.deck.len());
         }
 
         let _ = std::fs::remove_file(temp_db_path);
