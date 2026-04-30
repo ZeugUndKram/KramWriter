@@ -92,10 +92,12 @@ impl LearnCreatePage {
         self.renderer.draw_text_colored(display, text, x, y, font_size, Pixel::Black, ctx);
 
         // Draw cursor
-        let cursor_x = x + self.renderer.calculate_width(&text[0..cursor_pos], font_size) as i32;
+        let cursor_x = x + self.renderer.calculate_width(&text[0..cursor_pos.min(text.len())], font_size) as i32;
         for cy in (y - 22)..(y + 4) {
-            display.draw_pixel(cursor_x as usize, cy as usize, Pixel::Black, ctx);
-            display.draw_pixel((cursor_x + 1) as usize, cy as usize, Pixel::Black, ctx);
+            if cy >= 0 && cy < 240 && cursor_x >= 0 && cursor_x < 400 {
+                display.draw_pixel(cursor_x as usize, cy as usize, Pixel::Black, ctx);
+                display.draw_pixel((cursor_x + 1) as usize, cy as usize, Pixel::Black, ctx);
+            }
         }
     }
 }
@@ -103,31 +105,22 @@ impl LearnCreatePage {
 impl Page for LearnCreatePage {
     fn update(&mut self, key: Key, _ctx: &mut Context) -> Action {
         match key {
-            // NAVIGATION: CTRL + ARROWS / SPACE / BACKSPACE
-            Key::Ctrl('f') | Key::Ctrl('r') => { // Termion represents Ctrl+Right as 'f' often, but we handle explicit arrow logic
-                Action::None
-            }
-            
-            // Note: Many terminals send specific codes for Ctrl+Arrows. 
-            // If your keyboard driver maps them to specific chars, adjust here.
-            // Using standard key combos for deck management:
-            
             // TOGGLE SIDE: Ctrl + Space
             Key::Ctrl(' ') => {
                 self.side = if self.side == EditSide::Front { EditSide::Back } else { EditSide::Front };
                 Action::None
             }
 
-            // PREVIOUS CARD: Ctrl + Left
-            Key::Ctrl('b') => { // Standard terminal 'Backward'
+            // PREVIOUS CARD: Ctrl + Left (Termion: Ctrl+b)
+            Key::Ctrl('b') => {
                 if self.current_index > 0 {
                     self.current_index -= 1;
                 }
                 Action::None
             }
 
-            // NEXT CARD / NEW CARD: Ctrl + Right
-            Key::Ctrl('f') => { // Standard terminal 'Forward'
+            // NEXT CARD / NEW CARD: Ctrl + Right (Termion: Ctrl+f)
+            Key::Ctrl('f') => {
                 if self.current_index < self.cards.len() - 1 {
                     self.current_index += 1;
                 } else {
@@ -136,7 +129,7 @@ impl Page for LearnCreatePage {
                 Action::None
             }
 
-            // DELETE CARD: Ctrl + Backspace (often sent as Ctrl+h or Ctrl+w)
+            // DELETE CARD: Ctrl + Backspace (Ctrl+h or \x7f)
             Key::Ctrl('h') | Key::Ctrl('\x7f') => {
                 self.delete_current_card();
                 Action::None
@@ -144,19 +137,21 @@ impl Page for LearnCreatePage {
 
             // TEXT EDITING: Left / Right Arrows
             Key::Left => {
+                let is_front = self.side == EditSide::Front;
                 let card = self.current_card_mut();
-                if self.side == EditSide::Front && card.front_cursor > 0 {
+                if is_front && card.front_cursor > 0 {
                     card.front_cursor -= 1;
-                } else if self.side == EditSide::Back && card.back_cursor > 0 {
+                } else if !is_front && card.back_cursor > 0 {
                     card.back_cursor -= 1;
                 }
                 Action::None
             }
             Key::Right => {
+                let is_front = self.side == EditSide::Front;
                 let card = self.current_card_mut();
-                if self.side == EditSide::Front && card.front_cursor < card.front.len() {
+                if is_front && card.front_cursor < card.front.len() {
                     card.front_cursor += 1;
-                } else if self.side == EditSide::Back && card.back_cursor < card.back.len() {
+                } else if !is_front && card.back_cursor < card.back.len() {
                     card.back_cursor += 1;
                 }
                 Action::None
@@ -164,9 +159,9 @@ impl Page for LearnCreatePage {
 
             // TYPING
             Key::Char(c) => {
-                let side = self.side == EditSide::Front;
+                let is_front = self.side == EditSide::Front;
                 let card = self.current_card_mut();
-                if side {
+                if is_front {
                     card.front.insert(card.front_cursor, c);
                     card.front_cursor += 1;
                 } else {
@@ -176,19 +171,19 @@ impl Page for LearnCreatePage {
                 Action::None
             }
             Key::Backspace => {
-                let side = self.side == EditSide::Front;
+                let is_front = self.side == EditSide::Front;
                 let card = self.current_card_mut();
-                if side && card.front_cursor > 0 {
+                if is_front && card.front_cursor > 0 {
                     card.front.remove(card.front_cursor - 1);
                     card.front_cursor -= 1;
-                } else if !side && card.back_cursor > 0 {
+                } else if !is_front && card.back_cursor > 0 {
                     card.back.remove(card.back_cursor - 1);
                     card.back_cursor -= 1;
                 }
                 Action::None
             }
 
-            Key::Esc => Action::Pop, // We should implement a "Save" action here eventually
+            Key::Esc => Action::Pop, 
             _ => Action::None,
         }
     }
@@ -214,7 +209,7 @@ impl Page for LearnCreatePage {
         }
 
         // Footer Instructions
-        let footer = "CTRL+SPACE: FLIP | CTRL+L/R: NAV | CTRL+BKSP: DEL";
+        let footer = "CTRL+SPACE: FLIP | CTRL+B/F: NAV | CTRL+BKSP: DEL";
         let f_w = self.ui_renderer.calculate_width(footer, 16.0);
         self.ui_renderer.draw_text(display, footer, 200 - (f_w / 2), 230, 16.0, ctx);
     }
