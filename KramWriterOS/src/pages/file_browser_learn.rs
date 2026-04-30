@@ -244,7 +244,7 @@ impl Page for FileBrowserLearnPage {
                             Action::None
                         } else {
                             // Note: You might want to push a DeckViewerPage here eventually!
-                            Action::Push(Box::new(EditorPage::new(selected.path)))
+                            Action::Push(Box::new(crate::pages::learn::LearnPage::new(selected.path)))
                         }
                     } else {
                         Action::None

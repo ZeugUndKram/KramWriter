@@ -11,6 +11,7 @@ pub mod simplenote_setup;
 pub mod learn_menu;
 pub mod file_browser_learn;
 pub mod name_entry_learn;
+pub mod learn;
 
 use crate::context::Context;
 use crate::display::SharpDisplay;
