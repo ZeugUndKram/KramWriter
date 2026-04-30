@@ -30,9 +30,9 @@ pub struct NameEntryLearnPage {
 
 impl NameEntryLearnPage {
     pub fn new(parent_path: PathBuf, is_folder: bool) -> Self {
-        let renderer = FontRenderer::new("/home/kramwriter/Kramwriter/fonts/BebasNeue-Regular.ttf");
+        let renderer = FontRenderer::new("/home/kramwriter/KramWriter/fonts/BebasNeue-Regular.ttf");
         // You might want to duplicate the NameEntry assets to a Learn folder eventually
-        let asset_path = "/home/kramwriter/Kramwriter/assets/NameEntry"; 
+        let asset_path = "/home/kramwriter/KramWriter/assets/NameEntry"; 
         
         Self {
             title_folder_bmp: Bitmap::load(&format!("{}/title.bmp", asset_path)).ok(),
