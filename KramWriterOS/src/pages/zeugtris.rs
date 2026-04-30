@@ -183,19 +183,16 @@ impl ZeugtrisPage {
         while y >= 0 {
             let uy = y as usize;
             if self.playfield[uy].iter().all(|cell| cell.is_some()) {
-                // Clear and shift down
                 for move_y in (1..=uy).rev() {
                     self.playfield[move_y] = self.playfield[move_y - 1];
                 }
                 self.playfield[0] = [None; GRID_SIZE];
                 lines_cleared += 1;
-                // DO NOT decrement y here, we need to check the newly shifted row
             } else {
                 y -= 1;
             }
         }
 
-        // Apply scoring and level rules based on Guideline
         if lines_cleared > 0 {
             let base_points = match lines_cleared {
                 1 => 100,
@@ -207,32 +204,30 @@ impl ZeugtrisPage {
             self.score += base_points * self.level;
             self.lines += lines_cleared;
             
-            // Fixed-goal level advancement (10 lines per level)
             self.level = (self.lines / 10) + 1;
         }
     }
 
-    // Convert Guideline G-values (gravity) into frame delays for 60fps tick rate
+    // 8x faster delays mapped to match your hardware's tick rate
     fn get_drop_delay(&self) -> u32 {
         let delays = [
-            60, // Lvl 1 (0.01667G)
-            48, // Lvl 2 (0.021G)
-            37, // Lvl 3 (0.026G)
-            28, // Lvl 4 (0.035G)
-            21, // Lvl 5 (0.046G)
-            16, // Lvl 6 (0.063G)
-            11, // Lvl 7 (0.087G)
-             8, // Lvl 8 (0.123G)
-             6, // Lvl 9 (0.177G)
-             4, // Lvl 10 (0.259G)
-             3, // Lvl 11 (0.388G)
-             2, // Lvl 12 (0.591G)
-             1, // Lvl 13 (0.92G)
-             1, // Lvl 14 (1.46G)
-             0  // Lvl 15+ (2.36G+, instant drop/20G)
+            7, // Lvl 1 (Originally 60)
+            6, // Lvl 2 (Originally 48)
+            4, // Lvl 3 (Originally 37)
+            3, // Lvl 4 (Originally 28)
+            2, // Lvl 5 (Originally 21)
+            2, // Lvl 6 (Originally 16)
+            1, // Lvl 7 (Originally 11)
+            1, // Lvl 8 (Originally 8)
+            0, // Lvl 9 (Originally 6) - 0 means it falls every single tick
+            0, // Lvl 10 
+            0, // Lvl 11 
+            0, // Lvl 12 
+            0, // Lvl 13 
+            0, // Lvl 14 
+            0  // Lvl 15+ 
         ];
         
-        // Cap index at 14 (Level 15 rules)
         let idx = (self.level.saturating_sub(1) as usize).min(14);
         delays[idx]
     }
@@ -273,16 +268,13 @@ impl ZeugtrisPage {
     }
 
     fn draw_game_info(&self, display: &mut SharpDisplay, ctx: &Context) {
-        // Draw SCORE
         self.renderer.draw_text(display, "SCORE:", INFO_X, INFO_SCORE_LBL_Y, STATS_FONT_SIZE, ctx);
         let score_text = format!("{}", self.score);
         self.renderer.draw_text(display, &score_text, INFO_X, INFO_SCORE_VAL_Y, STATS_FONT_SIZE, ctx);
 
-        // Draw LEVEL
         let level_text = format!("LEVEL: {}", self.level);
         self.renderer.draw_text(display, &level_text, INFO_X, INFO_LEVEL_Y, STATS_FONT_SIZE, ctx);
 
-        // Draw LINES
         let lines_text = format!("LINES: {}", self.lines);
         self.renderer.draw_text(display, &lines_text, INFO_X, INFO_LINES_Y, STATS_FONT_SIZE, ctx);
     }
@@ -385,6 +377,6 @@ impl Page for ZeugtrisPage {
         }
 
         self.draw_statistics(display, ctx);
-        self.draw_game_info(display, ctx); // Draws Score, Level, and Lines
+        self.draw_game_info(display, ctx); 
     }
 }
