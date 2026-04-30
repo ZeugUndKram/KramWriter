@@ -55,8 +55,6 @@ impl LearnPage {
         if let Ok(file) = File::open(&self.path) {
             if let Ok(mut archive) = zip::ZipArchive::new(file) {
                 let mut target_entry_name = None;
-                
-                // Prioritize collection.anki21 (Modern) over collection.anki2 (Legacy)
                 for i in 0..archive.len() {
                     if let Ok(file) = archive.by_index(i) {
                         let name = file.name();
@@ -75,32 +73,37 @@ impl LearnPage {
                         if archive_file.read_to_end(&mut buffer).is_ok() {
                             if std::fs::write(temp_db_path, buffer).is_ok() {
                                 if let Ok(conn) = rusqlite::Connection::open(temp_db_path) {
-                                    // JOIN with cards and filter c.queue >= 0 to skip "Update Anki" system notes
+                                    // IMPROVED QUERY: 
+                                    // type 0=new, 1=lrn, 2=rev. 
+                                    // We exclude negative queues (suspended/buried)
                                     let mut stmt_result = conn.prepare("
                                         SELECT n.flds 
                                         FROM cards c 
                                         JOIN notes n ON c.nid = n.id 
-                                        WHERE c.queue >= 0
+                                        WHERE c.queue >= 0 AND c.type IN (0, 1, 2)
                                     ");
                                                                         
                                     if let Ok(mut stmt) = stmt_result {
                                         let rows = stmt.query_map([], |row| {
                                             let flds: String = row.get(0)?;
-                                            
-                                            // Split by the Anki Unit Separator \x1f
                                             let parts: Vec<&str> = flds.split('\x1f').collect();
                                             
                                             Ok(Flashcard {
-                                                // Front of card is index 0, Back is index 1
-                                                question: parts.get(0).unwrap_or(&"Empty Question").to_string(),
-                                                answer: parts.get(1).unwrap_or(&"Empty Answer").to_string(),
+                                                question: parts.get(0).unwrap_or(&"Empty").to_string(),
+                                                answer: parts.get(1).unwrap_or(&"Empty").to_string(),
                                             })
                                         });
 
                                         if let Ok(flashcard_iter) = rows {
-                                            self.deck = flashcard_iter.filter_map(|r| r.ok()).collect();
+                                            self.deck = flashcard_iter
+                                                .filter_map(|r| r.ok())
+                                                // RUST FILTER: Hard-skip the update warning string
+                                                .filter(|card| !card.question.contains("update to the latest Anki version"))
+                                                .collect();
                                         }
                                     }
+                                    // Debug: Check how many cards actually made it in
+                                    println!("Successfully loaded {} cards.", self.deck.len());
                                 }
                                 let _ = std::fs::remove_file(temp_db_path);
                             }
