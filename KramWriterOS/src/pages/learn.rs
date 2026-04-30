@@ -79,8 +79,7 @@ impl LearnPage {
                                     let mut stmt_result = conn.prepare("
                                         SELECT n.flds 
                                         FROM cards c 
-                                        JOIN notes n ON c.nid = n.id 
-                                        WHERE c.queue >= 0 AND c.type IN (0, 1, 2)
+                                        JOIN notes n ON c.nid = n.id
                                     ");
                                                                         
                                     if let Ok(mut stmt) = stmt_result {
