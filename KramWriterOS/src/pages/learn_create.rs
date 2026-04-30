@@ -5,6 +5,8 @@ use crate::ui::fonts::FontRenderer;
 use termion::event::Key;
 use rpi_memory_display::Pixel;
 use std::path::PathBuf;
+use std::fs::File;
+use std::io::Write;
 
 #[derive(PartialEq)]
 enum EditSide {
@@ -26,6 +28,7 @@ pub struct LearnCreatePage {
     side: EditSide,
     renderer: FontRenderer,
     ui_renderer: FontRenderer,
+    message: Option<(String, std::time::Instant)>, // For "Saved!" notification
 }
 
 impl LearnCreatePage {
@@ -48,11 +51,27 @@ impl LearnCreatePage {
             side: EditSide::Front,
             renderer,
             ui_renderer,
+            message: None,
         }
     }
 
     fn current_card_mut(&mut self) -> &mut CardEditor {
         &mut self.cards[self.current_index]
+    }
+
+    fn save_to_file(&mut self) {
+        let mut content = String::new();
+        for card in &self.cards {
+            if !card.front.trim().is_empty() || !card.back.trim().is_empty() {
+                content.push_str(&format!("Q: {}\nA: {}\n---\n", card.front.trim(), card.back.trim()));
+            }
+        }
+
+        if let Ok(mut file) = File::create(&self.path) {
+            if file.write_all(content.as_bytes()).is_ok() {
+                self.message = Some(("SAVED SUCCESSFULLY!".to_string(), std::time::Instant::now()));
+            }
+        }
     }
 
     fn delete_current_card(&mut self) {
@@ -62,7 +81,6 @@ impl LearnCreatePage {
                 self.current_index = self.cards.len() - 1;
             }
         } else {
-            // If it's the last card, just clear it
             let card = self.current_card_mut();
             card.front.clear();
             card.back.clear();
@@ -87,11 +105,8 @@ impl LearnCreatePage {
         let font_size = 24.0;
         let x = 20;
         let y = 120;
-
-        // Draw the text
         self.renderer.draw_text_colored(display, text, x, y, font_size, Pixel::Black, ctx);
 
-        // Draw cursor
         let cursor_x = x + self.renderer.calculate_width(&text[0..cursor_pos.min(text.len())], font_size) as i32;
         for cy in (y - 22)..(y + 4) {
             if cy >= 0 && cy < 240 && cursor_x >= 0 && cursor_x < 400 {
@@ -104,23 +119,36 @@ impl LearnCreatePage {
 
 impl Page for LearnCreatePage {
     fn update(&mut self, key: Key, _ctx: &mut Context) -> Action {
+        // Clear old messages after 2 seconds
+        if let Some((_, time)) = &self.message {
+            if time.elapsed().as_secs() >= 2 {
+                self.message = None;
+            }
+        }
+
         match key {
-            // TOGGLE SIDE: Ctrl + Space
-            Key::Ctrl(' ') => {
+            // SAVE: Ctrl + S
+            Key::Ctrl('s') => {
+                self.save_to_file();
+                Action::None
+            }
+
+            // TOGGLE SIDE: Ctrl + Space (Sometimes shows up as Ctrl+' ')
+            Key::Ctrl(' ') | Key::Char('\0') => {
                 self.side = if self.side == EditSide::Front { EditSide::Back } else { EditSide::Front };
                 Action::None
             }
 
-            // PREVIOUS CARD: Ctrl + Left (Termion: Ctrl+b)
-            Key::Ctrl('b') => {
+            // PREVIOUS CARD: Ctrl + P (More reliable than Ctrl+B)
+            Key::Ctrl('p') => {
                 if self.current_index > 0 {
                     self.current_index -= 1;
                 }
                 Action::None
             }
 
-            // NEXT CARD / NEW CARD: Ctrl + Right (Termion: Ctrl+f)
-            Key::Ctrl('f') => {
+            // NEXT CARD: Ctrl + N (More reliable than Ctrl+F)
+            Key::Ctrl('n') => {
                 if self.current_index < self.cards.len() - 1 {
                     self.current_index += 1;
                 } else {
@@ -129,13 +157,12 @@ impl Page for LearnCreatePage {
                 Action::None
             }
 
-            // DELETE CARD: Ctrl + Backspace (Ctrl+h or \x7f)
-            Key::Ctrl('h') | Key::Ctrl('\x7f') => {
+            // DELETE CARD: Ctrl + D
+            Key::Ctrl('d') => {
                 self.delete_current_card();
                 Action::None
             }
 
-            // TEXT EDITING: Left / Right Arrows
             Key::Left => {
                 let is_front = self.side == EditSide::Front;
                 let card = self.current_card_mut();
@@ -156,8 +183,6 @@ impl Page for LearnCreatePage {
                 }
                 Action::None
             }
-
-            // TYPING
             Key::Char(c) => {
                 let is_front = self.side == EditSide::Front;
                 let card = self.current_card_mut();
@@ -182,7 +207,6 @@ impl Page for LearnCreatePage {
                 }
                 Action::None
             }
-
             Key::Esc => Action::Pop, 
             _ => Action::None,
         }
@@ -201,6 +225,12 @@ impl Page for LearnCreatePage {
         let p_w = self.ui_renderer.calculate_width(&progress, 20.0);
         self.ui_renderer.draw_text(display, &progress, 390 - p_w, 25, 20.0, ctx);
 
+        // Success Message Overlay
+        if let Some((msg, _)) = &self.message {
+            let m_w = self.ui_renderer.calculate_width(msg, 20.0);
+            self.ui_renderer.draw_text(display, msg, 200 - (m_w / 2), 50, 20.0, ctx);
+        }
+
         // Editor
         if self.side == EditSide::Front {
             self.draw_editor_text(display, &card.front, card.front_cursor, ctx);
@@ -208,9 +238,9 @@ impl Page for LearnCreatePage {
             self.draw_editor_text(display, &card.back, card.back_cursor, ctx);
         }
 
-        // Footer Instructions
-        let footer = "CTRL+SPACE: FLIP | CTRL+B/F: NAV | CTRL+BKSP: DEL";
-        let f_w = self.ui_renderer.calculate_width(footer, 16.0);
-        self.ui_renderer.draw_text(display, footer, 200 - (f_w / 2), 230, 16.0, ctx);
+        // Updated Footer Instructions for more reliable keys
+        let footer = "CTRL+SPACE: FLIP | CTRL+P/N: NAV | CTRL+S: SAVE | CTRL+D: DEL";
+        let f_w = self.ui_renderer.calculate_width(footer, 15.0);
+        self.ui_renderer.draw_text(display, footer, 200 - (f_w / 2), 230, 15.0, ctx);
     }
 }
