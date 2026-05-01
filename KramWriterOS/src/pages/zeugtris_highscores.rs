@@ -80,7 +80,7 @@ impl Page for ZeugtrisHighscoresPage {
         let spacing_y = 28;
         
         let col1_x = 70;
-        let col2_x = 230;
+        let col2_x = 240;
 
         for (i, &score) in self.scores.iter().enumerate() {
             let text = format!("{}. {}", i + 1, score);
