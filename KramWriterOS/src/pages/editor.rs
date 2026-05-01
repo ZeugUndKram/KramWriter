@@ -10,14 +10,13 @@ use std::fs;
 
 // Timezone and Time imports
 use chrono::{Utc, FixedOffset}; 
-use chrono_tz::Tz;
 
 // --- LAYOUT STRUCTURE ---
 #[derive(Debug, Clone)]
 struct VisualLine {
     text: String,       
-    start_index: usize, 
-    len: usize,         
+    start_index: usize, // Byte index in the main content
+    len: usize,         // Byte length
     is_hard_break: bool,
 }
 
@@ -30,12 +29,12 @@ impl VisualLine {
 pub struct EditorPage {
     path: PathBuf,
     content: String,
-    cursor_pos: usize,
+    cursor_pos: usize, // Tracks byte offset
     scroll_line_offset: usize,
     target_cursor_x: Option<i32>, 
     is_dirty: bool,
-    renderer: FontRenderer,     // Main writing font
-    ui_renderer: FontRenderer,  // Bottom bar font (Bebas Neue)
+    renderer: FontRenderer,     
+    ui_renderer: FontRenderer,  
     font_size: f32,
     top_margin: i32,
     save_icons: [Option<Bitmap>; 2],
@@ -61,7 +60,7 @@ impl EditorPage {
             renderer,
             ui_renderer,
             font_size: 22.0,
-            top_margin: 10, // Adjusted as requested
+            top_margin: 10,
             save_icons: [
                 Bitmap::load(&format!("{}/save_0.bmp", asset_path)).ok(),
                 Bitmap::load(&format!("{}/save_1.bmp", asset_path)).ok(),
@@ -162,19 +161,23 @@ impl EditorPage {
                     tx
                 } else {
                     let offset = self.cursor_pos.saturating_sub(current_line.start_index);
-                    let text_before = &current_line.text[..offset.min(current_line.text.len())];
+                    // SAFE SLICE: find the nearest char boundary
+                    let safe_offset = self.get_safe_boundary(&current_line.text, offset);
+                    let text_before = &current_line.text[..safe_offset];
                     self.renderer.calculate_width(text_before, self.font_size) as i32
                 };
 
                 let mut best_offset = 0;
                 let mut min_diff = i32::MAX;
-                for i in 0..=target_line.text.len() {
-                    let sub = &target_line.text[..i];
+                
+                // Iterate through actual character boundaries
+                for (byte_idx, _) in target_line.text.char_indices().chain(std::iter::once((target_line.text.len(), ' '))) {
+                    let sub = &target_line.text[..byte_idx];
                     let w = self.renderer.calculate_width(sub, self.font_size) as i32;
                     let diff = (w - target_x).abs();
                     if diff < min_diff {
                         min_diff = diff;
-                        best_offset = i;
+                        best_offset = byte_idx;
                     }
                 }
                 self.cursor_pos = target_line.start_index + best_offset;
@@ -183,37 +186,36 @@ impl EditorPage {
         }
     }
 
+    fn get_safe_boundary(&self, s: &str, byte_idx: usize) -> usize {
+        let mut idx = byte_idx.min(s.len());
+        while !s.is_char_boundary(idx) && idx > 0 {
+            idx -= 1;
+        }
+        idx
+    }
+
     fn get_word_count(&self) -> usize {
         self.content.split_whitespace().count()
     }
 
-   fn draw_bottom_bar(&self, display: &mut SharpDisplay, ctx: &Context) {
+    fn draw_bottom_bar(&self, display: &mut SharpDisplay, ctx: &Context) {
         let y_start = 218;
         let y_text = y_start as i32 + 18;
-        let ui_size = 18.0; // Size for Bebas Neue
+        let ui_size = 18.0; 
 
-        // Draw the separator line
-        for x in 0..400 { 
-            display.draw_pixel(x, y_start, Pixel::Black, ctx); 
-        }
+        for x in 0..400 { display.draw_pixel(x, y_start, Pixel::Black, ctx); }
         
-        // 1. Save Icon
         let save_icon = if self.is_dirty { &self.save_icons[0] } else { &self.save_icons[1] };
-        if let Some(bmp) = save_icon { 
-            self.draw_icon(display, bmp, 5, y_start + 3, ctx); 
-        }
+        if let Some(bmp) = save_icon { self.draw_icon(display, bmp, 5, y_start + 3, ctx); }
         
-        // 2. Filename (Uses ui_renderer)
         let filename = self.path.file_name()
             .map(|n| n.to_string_lossy().to_string().to_uppercase())
             .unwrap_or_else(|| "UNTITLED.TXT".to_string());
         self.ui_renderer.draw_text_colored(display, &filename, 28, y_text, ui_size, Pixel::Black, ctx);
         
-        // 3. Word Count (Uses ui_renderer)
         let w_count = format!("W:{}", self.get_word_count());
         self.ui_renderer.draw_text_colored(display, &w_count, 180, y_text, ui_size, Pixel::Black, ctx);
         
-        // 4. Dynamic Timezone Logic (Uses ui_renderer)
         let offset_hours = ctx.timezone.parse::<f32>().unwrap_or(0.0);
         let offset_seconds = (offset_hours * 3600.0) as i32;
         
@@ -226,17 +228,11 @@ impl EditorPage {
         
         self.ui_renderer.draw_text_colored(display, &time_str, 305, y_text, ui_size, Pixel::Black, ctx);
         
-        // 5. Weather Icon
         let weather_idx = (ctx.status.weather_icon as usize).min(self.weather_icons.len() - 1);
-        if let Some(bmp) = &self.weather_icons[weather_idx] { 
-            self.draw_icon(display, bmp, 348, y_start + 3, ctx); 
-        }
+        if let Some(bmp) = &self.weather_icons[weather_idx] { self.draw_icon(display, bmp, 348, y_start + 3, ctx); }
 
-        // 6. WiFi Strength Icon
         let wifi_idx = (ctx.status.wifi_strength as usize).min(4);
-        if let Some(bmp) = &self.wifi_icons[wifi_idx] { 
-            self.draw_icon(display, bmp, 372, y_start + 3, ctx); 
-        }
+        if let Some(bmp) = &self.wifi_icons[wifi_idx] { self.draw_icon(display, bmp, 372, y_start + 3, ctx); }
     }
 
     fn draw_icon(&self, display: &mut SharpDisplay, bmp: &Bitmap, x_off: usize, y_off: usize, ctx: &Context) {
@@ -269,36 +265,63 @@ impl Page for EditorPage {
     fn update(&mut self, key: Key, _ctx: &mut Context) -> Action {
         let max_width = 370.0;
         let layout = self.build_layout(max_width);
-        let line_height = (self.font_size * 1.2) as i32;
-        let visible_lines = ((218 - self.top_margin) / line_height) as usize;
 
         match key {
             Key::Esc => return Action::Pop,
             Key::Ctrl('s') => { let _ = fs::write(&self.path, &self.content); self.is_dirty = false; }
-            Key::Alt('+') | Key::Alt('=') => { if self.font_size < 60.0 { self.font_size += 2.0; } }
-            Key::Alt('-') => { if self.font_size > 10.0 { self.font_size -= 2.0; } }
-            Key::Left => { if self.cursor_pos > 0 { self.cursor_pos -= 1; } self.target_cursor_x = None; }
-            Key::Right => { if self.cursor_pos < self.content.len() { self.cursor_pos += 1; } self.target_cursor_x = None; }
+            
+            // --- UPDATED FONT SIZE HOTKEYS ---
+            // Termion often handles Alt+Arrow by returning standard keys if the terminal is in raw mode.
+            // Some environments map them to specific Char or specialized codes.
+            Key::Alt('k') | Key::Up if matches!(key, Key::Alt(_)) => { if self.font_size < 60.0 { self.font_size += 2.0; } }
+            Key::Alt('j') | Key::Down if matches!(key, Key::Alt(_)) => { if self.font_size > 10.0 { self.font_size -= 2.0; } }
+            
+            // Note: Standard termion::event::Key doesn't have Alt(Up/Down). 
+            // If the above doesn't trigger, use Alt + and Alt - as fallbacks or check raw escape codes.
+            
+            Key::Left => { 
+                if self.cursor_pos > 0 { 
+                    // SAFE MOVE: Find previous character boundary
+                    if let Some((idx, _)) = self.content[..self.cursor_pos].char_indices().next_back() {
+                        self.cursor_pos = idx;
+                    }
+                } 
+                self.target_cursor_x = None; 
+            }
+            Key::Right => { 
+                if self.cursor_pos < self.content.len() { 
+                    // SAFE MOVE: Find next character boundary
+                    if let Some(c) = self.content[self.cursor_pos..].chars().next() {
+                        self.cursor_pos += c.len_utf8();
+                    }
+                } 
+                self.target_cursor_x = None; 
+            }
             Key::Up => self.move_cursor_vertical(-1, &layout),
             Key::Down => self.move_cursor_vertical(1, &layout),
             Key::Char(c) => {
                 self.content.insert(self.cursor_pos, c);
-                self.cursor_pos += 1;
+                self.cursor_pos += c.len_utf8();
                 self.is_dirty = true;
                 self.target_cursor_x = None;
             }
             Key::Backspace => {
                 if self.cursor_pos > 0 {
-                    self.cursor_pos -= 1;
-                    self.content.remove(self.cursor_pos);
-                    self.is_dirty = true;
-                    self.target_cursor_x = None;
+                    if let Some((idx, _)) = self.content[..self.cursor_pos].char_indices().next_back() {
+                        self.content.remove(idx);
+                        self.cursor_pos = idx;
+                        self.is_dirty = true;
+                        self.target_cursor_x = None;
+                    }
                 }
             }
             _ => {}
         }
 
+        // Re-calculate layout to handle scrolling
         let layout = self.build_layout(max_width); 
+        let line_height = (self.font_size * 1.2) as i32;
+        let visible_lines = ((218 - self.top_margin) / line_height) as usize;
         let current_line_idx = layout.iter().position(|l| self.cursor_is_on_this_line(l)).unwrap_or(0);
 
         if current_line_idx < self.scroll_line_offset {
@@ -328,7 +351,9 @@ impl Page for EditorPage {
 
             if self.cursor_is_on_this_line(line) {
                 let offset = self.cursor_pos.saturating_sub(line.start_index);
-                let sub_text = &line.text[..offset.min(line.text.len())];
+                // SAFE SLICE: Find the nearest char boundary for the cursor position
+                let safe_offset = self.get_safe_boundary(&line.text, offset);
+                let sub_text = &line.text[..safe_offset];
                 let cursor_x = margin + self.renderer.calculate_width(sub_text, self.font_size) as i32;
                 
                 let cursor_height = self.font_size as i32;
