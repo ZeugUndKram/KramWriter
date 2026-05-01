@@ -11,12 +11,11 @@ use crate::pages::file_browser_learn::{FileBrowserLearnPage, BrowserMode};
 pub struct LearnMenuPage {
     current_index: usize, 
     title: Option<Bitmap>,
-    options: [Option<Bitmap>; 3],
+    options: [Option<Bitmap>; 2],
 }
 
 impl LearnMenuPage {
     pub fn new() -> Self {
-        // Ensure this path matches the exact case of your folder on the Pi
         let asset_path = "/home/kramwriter/KramWriter/assets/Learn/Menu";
         
         Self {
@@ -25,7 +24,6 @@ impl LearnMenuPage {
             options: [
                 Bitmap::load(&format!("{}/Options_0.bmp", asset_path)).ok(),
                 Bitmap::load(&format!("{}/Options_1.bmp", asset_path)).ok(),
-                Bitmap::load(&format!("{}/Options_2.bmp", asset_path)).ok(),
             ],
         }
     }
@@ -46,27 +44,23 @@ impl Page for LearnMenuPage {
     fn update(&mut self, key: Key, _ctx: &mut Context) -> Action {
         match key {
             Key::Up => {
+                // No infinite scrolling: stop at the top
                 if self.current_index > 0 {
                     self.current_index -= 1;
-                } else {
-                    self.current_index = 2; 
                 }
                 Action::None
             }
             Key::Down => {
-                if self.current_index < 2 {
+                // No infinite scrolling: stop at the bottom (index 1)
+                if self.current_index < 1 {
                     self.current_index += 1;
-                } else {
-                    self.current_index = 0; 
                 }
                 Action::None
             }
             Key::Char('\n') => {
                 match self.current_index {
-                    // --- Connected the actions here ---
                     0 => Action::Push(Box::new(FileBrowserLearnPage::new(BrowserMode::OpenFile))), // OPEN DECK
                     1 => Action::Push(Box::new(FileBrowserLearnPage::new(BrowserMode::Full))),     // CREATE DECK
-                    2 => Action::None, // SETTINGS (To be implemented later)
                     _ => Action::None,
                 }
             }
