@@ -6,38 +6,19 @@ import uinput
 ROWS = [26, 8, 22, 24]
 COLS = [13, 5, 19, 16, 20, 21, 2, 3, 4, 14, 15, 18]
 
-# 2. KEYMAPS
-_BASE = {
+# 2. THE MAP
+GRID_MAP = {
     (0,0): uinput.KEY_TAB,  (0,1): uinput.KEY_Q, (0,2): uinput.KEY_W, (0,3): uinput.KEY_E, (0,4): uinput.KEY_R, (0,5): uinput.KEY_T, (0,6): uinput.KEY_Y, (0,7): uinput.KEY_U, (0,8): uinput.KEY_I, (0,9): uinput.KEY_O, (0,10): uinput.KEY_P, (0,11): uinput.KEY_BACKSPACE,
     (1,0): uinput.KEY_ESC,  (1,1): uinput.KEY_A, (1,2): uinput.KEY_S, (1,3): uinput.KEY_D, (1,4): uinput.KEY_F, (1,5): uinput.KEY_G, (1,6): uinput.KEY_H, (1,7): uinput.KEY_J, (1,8): uinput.KEY_K, (1,9): uinput.KEY_L, (1,10): uinput.KEY_SEMICOLON, (1,11): uinput.KEY_ENTER,
     (2,0): uinput.KEY_LEFTSHIFT, (2,1): uinput.KEY_Z, (2,2): uinput.KEY_X, (2,3): uinput.KEY_C, (2,4): uinput.KEY_V, (2,5): uinput.KEY_B, (2,6): uinput.KEY_N, (2,7): uinput.KEY_M, (2,8): uinput.KEY_COMMA, (2,9): uinput.KEY_DOT, (2,10): uinput.KEY_UP, (2,11): uinput.KEY_SLASH,
-    (3,0): uinput.KEY_LEFTCTRL, (3,1): uinput.KEY_LEFTMETA, (3,2): uinput.KEY_LEFTALT, (3,3): "NUM", (3,4): uinput.KEY_SPACE, (3,5): uinput.KEY_SPACE, (3,6): "SYM", (3,7): uinput.KEY_LEFT, (3,8): uinput.KEY_DOWN, (3,9): uinput.KEY_RIGHT
-}
-
-_NUM = {
-    (0,1): uinput.KEY_1, (0,2): uinput.KEY_2, (0,3): uinput.KEY_3, (0,4): uinput.KEY_4, (0,5): uinput.KEY_5, (0,6): uinput.KEY_6, (0,7): uinput.KEY_7, (0,8): uinput.KEY_8, (0,9): uinput.KEY_9, (0,10): uinput.KEY_0,
-    (1,6): uinput.KEY_LEFT, (1,7): uinput.KEY_DOWN, (1,8): uinput.KEY_UP, (1,9): uinput.KEY_RIGHT
-}
-
-# FIXED: Removed duplicate (0,1) & replaced invalid constants with valid uinput keycodes
-_SYM = {
-    (0,1): uinput.KEY_1, (0,2): uinput.KEY_2, (0,3): uinput.KEY_3, (0,4): uinput.KEY_4, (0,5): uinput.KEY_5,
-    (1,1): uinput.KEY_GRAVE, (1,2): uinput.KEY_APOSTROPHE, (1,3): uinput.KEY_LEFTBRACE, (1,4): uinput.KEY_RIGHTBRACE,
-    (1,5): uinput.KEY_BACKSLASH, (1,6): uinput.KEY_MINUS, (1,7): uinput.KEY_EQUAL,
-    (1,8): uinput.KEY_COMMA, (1,9): uinput.KEY_DOT, (1,10): uinput.KEY_SLASH
+    (3,4): uinput.KEY_SPACE, (3,5): uinput.KEY_SPACE
 }
 
 # 3. DEVICE SETUP
-all_keys = set()
-for layer in [_BASE, _NUM, _SYM]:
-    for k in layer.values():
-        if isinstance(k, int):
-            all_keys.add(k)
+all_keys = [k for k in GRID_MAP.values() if k is not None]
+device = uinput.Device(all_keys)
+time.sleep(1)
 
-device = uinput.Device(list(all_keys))
-time.sleep(0.5)
-
-GPIO.cleanup()
 GPIO.setmode(GPIO.BCM)
 GPIO.setwarnings(False)
 
@@ -45,50 +26,33 @@ for c in COLS: GPIO.setup(c, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 for r in ROWS: GPIO.setup(r, GPIO.OUT, initial=GPIO.HIGH)
 
 # 4. TRACKING
-pressed_keys = {} 
-active_cols = set()
-layers = {"NUM": False, "SYM": False}
+pressed_keys = {} # (r, c): key_sent
+active_cols = set() # Tracks columns currently "in use"
 
-def get_key(r, c):
-    if layers["NUM"] and (r, c) in _NUM: return _NUM[(r, c)]
-    if layers["SYM"] and (r, c) in _SYM: return _SYM[(r, c)]
-    return _BASE.get((r, c))
-
-print("KramWriter: Full QMK Logic Active.")
+print("KRAMWRITER: Ghost-Proofing Active.")
 
 try:
     while True:
         for r_idx, r_pin in enumerate(ROWS):
             GPIO.output(r_pin, GPIO.LOW)
-            time.sleep(0.0002)
+            time.sleep(0.0002) # Slightly longer settle time
             
             for c_idx, c_pin in enumerate(COLS):
                 key_id = (r_idx, c_idx)
                 is_down = (GPIO.input(c_pin) == GPIO.LOW)
-                base_val = _BASE.get(key_id)
 
-                # 1. Handle Layer Modifiers (Momentary)
-                if base_val in ("NUM", "SYM"):
-                    if is_down and not layers[base_val]:
-                        layers[base_val] = True
-                    elif not is_down and layers[base_val]:
-                        layers[base_val] = False
-                    continue
-
-                # 2. Normal Key Press
+                # NEW LOGIC: Only allow press if the column isn't already "claimed" by another row
                 if is_down and key_id not in pressed_keys:
                     if c_idx not in active_cols:
-                        target = get_key(r_idx, c_idx)
-                        if isinstance(target, int):
-                            device.emit(target, 1)
-                            device.syn()
-                            pressed_keys[key_id] = target
+                        key = GRID_MAP.get(key_id)
+                        if key:
+                            device.emit(key, 1)
+                            pressed_keys[key_id] = key
                             active_cols.add(c_idx)
+                            print(f"Clean Press: {key_id}")
 
-                # 3. Normal Key Release
                 elif not is_down and key_id in pressed_keys:
                     device.emit(pressed_keys[key_id], 0)
-                    device.syn()
                     active_cols.remove(c_idx)
                     del pressed_keys[key_id]
 
@@ -97,4 +61,3 @@ try:
 
 except KeyboardInterrupt:
     GPIO.cleanup()
-    print("\nShutdown cleanly.")
