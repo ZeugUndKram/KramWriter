@@ -76,7 +76,7 @@ impl Page for ZeugtrisHighscoresPage {
 
         // Display Scores in a two-column layout
         let font_size = 32.0;
-        let start_y = 80;
+        let start_y = 105;
         let spacing_y = 28;
         
         let col1_x = 70;
