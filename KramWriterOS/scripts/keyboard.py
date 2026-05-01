@@ -6,27 +6,18 @@ import uinput
 ROWS = [26, 8, 22, 24]
 COLS = [13, 5, 19, 16, 20, 21, 2, 3, 4, 14, 15, 18]
 
-# 2. FLAT KEYMAP (Alpha only, mapped to your 12x4 grid)
-# I've filled the first 26 slots with letters. 
-# Any press on these specific grid spots should type that letter.
-ALPHA_MAP = [
-    [uinput.KEY_Q, uinput.KEY_W, uinput.KEY_E, uinput.KEY_R, uinput.KEY_T, uinput.KEY_Y, uinput.KEY_U, uinput.KEY_I, uinput.KEY_O, uinput.KEY_P, None, None],
-    [uinput.KEY_A, uinput.KEY_S, uinput.KEY_D, uinput.KEY_F, uinput.KEY_G, uinput.KEY_H, uinput.KEY_J, uinput.KEY_K, uinput.KEY_L, None, None, None],
-    [uinput.KEY_Z, uinput.KEY_X, uinput.KEY_C, uinput.KEY_V, uinput.KEY_B, uinput.KEY_N, uinput.KEY_M, None, None, None, None, None],
-    [None, None, None, None, None, None, None, None, None, None, None, None]
-]
+# 2. FULL GRID MAP (Directly matching your 40% Ortho Layout)
+# We fill this with actual keys. Use None for empty spots.
+GRID_MAP = {
+    (0,0): uinput.KEY_TAB,  (0,1): uinput.KEY_Q, (0,2): uinput.KEY_W, (0,3): uinput.KEY_E, (0,4): uinput.KEY_R, (0,5): uinput.KEY_T, (0,6): uinput.KEY_Y, (0,7): uinput.KEY_U, (0,8): uinput.KEY_I, (0,9): uinput.KEY_O, (0,10): uinput.KEY_P, (0,11): uinput.KEY_BACKSPACE,
+    (1,0): uinput.KEY_ESC,  (1,1): uinput.KEY_A, (1,2): uinput.KEY_S, (1,3): uinput.KEY_D, (1,4): uinput.KEY_F, (1,5): uinput.KEY_G, (1,6): uinput.KEY_H, (1,7): uinput.KEY_J, (1,8): uinput.KEY_K, (1,9): uinput.KEY_L, (1,10): uinput.KEY_SEMICOLON, (1,11): uinput.KEY_ENTER,
+    (2,0): uinput.KEY_LEFTSHIFT, (2,1): uinput.KEY_Z, (2,2): uinput.KEY_X, (2,3): uinput.KEY_C, (2,4): uinput.KEY_V, (2,5): uinput.KEY_B, (2,6): uinput.KEY_N, (2,7): uinput.KEY_M, (2,8): uinput.KEY_COMMA, (2,9): uinput.KEY_DOT, (2,10): uinput.KEY_UP, (2,11): uinput.KEY_SLASH,
+    (3,4): uinput.KEY_SPACE, (3,5): uinput.KEY_SPACE # The 2u Spacebars
+}
 
 # 3. INITIALIZE DEVICE
-# We register all 26 letters
-device = uinput.Device([
-    uinput.KEY_A, uinput.KEY_B, uinput.KEY_C, uinput.KEY_D, uinput.KEY_E, 
-    uinput.KEY_F, uinput.KEY_G, uinput.KEY_H, uinput.KEY_I, uinput.KEY_J, 
-    uinput.KEY_K, uinput.KEY_L, uinput.KEY_M, uinput.KEY_N, uinput.KEY_O, 
-    uinput.KEY_P, uinput.KEY_Q, uinput.KEY_R, uinput.KEY_S, uinput.KEY_T, 
-    uinput.KEY_U, uinput.KEY_V, uinput.KEY_W, uinput.KEY_X, uinput.KEY_Y, 
-    uinput.KEY_Z
-])
-
+all_keys = [k for k in GRID_MAP.values() if k is not None]
+device = uinput.Device(all_keys)
 time.sleep(1)
 
 GPIO.setmode(GPIO.BCM)
@@ -37,9 +28,9 @@ for r in ROWS:
     GPIO.output(r, GPIO.HIGH)
 
 # 4. TRACKING
-pressed_keys = {} # To prevent repeating letters
+pressed_keys = {} 
 
-print("ALPHA TEST: Typing A-Z based on grid position...")
+print("KRAMWRITER: Alpha + Function Keys Active.")
 
 try:
     while True:
@@ -50,20 +41,22 @@ try:
                 is_down = (GPIO.input(c_pin) == GPIO.LOW)
                 key_id = (r_idx, c_idx)
 
+                # KEY PRESSED
                 if is_down and key_id not in pressed_keys:
-                    # Get the key from our flat map
-                    key = ALPHA_MAP[r_idx][c_idx]
-                    
-                    if key is not None:
-                        print(f"Hit! Grid {r_idx},{c_idx} -> Typing Key")
+                    key = GRID_MAP.get(key_id)
+                    if key:
                         device.emit(key, 1) # Press
                         pressed_keys[key_id] = key
+                        # Minimal debounce sleep
+                        time.sleep(0.005) 
                 
+                # KEY RELEASED
                 elif not is_down and key_id in pressed_keys:
                     device.emit(pressed_keys[key_id], 0) # Release
                     del pressed_keys[key_id]
 
             GPIO.output(r_pin, GPIO.HIGH)
+        # Scan frequency control
         time.sleep(0.01)
 
 except KeyboardInterrupt:
