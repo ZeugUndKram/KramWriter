@@ -19,11 +19,12 @@ _NUM = {
     (1,6): uinput.KEY_LEFT, (1,7): uinput.KEY_DOWN, (1,8): uinput.KEY_UP, (1,9): uinput.KEY_RIGHT
 }
 
-# FIXED: Removed duplicate (0,1) key that was silently overwriting itself
+# FIXED: Removed duplicate (0,1) & replaced invalid constants with valid uinput keycodes
 _SYM = {
-    (0,1): uinput.KEY_EXCLAMATION, 
-    (0,2): uinput.KEY_AT, (0,3): uinput.KEY_HASH, (0,4): uinput.KEY_DOLLAR, (0,5): uinput.KEY_PERCENT,
-    (1,1): uinput.KEY_GRAVE, (1,2): uinput.KEY_1, (1,3): uinput.KEY_LEFTBRACE, (1,4): uinput.KEY_RIGHTBRACE, (1,5): uinput.KEY_BACKSLASH, (1,6): uinput.KEY_MINUS, (1,7): uinput.KEY_EQUAL, (1,8): uinput.KEY_LEFTBRACE, (1,9): uinput.KEY_RIGHTBRACE, (1,10): uinput.KEY_BACKSLASH
+    (0,1): uinput.KEY_1, (0,2): uinput.KEY_2, (0,3): uinput.KEY_3, (0,4): uinput.KEY_4, (0,5): uinput.KEY_5,
+    (1,1): uinput.KEY_GRAVE, (1,2): uinput.KEY_APOSTROPHE, (1,3): uinput.KEY_LEFTBRACE, (1,4): uinput.KEY_RIGHTBRACE,
+    (1,5): uinput.KEY_BACKSLASH, (1,6): uinput.KEY_MINUS, (1,7): uinput.KEY_EQUAL,
+    (1,8): uinput.KEY_COMMA, (1,9): uinput.KEY_DOT, (1,10): uinput.KEY_SLASH
 }
 
 # 3. DEVICE SETUP
@@ -34,9 +35,8 @@ for layer in [_BASE, _NUM, _SYM]:
             all_keys.add(k)
 
 device = uinput.Device(list(all_keys))
-time.sleep(0.5) # Give uinput time to register
+time.sleep(0.5)
 
-# Clean GPIO state before starting (prevents "pins busy" errors on reruns)
 GPIO.cleanup()
 GPIO.setmode(GPIO.BCM)
 GPIO.setwarnings(False)
@@ -60,21 +60,19 @@ try:
     while True:
         for r_idx, r_pin in enumerate(ROWS):
             GPIO.output(r_pin, GPIO.LOW)
-            time.sleep(0.0002) # 200µs settle
+            time.sleep(0.0002)
             
             for c_idx, c_pin in enumerate(COLS):
                 key_id = (r_idx, c_idx)
                 is_down = (GPIO.input(c_pin) == GPIO.LOW)
                 base_val = _BASE.get(key_id)
 
-                # 1. Handle Layer Modifiers
+                # 1. Handle Layer Modifiers (Momentary)
                 if base_val in ("NUM", "SYM"):
-                    # Momentary layer behavior: active only while held
                     if is_down and not layers[base_val]:
                         layers[base_val] = True
                     elif not is_down and layers[base_val]:
                         layers[base_val] = False
-                    # Don't track layer keys in pressed_keys/active_cols to avoid ghosting
                     continue
 
                 # 2. Normal Key Press
@@ -95,7 +93,7 @@ try:
                     del pressed_keys[key_id]
 
             GPIO.output(r_pin, GPIO.HIGH)
-        time.sleep(0.01) # ~100Hz scan rate
+        time.sleep(0.01)
 
 except KeyboardInterrupt:
     GPIO.cleanup()
