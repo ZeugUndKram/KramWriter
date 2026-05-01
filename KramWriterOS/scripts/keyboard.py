@@ -12,22 +12,24 @@ GRID_MAP = {
     (1,0): uinput.KEY_ESC,  (1,1): uinput.KEY_A, (1,2): uinput.KEY_S, (1,3): uinput.KEY_D, (1,4): uinput.KEY_F, (1,5): uinput.KEY_G, (1,6): uinput.KEY_H, (1,7): uinput.KEY_J, (1,8): uinput.KEY_K, (1,9): uinput.KEY_L, (1,10): uinput.KEY_SEMICOLON, (1,11): uinput.KEY_ENTER,
     (2,0): uinput.KEY_LEFTSHIFT, (2,1): uinput.KEY_Z, (2,2): uinput.KEY_X, (2,3): uinput.KEY_C, (2,4): uinput.KEY_V, (2,5): uinput.KEY_B, (2,6): uinput.KEY_N, (2,7): uinput.KEY_M, (2,8): uinput.KEY_COMMA, (2,9): uinput.KEY_DOT, (2,10): uinput.KEY_UP, (2,11): uinput.KEY_SLASH,
     
-    # Bottom Row: Added Modifiers, Split Spacebars, and Arrow Keys
     (3,0): uinput.KEY_LEFTCTRL, 
     (3,1): uinput.KEY_LEFTMETA, 
     (3,2): uinput.KEY_LEFTALT, 
-    (3,3): uinput.KEY_RIGHTALT, # Placeholder for your NUM layer key
-    (3,4): uinput.KEY_SPACE,    # Left 2u Spacebar (Left Switch)
-    (3,5): uinput.KEY_SPACE,    # Left 2u Spacebar (Right Switch)
-    (3,6): uinput.KEY_SPACE,    # Right 2u Spacebar (Left Switch)
-    (3,7): uinput.KEY_SPACE,    # Right 2u Spacebar (Right Switch)
-    (3,8): uinput.KEY_RIGHTCTRL,# Placeholder for your SYM layer key
+    (3,3): uinput.KEY_RIGHTALT, # Placeholder for NUM
+    (3,4): uinput.KEY_SPACE,    
+    (3,5): uinput.KEY_SPACE,    
+    (3,6): uinput.KEY_SPACE,    
+    (3,7): uinput.KEY_SPACE,    
+    (3,8): uinput.KEY_RIGHTCTRL,# Placeholder for SYM
     (3,9): uinput.KEY_LEFT, 
     (3,10): uinput.KEY_DOWN, 
     (3,11): uinput.KEY_RIGHT
 }
 
-# 3. DEVICE SETUP
+# 3. SETTINGS
+DEBOUNCE_TIME = 0.03 # 30 milliseconds (Increase to 0.05 if it still double-types)
+
+# 4. DEVICE SETUP
 all_keys = [k for k in GRID_MAP.values() if k is not None]
 device = uinput.Device(all_keys)
 time.sleep(1)
@@ -38,23 +40,31 @@ GPIO.setwarnings(False)
 for c in COLS: GPIO.setup(c, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 for r in ROWS: GPIO.setup(r, GPIO.OUT, initial=GPIO.HIGH)
 
-# 4. TRACKING
+# 5. TRACKING
 pressed_keys = {} # (r, c): key_sent
 active_cols = set() # Tracks columns currently "in use"
+debounce_timers = {} # Tracks the last time a key changed state
 
-print("KRAMWRITER: Ghost-Proofing Active. Full Layout Loaded.")
+print("KRAMWRITER: Debouncing & Ghost-Proofing Active.")
 
 try:
     while True:
+        current_time = time.time()
+        
         for r_idx, r_pin in enumerate(ROWS):
             GPIO.output(r_pin, GPIO.LOW)
-            time.sleep(0.0002) # Slightly longer settle time
+            time.sleep(0.0002) # Settle time for the matrix
             
             for c_idx, c_pin in enumerate(COLS):
                 key_id = (r_idx, c_idx)
                 is_down = (GPIO.input(c_pin) == GPIO.LOW)
 
-                # NEW LOGIC: Only allow press if the column isn't already "claimed" by another row
+                # --- DEBOUNCE CHECK ---
+                # If this key changed state very recently, ignore it until the metal settles
+                if (current_time - debounce_timers.get(key_id, 0)) < DEBOUNCE_TIME:
+                    continue 
+
+                # --- KEY DOWN LOGIC ---
                 if is_down and key_id not in pressed_keys:
                     if c_idx not in active_cols:
                         key = GRID_MAP.get(key_id)
@@ -62,12 +72,15 @@ try:
                             device.emit(key, 1)
                             pressed_keys[key_id] = key
                             active_cols.add(c_idx)
-                            print(f"Clean Press: {key_id}")
+                            debounce_timers[key_id] = current_time # Start the clock
+                            # print(f"Clean Press: {key_id}") # Uncomment for debugging
 
+                # --- KEY UP LOGIC ---
                 elif not is_down and key_id in pressed_keys:
                     device.emit(pressed_keys[key_id], 0)
                     active_cols.remove(c_idx)
                     del pressed_keys[key_id]
+                    debounce_timers[key_id] = current_time # Start the clock for the release
 
             GPIO.output(r_pin, GPIO.HIGH)
         time.sleep(0.01)
