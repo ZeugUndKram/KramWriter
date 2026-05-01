@@ -7,6 +7,8 @@ use termion::event::Key;
 use rpi_memory_display::Pixel;
 use rand::seq::SliceRandom;
 use std::collections::HashMap;
+use std::fs::{File, OpenOptions};
+use std::io::{BufRead, BufReader, Write};
 
 // --- Positioning Constants ---
 const GRID_SIZE: usize = 10;
@@ -49,6 +51,7 @@ pub struct ZeugtrisPage {
     tick_count: u32,
     game_over: bool,
     backdrop: Option<Bitmap>,
+    gameover_bmp: Option<Bitmap>,
     sprites: HashMap<TetrominoType, Bitmap>,
     renderer: FontRenderer,
     stats: HashMap<TetrominoType, u32>,
@@ -98,6 +101,7 @@ impl ZeugtrisPage {
             tick_count: 0,
             game_over: false,
             backdrop: Bitmap::load(&format!("{}/backdrop.bmp", asset_path)).ok(),
+            gameover_bmp: Bitmap::load(&format!("{}/gameover.bmp", asset_path)).ok(),
             sprites,
             renderer,
             stats,
@@ -162,7 +166,10 @@ impl ZeugtrisPage {
                 if cell != 0 {
                     let r = self.active_piece.row + y as i32;
                     let c = self.active_piece.col + x as i32;
-                    if r < 0 { self.game_over = true; return; }
+                    if r < 0 { 
+                        self.trigger_game_over(); 
+                        return; 
+                    }
                     self.playfield[r as usize][c as usize] = Some(self.active_piece.kind);
                 }
             }
@@ -171,6 +178,12 @@ impl ZeugtrisPage {
         self.clear_lines();
         self.active_piece = std::mem::replace(&mut self.next_piece, Self::spawn_piece());
         
+        // Immediate collision check for new piece (Top-out)
+        if !self.is_valid_move(&self.active_piece.matrix, self.active_piece.row, self.active_piece.col) {
+            self.trigger_game_over();
+            return;
+        }
+
         if let Some(count) = self.stats.get_mut(&self.active_piece.kind) {
             *count += 1;
         }
@@ -208,28 +221,72 @@ impl ZeugtrisPage {
         }
     }
 
-    // 8x faster delays mapped to match your hardware's tick rate
     fn get_drop_delay(&self) -> u32 {
         let delays = [
-            7, // Lvl 1 (Originally 60)
-            6, // Lvl 2 (Originally 48)
-            4, // Lvl 3 (Originally 37)
-            3, // Lvl 4 (Originally 28)
-            2, // Lvl 5 (Originally 21)
-            2, // Lvl 6 (Originally 16)
-            1, // Lvl 7 (Originally 11)
-            1, // Lvl 8 (Originally 8)
-            0, // Lvl 9 (Originally 6) - 0 means it falls every single tick
-            0, // Lvl 10 
-            0, // Lvl 11 
-            0, // Lvl 12 
-            0, // Lvl 13 
-            0, // Lvl 14 
-            0  // Lvl 15+ 
+            7, // Lvl 1 
+            6, // Lvl 2 
+            4, // Lvl 3 
+            3, // Lvl 4 
+            2, // Lvl 5 
+            2, // Lvl 6 
+            1, // Lvl 7 
+            1, // Lvl 8 
+            0, // Lvl 9+
+            0, 0, 0, 0, 0, 0 
         ];
         
         let idx = (self.level.saturating_sub(1) as usize).min(14);
         delays[idx]
+    }
+
+    fn trigger_game_over(&mut self) {
+        self.game_over = true;
+        
+        let path = "/home/kramwriter/KramWriter/assets/zeugtris/highscores.txt";
+        let mut scores = Vec::new();
+
+        // Read existing scores
+        if let Ok(file) = File::open(path) {
+            let reader = BufReader::new(file);
+            for line in reader.lines().map_while(Result::ok) {
+                if let Ok(val) = line.trim().parse::<u32>() {
+                    scores.push(val);
+                }
+            }
+        }
+
+        // Add current score and keep top 10 descending
+        scores.push(self.score);
+        scores.sort_unstable_by(|a, b| b.cmp(a));
+        scores.truncate(10);
+
+        // Write back out
+        if let Ok(mut file) = OpenOptions::new().write(true).create(true).truncate(true).open(path) {
+            for score in scores {
+                let _ = writeln!(file, "{}", score);
+            }
+        }
+    }
+
+    fn reset_game(&mut self) {
+        self.playfield = [[None; GRID_SIZE]; GRID_HEIGHT];
+        
+        for count in self.stats.values_mut() {
+            *count = 0;
+        }
+        
+        self.active_piece = Self::spawn_piece();
+        self.next_piece = Self::spawn_piece();
+        
+        if let Some(count) = self.stats.get_mut(&self.active_piece.kind) {
+            *count += 1;
+        }
+
+        self.tick_count = 0;
+        self.game_over = false;
+        self.score = 0;
+        self.level = 1;
+        self.lines = 0;
     }
 
     fn draw_block(&self, display: &mut SharpDisplay, kind: TetrominoType, grid_x: usize, grid_y: usize, ctx: &Context) {
@@ -283,8 +340,13 @@ impl ZeugtrisPage {
 impl Page for ZeugtrisPage {
     fn update(&mut self, key: Key, _ctx: &mut Context) -> Action {
         if self.game_over {
+            if key == Key::Char('r') || key == Key::Char('R') {
+                self.reset_game();
+                return Action::Redraw;
+            }
             return if key == Key::Esc { Action::Pop } else { Action::None };
         }
+        
         match key {
             Key::Left => if self.is_valid_move(&self.active_piece.matrix, self.active_piece.row, self.active_piece.col - 1) { self.active_piece.col -= 1; }
             Key::Right => if self.is_valid_move(&self.active_piece.matrix, self.active_piece.row, self.active_piece.col + 1) { self.active_piece.col += 1; }
@@ -295,7 +357,7 @@ impl Page for ZeugtrisPage {
             Key::Down => {
                 if self.is_valid_move(&self.active_piece.matrix, self.active_piece.row + 1, self.active_piece.col) { 
                     self.active_piece.row += 1; 
-                    self.score += 1; // Soft drop gives 1 point per cell
+                    self.score += 1; 
                 }
             }
             Key::Esc => return Action::Pop,
@@ -326,6 +388,33 @@ impl Page for ZeugtrisPage {
 
     fn draw(&self, display: &mut SharpDisplay, ctx: &Context) {
         display.clear(ctx);
+
+        if self.game_over {
+            if let Some(bmp) = &self.gameover_bmp {
+                let x_off = (400 - bmp.width as i32) / 2;
+                let y_off = (240 - bmp.height as i32) / 2;
+                for y in 0..bmp.height {
+                    for x in 0..bmp.width {
+                        if bmp.pixels[y * bmp.width + x] == Pixel::Black {
+                            let px = (x as i32 + x_off) as usize;
+                            let py = (y as i32 + y_off) as usize;
+                            if px < 400 && py < 240 {
+                                display.draw_pixel(px, py, Pixel::Black, ctx);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Draw center score
+            let score_text = format!("{}", self.score);
+            let score_size = 42.0;
+            let score_width = self.renderer.calculate_width(&score_text, score_size);
+            let start_x = 200 - (score_width / 2);
+            self.renderer.draw_text(display, &score_text, start_x, 140, score_size, ctx);
+            
+            return;
+        }
 
         if let Some(bmp) = &self.backdrop {
             for y in 0..(bmp.height as usize).min(240) {
