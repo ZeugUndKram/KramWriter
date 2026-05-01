@@ -411,7 +411,7 @@ impl Page for ZeugtrisPage {
             let score_size = 42.0;
             let score_width = self.renderer.calculate_width(&score_text, score_size);
             let start_x = 200 - (score_width / 2);
-            self.renderer.draw_text(display, &score_text, start_x, 140, score_size, ctx);
+            self.renderer.draw_text(display, &score_text, start_x, 165, score_size, ctx);
             
             return;
         }
