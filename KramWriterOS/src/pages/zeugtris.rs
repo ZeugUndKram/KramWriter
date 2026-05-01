@@ -24,7 +24,7 @@ const NEXT_CELL_DIM: usize = 12;
 // --- Statistics Positioning (Aligned with grafik.png) ---
 const STATS_X: i32 = 84;         
 const STATS_START_Y: i32 = 35;   
-const STATS_SPACING: i32 = 30;   
+const STATS_SPACING: i32 = 32;   
 const STATS_FONT_SIZE: f32 = 24.0;
 
 // --- Right Panel Info Positioning ---
