@@ -446,17 +446,57 @@ impl Page for ZeugtrisPage {
             }
         }
 
+        // --- UPDATED NEXT PIECE PREVIEW WITH CENTERING ---
         if let Some(bmp) = self.sprites.get(&self.next_piece.kind) {
-            for (y, row) in self.next_piece.matrix.iter().enumerate() {
-                for (x, &cell) in row.iter().enumerate() {
-                    if cell != 0 {
-                        let screen_x = NEXT_X + (x * NEXT_CELL_DIM);
-                        let screen_y = NEXT_Y + (y * NEXT_CELL_DIM);
-                        for py in 0..(bmp.height as usize).min(NEXT_CELL_DIM) {
-                            for px in 0..(bmp.width as usize).min(NEXT_CELL_DIM) {
-                                let pixel = bmp.pixels[py * bmp.width as usize + px];
-                                if pixel == Pixel::Black {
-                                    display.draw_pixel(screen_x + px, screen_y + py, Pixel::Black, ctx);
+            let matrix = &self.next_piece.matrix;
+            let size = matrix.len();
+            
+            // 1. Find the "solid" bounds of the piece
+            let mut min_x = size;
+            let mut max_x = 0;
+            let mut min_y = size;
+            let mut max_y = 0;
+            let mut has_blocks = false;
+
+            for y in 0..size {
+                for x in 0..size {
+                    if matrix[y][x] != 0 {
+                        if x < min_x { min_x = x; }
+                        if x > max_x { max_x = x; }
+                        if y < min_y { min_y = y; }
+                        if y > max_y { max_y = y; }
+                        has_blocks = true;
+                    }
+                }
+            }
+
+            if has_blocks {
+                let piece_w_blocks = (max_x - min_x + 1) as f32;
+                let piece_h_blocks = (max_y - min_y + 1) as f32;
+                let box_size_px = 48.0; // Assume 4x4 preview box (4 * 12px)
+                
+                let center_offset_x = (box_size_px - (piece_w_blocks * NEXT_CELL_DIM as f32)) / 2.0;
+                let center_offset_y = (box_size_px - (piece_h_blocks * NEXT_CELL_DIM as f32)) / 2.0;
+
+                for (y, row) in matrix.iter().enumerate() {
+                    for (x, &cell) in row.iter().enumerate() {
+                        if cell != 0 {
+                            let rel_x = (x - min_x) as f32 * NEXT_CELL_DIM as f32;
+                            let rel_y = (y - min_y) as f32 * NEXT_CELL_DIM as f32;
+
+                            let screen_x = NEXT_X + (center_offset_x + rel_x) as usize;
+                            let screen_y = NEXT_Y + (center_offset_y + rel_y) as usize;
+
+                            for py in 0..(bmp.height as usize).min(NEXT_CELL_DIM) {
+                                for px in 0..(bmp.width as usize).min(NEXT_CELL_DIM) {
+                                    let pixel = bmp.pixels[py * bmp.width as usize + px];
+                                    if pixel == Pixel::Black {
+                                        let final_x = screen_x + px;
+                                        let final_y = screen_y + py;
+                                        if final_x < 400 && final_y < 240 {
+                                            display.draw_pixel(final_x, final_y, Pixel::Black, ctx);
+                                        }
+                                    }
                                 }
                             }
                         }
